@@ -1,0 +1,742 @@
+% ============================================
+% 15. 多模态大模型
+% ============================================
+\section{多模态大模型}
+\label{sec:multimodal}
+
+随着大语言模型（LLM）在文本理解和生成上取得突破性进展，研究者开始探索如何将视觉、音频等多模态信息与语言能力相结合。多模态大模型（Multimodal Large Language Models, MLLMs）已成为人工智能领域最活跃的研究方向之一。本章将系统介绍多模态大模型的架构设计，重点讨论"原生多模态"（Native Multimodal）这一新兴范式。
+
+\subsection{多模态大模型概述}
+
+\subsubsection{从单模态到多模态}
+
+传统的大语言模型只能处理文本输入和输出。为了让模型具备"看"和"听"的能力，研究者提出了多种将视觉信息融入语言模型的方法。根据模态融合的深度和方式，多模态大模型可分为以下几类：
+
+\begin{itemize}
+    \item \textbf{级联式（Cascaded）}：多个独立模型串联，如先用视觉模型提取描述，再输入语言模型
+    \item \textbf{适配器式（Adapter-based）}：在预训练LLM基础上添加视觉适配器，如LLaVA、BLIP-2
+    \item \textbf{原生式（Native）}：从头开始在多模态数据上联合训练，如GPT-4o、Gemini
+\end{itemize}
+
+\subsubsection{核心挑战}
+
+构建多模态大模型面临几个关键挑战：
+
+\textbf{模态对齐（Modality Alignment）}：图像和文本存在于不同的表示空间，需要建立有效的跨模态映射。图像是连续的像素值，而文本是离散的token序列，如何让两者在同一语义空间中对齐是核心问题。
+
+\textbf{信息压缩}：一张224×224的图像包含50176个像素，而典型的视觉编码器会产生196-576个视觉token。如何在保留关键信息的同时压缩视觉表示，避免对LLM造成过大的序列长度负担？
+
+\textbf{理解与生成的统一}：视觉理解（如VQA）需要高层语义抽象，而图像生成需要细粒度的像素级信息。如何在单一模型中同时支持这两种看似矛盾的需求？
+
+\subsection{视觉编码器}
+
+视觉编码器是多模态大模型的"眼睛"，负责将图像转换为语言模型可理解的表示。
+
+\subsubsection{Vision Transformer (ViT)}
+
+Vision Transformer \cite{dosovitskiy2020image}将Transformer架构应用于图像处理。其核心思想是将图像切分为固定大小的patch，然后像处理文本token一样处理这些patch：
+
+\begin{equation}
+    \mathbf{z}_0 = [\mathbf{x}_\text{class}; \mathbf{E}\mathbf{x}_1; \mathbf{E}\mathbf{x}_2; ...; \mathbf{E}\mathbf{x}_N] + \mathbf{E}_\text{pos}
+\end{equation}
+
+其中$\mathbf{x}_i \in \mathbb{R}^{P^2 \cdot C}$是第$i$个图像patch的展平向量，$\mathbf{E}$是patch embedding矩阵，$\mathbf{E}_\text{pos}$是位置编码。
+
+\subsubsection{CLIP与对比学习}
+
+CLIP（Contrastive Language-Image Pre-training）\cite{radford2021learning}通过对比学习在4亿图像-文本对上训练视觉编码器，使其输出的图像表示与对应文本描述在语义空间中对齐：
+
+\begin{equation}
+    \mathcal{L}_\text{CLIP} = -\frac{1}{N}\sum_{i=1}^{N}\left[\log\frac{\exp(\text{sim}(\mathbf{v}_i, \mathbf{t}_i)/\tau)}{\sum_{j=1}^{N}\exp(\text{sim}(\mathbf{v}_i, \mathbf{t}_j)/\tau)}\right]
+\end{equation}
+
+CLIP的视觉编码器（通常是ViT-L/14）因其强大的跨模态对齐能力，成为早期多模态大模型的标准选择。
+
+\subsubsection{SigLIP与改进}
+
+SigLIP \cite{zhai2023siglip}对CLIP的训练目标进行了改进，使用sigmoid损失替代softmax：
+
+\begin{equation}
+    \mathcal{L}_\text{SigLIP} = -\frac{1}{N}\sum_{i=1}^{N}\sum_{j=1}^{N}\log\sigma(y_{ij} \cdot \text{sim}(\mathbf{v}_i, \mathbf{t}_j) \cdot \tau)
+\end{equation}
+
+其中$y_{ij} = 1$当$i=j$，否则$y_{ij} = -1$。这种设计允许更大的batch size训练，且不需要全局负样本同步，使训练更加高效。SigLIP在InternVL、Qwen2-VL等新一代模型中广泛使用。
+
+\subsection{模态融合机制}
+
+将视觉特征注入语言模型的方式决定了多模态模型的架构设计。目前主流的融合机制包括：
+
+\subsubsection{线性投影（Linear Projection）}
+
+最简单的方式是使用线性层将视觉特征映射到语言模型的embedding空间：
+
+\begin{equation}
+    \mathbf{H}_v = \mathbf{W}_\text{proj} \cdot \mathbf{Z}_\text{vision} + \mathbf{b}
+\end{equation}
+
+\textbf{LLaVA} \cite{liu2023llava}最初采用这种方法，通过一个简单的线性投影矩阵连接CLIP ViT-L/14和Vicuna：
+
+\begin{itemize}
+    \item 保持视觉编码器和LLM的参数冻结
+    \item 仅训练投影矩阵（约2M参数）
+    \item 两阶段训练：预训练对齐 + 指令微调
+\end{itemize}
+
+LLaVA-1.5 \cite{liu2024llava15}将线性投影升级为两层MLP，显著提升了多模态能力：
+
+\begin{equation}
+    \mathbf{H}_v = \mathbf{W}_2 \cdot \text{GELU}(\mathbf{W}_1 \cdot \mathbf{Z}_\text{vision})
+\end{equation}
+
+\subsubsection{Q-Former（Querying Transformer）}
+
+BLIP-2 \cite{li2023blip2}提出了Q-Former架构，使用可学习的query token通过交叉注意力从视觉特征中提取信息：
+
+\begin{equation}
+    \mathbf{Q}_\text{out} = \text{CrossAttn}(\mathbf{Q}_\text{learnable}, \mathbf{K}_\text{vision}, \mathbf{V}_\text{vision})
+\end{equation}
+
+Q-Former的核心设计：
+\begin{itemize}
+    \item 32个可学习的query embeddings（维度768）
+    \item 基于BERT初始化的Transformer块
+    \item 交叉注意力层与自注意力层交替堆叠
+    \item 输出固定数量的视觉token（32个），无论输入图像分辨率
+\end{itemize}
+
+\textbf{两阶段预训练}：
+\begin{enumerate}
+    \item 视觉-语言表示学习：使用ITC、ITM、ITG三种损失训练Q-Former与冻结的视觉编码器对齐
+    \item 视觉-语言生成学习：Q-Former输出接入冻结的LLM，训练生成能力
+\end{enumerate}
+
+BLIP-2在VQAv2零样本任务上超越Flamingo-80B达8.7\%，而可训练参数仅为后者的1/54。
+
+\subsubsection{交叉注意力适配器（Cross-Attention Adapter）}
+
+Flamingo \cite{alayrac2022flamingo}和LLaMA 3.2 Vision采用在LLM内部插入交叉注意力层的方式：
+
+\begin{equation}
+    \mathbf{h}_l' = \mathbf{h}_l + \text{CrossAttn}(\mathbf{h}_l, \mathbf{K}_\text{vision}, \mathbf{V}_\text{vision})
+\end{equation}
+
+\textbf{Flamingo}的架构特点：
+\begin{itemize}
+    \item Perceiver Resampler：将可变长度的视觉特征压缩为固定长度
+    \item 在LLM的每几层插入gated cross-attention层
+    \item 冻结LLM参数，仅训练新增的交叉注意力层
+\end{itemize}
+
+\textbf{LLaMA 3.2 Vision} \cite{dubey2024llama3}基于LLaMA 3.1构建：
+\begin{itemize}
+    \item 在冻结的LLaMA 3.1文本模型上添加视觉适配器
+    \item 适配器包含多层交叉注意力，将图像编码器表示注入LLM
+    \item 训练过程中更新视觉编码器和适配器，但冻结LLM参数
+    \item 保持文本能力不变，实现LLaMA 3.1的"即插即用"替换
+\end{itemize}
+
+\subsubsection{融合机制对比}
+
+\begin{table}[htbp]
+\centering
+\caption{模态融合机制对比}
+\begin{tabular}{lcccl}
+\toprule
+\textbf{方法} & \textbf{代表模型} & \textbf{新增参数} & \textbf{视觉token数} & \textbf{特点} \\
+\midrule
+线性投影 & LLaVA & $\sim$2M & 576 & 简单高效 \\
+MLP投影 & LLaVA-1.5 & $\sim$20M & 576 & 表达能力更强 \\
+Q-Former & BLIP-2 & $\sim$107M & 32 & 压缩视觉信息 \\
+Cross-Attention & LLaMA 3.2 & $\sim$1B & 可变 & 深度融合 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{代表性多模态大模型}
+
+\subsubsection{LLaVA系列}
+
+LLaVA（Large Language and Vision Assistant）是最具影响力的开源多模态大模型之一。
+
+\textbf{LLaVA-1.0}：
+\begin{itemize}
+    \item 视觉编码器：CLIP ViT-L/14（冻结）
+    \item 语言模型：Vicuna-7B/13B（冻结）
+    \item 连接方式：线性投影层
+    \item 训练数据：595K图像-文本对（预训练）+ 158K视觉指令数据（微调）
+\end{itemize}
+
+\textbf{LLaVA-1.5}的改进：
+\begin{itemize}
+    \item MLP替代线性投影
+    \item 输入分辨率从224提升到336
+    \item 增加学术VQA数据
+    \item 更大的语言模型（Vicuna-13B）
+\end{itemize}
+
+\textbf{LLaVA-NeXT}进一步支持动态分辨率，将图像切分为多个子图像分别编码。
+
+\subsubsection{Qwen-VL系列}
+
+\textbf{Qwen-VL} \cite{bai2023qwenvl}使用更大的视觉编码器和更高分辨率：
+\begin{itemize}
+    \item 视觉编码器：OpenCLIP ViT-bigG（448×448）
+    \item 语言模型：Qwen-7B
+    \item 连接方式：单层交叉注意力
+\end{itemize}
+
+\textbf{Qwen2-VL} \cite{wang2024qwen2vl}的创新：
+\begin{itemize}
+    \item \textbf{动态分辨率}：移除ViT的绝对位置编码，引入2D-RoPE，支持任意分辨率输入
+    \item \textbf{M-RoPE}：Multimodal Rotary Position Embedding，将旋转位置编码分解为时间和空间（高度、宽度）三部分，同时捕获1D文本、2D图像、3D视频的位置信息
+    \item \textbf{Token压缩}：MLP层将相邻2×2 token压缩为1个，224×224图像仅产生66个视觉token
+\end{itemize}
+
+\subsubsection{InternVL系列}
+
+InternVL \cite{chen2024internvl}的独特设计在于视觉编码器的大规模化：
+\begin{itemize}
+    \item 视觉编码器扩展到60亿参数（InternViT-6B）
+    \item 引入QLLaMA作为"胶水层"（8B参数）连接视觉和语言
+    \item 三阶段训练：对比学习 → 生成学习 → 指令微调
+\end{itemize}
+
+InternVL 2.5是首个在MMMU基准上突破70\%的开源模型，达到GPT-4o水平。
+
+\subsection{原生多模态模型}
+\label{subsec:native-multimodal}
+
+\subsubsection{什么是"原生多模态"？}
+
+"原生多模态"（Native Multimodal）指的是模型从设计之初就具备多模态处理能力，而非在单模态模型基础上"嫁接"其他模态。
+
+\textbf{非原生多模态}（如ChatGPT with GPT-4V）：
+\begin{itemize}
+    \item 文本生成：GPT-4
+    \item 图像理解：GPT-4V（独立的视觉模块）
+    \item 语音识别：Whisper
+    \item 图像生成：DALL-E 3
+    \item 各模块独立，通过API或文本中转连接
+\end{itemize}
+
+\textbf{原生多模态}（如GPT-4o、Gemini）：
+\begin{itemize}
+    \item 单一神经网络端到端处理所有模态
+    \item 在多模态数据上从头联合训练
+    \item 模态间共享表示空间，实现深度融合
+    \item 无需模态间的文本中转，减少信息损失
+\end{itemize}
+
+\subsubsection{GPT-4o}
+
+GPT-4o（"o"代表"omni"，全能）于2024年5月发布，是OpenAI首个原生多模态旗舰模型。
+
+\textbf{核心特点}：
+\begin{itemize}
+    \item 单一模型端到端处理文本、音频、视觉输入
+    \item 可直接生成文本、音频、图像输出
+    \item 实时语音对话延迟降至232ms（接近人类反应速度）
+    \item 音频输入保留语调、情感等非语义信息
+\end{itemize}
+
+\textbf{与GPT-4V的区别}：
+\begin{itemize}
+    \item GPT-4V：上传图像 → 视觉模型识别 → 转换为文本描述 → GPT-4处理 → 生成回复
+    \item GPT-4o：上传图像 → 直接理解并生成回复（无中间转换）
+\end{itemize}
+
+由于GPT-4o架构未公开，具体技术细节不得而知，但其性能表明原生多模态训练的巨大优势。
+
+\subsubsection{Google Gemini}
+
+Gemini \cite{team2023gemini}是Google的原生多模态模型系列。
+
+\textbf{技术报告声明}：
+\begin{quote}
+"Gemini models are natively multimodal, as they are trained jointly across text, image, audio, and video."
+\end{quote}
+
+\textbf{架构特点}：
+\begin{itemize}
+    \item 早期融合（Early Fusion）架构
+    \item 从预训练阶段就在多模态数据上联合训练
+    \item 支持32K（Gemini 1.0）到1M（Gemini 1.5/2.5）token上下文
+\end{itemize}
+
+\textbf{模型系列}：
+\begin{itemize}
+    \item Gemini Ultra：最大规模，MMLU首次超越人类专家水平
+    \item Gemini Pro：均衡性能与效率
+    \item Gemini Nano：端侧部署优化
+    \item Gemini 2.5 Pro：2025年发布，加入"思考模型"能力
+\end{itemize}
+
+\subsubsection{Meta Chameleon}
+
+Chameleon \cite{team2024chameleon}是Meta开源的原生多模态模型，采用彻底的早期融合架构。
+
+\textbf{核心设计}：
+\begin{itemize}
+    \item 将所有模态（图像、文本、代码）表示为离散token
+    \item 统一的词表包含文本、代码和图像token
+    \item 使用标准Transformer架构处理混合模态序列
+    \item 端到端从头训练，无需单独的图像编码器/解码器
+\end{itemize}
+
+\textbf{图像离散化}：
+Chameleon使用改进的VQ-VAE将图像编码为离散token：
+\begin{itemize}
+    \item 图像编码为1024个离散token（32×32 latent grid）
+    \item Codebook大小8192
+    \item 与文本token共享统一的embedding空间
+\end{itemize}
+
+\textbf{训练规模}：
+\begin{itemize}
+    \item 7B和34B参数版本
+    \item 约4.4万亿token训练数据（文本、图像-文本对、交错序列）
+    \item 超过500万A100 GPU小时
+\end{itemize}
+
+\textbf{与Gemini的区别}：
+Chameleon是完全端到端的稠密模型，没有路由组件或单独的图像解码器，而Gemini使用独立的图像解码器。
+
+\subsection{统一理解与生成}
+
+传统多模态模型要么专注于理解（如VQA），要么专注于生成（如文生图）。近期研究开始探索在单一模型中统一这两种能力。
+
+\subsubsection{挑战与矛盾}
+
+理解和生成对视觉表示有不同要求：
+\begin{itemize}
+    \item \textbf{理解}：需要高层语义抽象，关注"是什么"
+    \item \textbf{生成}：需要细粒度细节，关注"怎么画"
+\end{itemize}
+
+使用同一个视觉编码器同时服务两种任务会产生冲突——语义编码器（如CLIP）擅长理解但生成的图像缺乏细节；像素编码器（如VQ-GAN）能重建细节但语义理解能力弱。
+
+\subsubsection{Show-o}
+
+Show-o \cite{xie2024showo}提出用单一Transformer统一理解和生成：
+
+\textbf{核心设计}：
+\begin{itemize}
+    \item \textbf{Omni-Attention}：对文本token使用因果注意力，对图像token使用全注意力
+    \item \textbf{混合建模}：文本使用自回归生成，图像使用离散扩散模型
+    \item \textbf{统一词表}：文本token和图像token（VQ-GAN编码）共享词表
+\end{itemize}
+
+\textbf{任务能力}：
+\begin{itemize}
+    \item 图像描述（Image Captioning）
+    \item 视觉问答（VQA）
+    \item 文本生成图像（Text-to-Image）
+    \item 图像编辑（Inpainting/Outpainting）
+    \item 混合模态生成
+\end{itemize}
+
+Show-o在VQAv2上超越NExT-GPT和Chameleon等更大模型，同时在图像生成上达到FID 9.24（MSCOCO 30K）。
+
+\subsubsection{Janus}
+
+DeepSeek的Janus \cite{wu2024janus}采用"解耦编码、统一处理"的策略：
+
+\textbf{核心洞察}：理解和生成需要不同的视觉编码，但可以共享语言模型处理。
+
+\textbf{双编码器设计}：
+\begin{itemize}
+    \item \textbf{理解编码器}：SigLIP，提取高层语义特征
+    \item \textbf{生成编码器}：VQ tokenizer，产生离散视觉表示
+    \item \textbf{共享Transformer}：统一处理两种编码的token序列
+\end{itemize}
+
+\textbf{Janus-Pro}（2025年1月）进一步提升：
+\begin{itemize}
+    \item 基于DeepSeek-LLM-7B
+    \item MMBench达到79.2（超越LLaVA-v1.5）
+    \item 图像生成FID 8.53（MSCOCO 30K）
+\end{itemize}
+
+\subsubsection{JanusFlow}
+
+JanusFlow将生成端从离散token改为连续流（Rectified Flow）：
+\begin{itemize}
+    \item 理解端保持不变（SigLIP编码器）
+    \item 生成端使用Rectified Flow替代VQ tokenizer
+    \item 图像生成质量进一步提升
+\end{itemize}
+
+\subsection{视觉Tokenizer}
+
+视觉tokenizer是原生多模态和统一模型的关键组件，负责将连续图像转换为离散token。
+
+\subsubsection{VQ-VAE与VQ-GAN}
+
+\textbf{VQ-VAE} \cite{van2017vqvae}首次提出将连续表示映射到可学习的离散codebook：
+
+\begin{equation}
+    z_q = \arg\min_{e_k \in \mathcal{C}} \|z_e - e_k\|_2
+\end{equation}
+
+其中$z_e$是编码器输出，$\mathcal{C}$是codebook。
+
+\textbf{VQ-GAN} \cite{esser2021vqgan}在VQ-VAE基础上引入对抗损失：
+
+\begin{equation}
+    \mathcal{L}_\text{VQ-GAN} = \mathcal{L}_\text{rec} + \mathcal{L}_\text{commit} + \mathcal{L}_\text{GAN} + \mathcal{L}_\text{perceptual}
+\end{equation}
+
+VQ-GAN能将256×256图像编码为16×16=256个离散token，每个token来自大小为1024-16384的codebook。
+
+\subsubsection{语义vs像素Tokenizer}
+
+\begin{table}[htbp]
+\centering
+\caption{视觉Tokenizer类型对比}
+\begin{tabular}{lccl}
+\toprule
+\textbf{类型} & \textbf{代表} & \textbf{Codebook} & \textbf{特点} \\
+\midrule
+像素级 & VQ-GAN & 8K-16K & 重建质量高，语义弱 \\
+语义级 & CLIP-ViT & - & 语义强，无法重建 \\
+混合 & SEED & 8K & 兼顾语义和重建 \\
+统一 & TokenFlow & 16K & 双编码器+共享映射 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{前沿进展}
+
+\textbf{TokenFlow}首次证明离散视觉输入可以在理解任务上超越连续编码器（如LLaVA），通过双编码器和共享映射实现语义与细节的联合优化。
+
+\textbf{UniTok}提出统一框架，将离散视觉和语言序列用统一的next-token prediction训练，复用code embedding到MLLM token空间。
+
+\subsection{架构演进与对比}
+
+\subsubsection{多模态架构发展脉络}
+
+\begin{enumerate}
+    \item \textbf{2022：适配器时代}
+    \begin{itemize}
+        \item Flamingo：Cross-Attention + Perceiver Resampler
+        \item BLIP-2：Q-Former桥接冻结编码器和LLM
+    \end{itemize}
+
+    \item \textbf{2023：简化与规模化}
+    \begin{itemize}
+        \item LLaVA：简单MLP投影，证明"简单也有效"
+        \item Qwen-VL：更大视觉编码器（ViT-bigG）
+        \item Gemini：原生多模态训练
+    \end{itemize}
+
+    \item \textbf{2024：原生与统一}
+    \begin{itemize}
+        \item GPT-4o：原生多模态交互
+        \item Chameleon：开源早期融合
+        \item Show-o/Janus：统一理解与生成
+        \item LLaMA 3.2 Vision：Cross-Attention适配器
+    \end{itemize}
+
+    \item \textbf{2025：深度融合}
+    \begin{itemize}
+        \item InternVL 2.5：6B视觉编码器
+        \item Qwen2-VL：动态分辨率 + M-RoPE
+        \item Janus-Pro：更强的统一模型
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{架构对比总结}
+
+\begin{table}[htbp]
+\centering
+\caption{主流多模态架构对比}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lccccc}
+\toprule
+\textbf{模型} & \textbf{视觉编码器} & \textbf{融合方式} & \textbf{LLM训练} & \textbf{原生} & \textbf{统一生成} \\
+\midrule
+LLaVA-1.5 & CLIP ViT-L & MLP投影 & 微调 & \ding{55} & \ding{55} \\
+BLIP-2 & EVA-CLIP & Q-Former & 冻结 & \ding{55} & \ding{55} \\
+LLaMA 3.2 & 自定义ViT & Cross-Attn & 冻结 & \ding{55} & \ding{55} \\
+Qwen2-VL & DFN ViT & MLP & 全量微调 & \ding{55} & \ding{55} \\
+InternVL 2.5 & InternViT-6B & MLP & 全量微调 & \ding{55} & \ding{55} \\
+\midrule
+Gemini & 内置 & 早期融合 & 联合预训练 & \ding{51} & \ding{51} \\
+GPT-4o & 内置 & 端到端 & 联合预训练 & \ding{51} & \ding{51} \\
+Chameleon & VQ-VAE & Token统一 & 从头训练 & \ding{51} & \ding{51} \\
+\midrule
+Show-o & VQ-GAN & Omni-Attn & 从LLM初始化 & 部分 & \ding{51} \\
+Janus & SigLIP+VQ & 解耦编码 & 从LLM初始化 & 部分 & \ding{51} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{设计选择与权衡}
+
+\subsubsection{视觉编码器：冻结vs微调}
+
+\textbf{冻结}（BLIP-2, LLaMA 3.2）：
+\begin{itemize}
+    \item 优点：保持预训练视觉能力，训练效率高
+    \item 缺点：无法针对特定任务优化视觉表示
+\end{itemize}
+
+\textbf{微调}（Qwen2-VL, InternVL）：
+\begin{itemize}
+    \item 优点：视觉表示可针对性优化
+    \item 缺点：可能遗忘预训练知识，需要更多训练资源
+\end{itemize}
+
+\subsubsection{视觉Token数量}
+
+\begin{itemize}
+    \item \textbf{固定少量}（32，Q-Former）：计算高效，但可能丢失细节
+    \item \textbf{固定中等}（576，LLaVA）：平衡信息保留和效率
+    \item \textbf{动态}（Qwen2-VL）：根据图像复杂度调整，最灵活
+\end{itemize}
+
+\subsubsection{原生vs适配器}
+
+\textbf{适配器方式}的优势：
+\begin{itemize}
+    \item 可复用强大的预训练LLM
+    \item 训练成本相对较低
+    \item 保持文本能力不退化
+\end{itemize}
+
+\textbf{原生多模态}的优势：
+\begin{itemize}
+    \item 模态间深度融合，减少信息损失
+    \item 端到端优化，无接口瓶颈
+    \item 支持实时多模态交互（如语音对话）
+\end{itemize}
+
+\subsection{多模态后训练}
+\label{subsec:multimodal-posttraining}
+
+与纯文本LLM类似，多模态大模型也需要通过后训练（Post-training）来提升指令遵循能力、减少幻觉、与人类偏好对齐。然而，多模态场景引入了新的挑战：视觉-语言对齐、跨模态幻觉、以及图像条件下的偏好学习。
+
+\subsubsection{视觉指令微调}
+
+视觉指令微调（Visual Instruction Tuning）是多模态后训练的基础阶段，通过高质量的多模态指令数据训练模型遵循视觉相关的指令。
+
+\textbf{LLaVA的开创性工作} \cite{liu2023llava}：
+\begin{itemize}
+    \item 首次使用纯文本GPT-4生成多模态指令数据
+    \item 基于COCO图像和边界框/描述，扩展为三类指令：对话式QA、详细描述、复杂推理
+    \item 训练数据：558K预训练对齐数据 + 665K指令微调数据
+\end{itemize}
+
+\textbf{数据质量的重要性}：
+LLaVA系列的演进（1.0 → 1.5 → NeXT）充分证明了数据质量对视觉指令微调的关键作用：
+\begin{itemize}
+    \item \textbf{数据多样性}：覆盖对话、描述、推理、学术VQA等多种任务
+    \item \textbf{数据复杂度}：从简单问答到多轮对话、长文本描述
+    \item \textbf{语言多样性}：ShareGPT4V等数据集支持多语言指令
+\end{itemize}
+
+\textbf{两阶段训练范式}：
+\begin{enumerate}
+    \item \textbf{预训练对齐}：在大规模图像-文本对上训练投影层，建立视觉-语言连接
+    \item \textbf{指令微调}：在高质量指令数据上微调，获得指令遵循能力
+\end{enumerate}
+
+\subsubsection{多模态RLHF}
+
+将RLHF（Reinforcement Learning from Human Feedback）从文本域扩展到多模态场景，面临独特挑战。
+
+\textbf{LLaVA-RLHF} \cite{sun2023llava-rlhf}是首个开源的多模态RLHF工作：
+
+\textbf{核心问题}：多模态幻觉——模型生成的文本与图像内容不符。
+
+\textbf{方法}：Factually Augmented RLHF (Fact-RLHF)
+\begin{itemize}
+    \item 收集10K人类偏好数据，标注者比较两个回复并指出哪个更"幻觉"
+    \item 使用图像描述或多选题答案作为额外信息校准奖励信号
+    \item 通过PPO算法优化策略模型
+\end{itemize}
+
+\textbf{训练流程}：
+\begin{enumerate}
+    \item 在LLaVA-SFT+基础上添加LoRA模块
+    \item 用10K偏好数据训练奖励模型
+    \item 通过PPO进行强化学习
+\end{enumerate}
+
+\textbf{效果}：
+\begin{itemize}
+    \item LLaVA-Bench：达到GPT-4纯文本版94\%的水平（此前最佳仅87\%）
+    \item MMHal-Bench：相比基线提升60\%
+\end{itemize}
+
+\textbf{RLHF-V} \cite{yu2024rlhfv}提出更细粒度的方法：
+\begin{itemize}
+    \item 收集片段级（segment-level）纠正标注，而非整体比较
+    \item 使用Dense DPO直接在细粒度反馈上优化
+    \item 仅需1.4K偏好数据，将幻觉率降低34.8\%
+\end{itemize}
+
+\subsubsection{多模态DPO}
+
+DPO（Direct Preference Optimization）因其简单高效，在文本LLM对齐中广泛使用。然而，直接将DPO应用于多模态场景面临独特问题。
+
+\textbf{无条件偏好问题}（Unconditional Preference Problem）：
+标准DPO在多模态场景中，模型可能忽略图像条件，仅基于文本模式学习偏好。这导致：
+\begin{itemize}
+    \item 模型过度依赖语言先验
+    \item 视觉信息未被充分利用
+    \item 对齐效果不稳定
+\end{itemize}
+
+\textbf{mDPO} \cite{wang2024mdpo}（Multimodal DPO）解决方案：
+
+\textbf{核心改进}：
+\begin{enumerate}
+    \item \textbf{图像偏好优化}：在优化语言偏好的同时，显式优化图像偏好，防止语言偏好被过度优先
+    \item \textbf{奖励锚点}（Reward Anchor）：强制chosen响应的奖励为正，避免其likelihood下降——这是相对偏好优化的固有问题
+\end{enumerate}
+
+\textbf{mDPO损失函数}：
+\begin{equation}
+    \mathcal{L}_\text{mDPO} = \mathcal{L}_\text{DPO} + \lambda_\text{img} \mathcal{L}_\text{img-pref} + \lambda_\text{anchor} \mathcal{L}_\text{anchor}
+\end{equation}
+
+\textbf{实验效果}：在多个benchmark上显著降低幻觉率，特别是在需要精确视觉理解的任务上。
+
+\textbf{其他多模态DPO变体}：
+\begin{itemize}
+    \item \textbf{V-DPO}：Vision-Guided DPO，通过视觉引导生成负样本
+    \item \textbf{SymMPO}：对称多模态偏好优化，在正负样本间建立对称学习
+    \item \textbf{负样本增强}：通过随机裁剪或扩散模型编辑图像生成负样本
+\end{itemize}
+
+\subsubsection{多模态幻觉与评估}
+
+多模态幻觉（Multimodal Hallucination）是指模型生成的内容与输入图像不符，是多模态后训练需要重点解决的问题。
+
+\textbf{幻觉类型}：
+\begin{itemize}
+    \item \textbf{对象幻觉}（Object Hallucination）：描述图像中不存在的物体
+    \item \textbf{属性幻觉}（Attribute Hallucination）：错误描述物体的颜色、大小、位置等
+    \item \textbf{关系幻觉}（Relation Hallucination）：错误描述物体间的空间或语义关系
+    \item \textbf{遗漏幻觉}（Omission）：未提及图像中的重要内容
+    \item \textbf{捏造幻觉}（Fabrication）：添加图像中不存在的信息
+\end{itemize}
+
+\textbf{POPE评估基准}：
+Polling-based Object Probing Evaluation将幻觉检测转化为二分类问题：
+\begin{itemize}
+    \item 提问："图像中是否有\texttt{<object>}？"
+    \item 三种难度：Random（随机物体）、Popular（常见物体）、Adversarial（相关但不存在的物体）
+    \item 评估指标：Accuracy、Precision、Recall、F1
+\end{itemize}
+
+\textbf{MMHal-Bench}：
+专门评估真实场景中的幻觉，包含96个图像-问题对，覆盖8类问题×12个物体主题。
+
+\textbf{幻觉缓解方法}：
+\begin{itemize}
+    \item \textbf{对比解码}（Contrastive Decoding）：比较原图和扰动图的输出分布
+    \item \textbf{视觉对比解码}（VCD）：通过高斯噪声等方式扰动图像
+    \item \textbf{鲁棒指令微调}：在训练数据中加入幻觉对比样本
+    \item \textbf{自省解码}（Self-Introspective Decoding）：让模型自我检查输出的一致性
+\end{itemize}
+
+\subsubsection{LLaVA-Critic：多模态自我评估}
+
+LLaVA-Critic \cite{xiong2024llavacritic}是首个开源的多模态通用评估模型，能够评估多模态模型在各种任务上的表现。
+
+\textbf{核心能力}：
+\begin{enumerate}
+    \item \textbf{LMM-as-a-Judge}：提供可靠的评估分数，性能媲美或超越GPT模型
+    \item \textbf{偏好学习}：为偏好学习生成奖励信号，提升模型对齐能力
+\end{enumerate}
+
+\textbf{训练数据}：
+LLaVA-Critic-113k数据集：
+\begin{itemize}
+    \item 46K图像，113K评估指令样本
+    \item 两种评估模式：
+    \begin{itemize}
+        \item Pointwise Scoring：为单个回复打分
+        \item Pairwise Ranking：比较两个回复的相对质量
+    \end{itemize}
+    \item 30种成对评估prompt模板
+\end{itemize}
+
+\textbf{自我奖励（Self-Rewarding）效果}：
+使用LLaVA-Critic的反馈训练LLaVA-OV-7B/72B：
+\begin{itemize}
+    \item 在6个开放式多模态benchmark上持续提升
+    \item 效果优于人类偏好训练的奖励模型
+    \item 虽然仅使用图像训练，也能提升视频理解能力
+\end{itemize}
+
+这表明多模态模型可以通过自我评估实现"超人类反馈"的自我改进路径。
+
+\subsubsection{后训练流程总结}
+
+\begin{table}[htbp]
+\centering
+\caption{多模态后训练方法对比}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lcccc}
+\toprule
+\textbf{方法} & \textbf{数据需求} & \textbf{训练复杂度} & \textbf{主要目标} & \textbf{代表工作} \\
+\midrule
+视觉指令微调 & 指令数据 & 低 & 指令遵循 & LLaVA, LLaVA-1.5 \\
+RLHF & 偏好数据+奖励模型 & 高 & 减少幻觉 & LLaVA-RLHF \\
+DPO/mDPO & 偏好数据 & 中 & 偏好对齐 & mDPO, V-DPO \\
+细粒度反馈 & 片段级标注 & 中 & 精确纠错 & RLHF-V \\
+自我奖励 & 无需人类标注 & 中 & 自我改进 & LLaVA-Critic \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\textbf{典型后训练流程}：
+\begin{enumerate}
+    \item \textbf{预训练}：在大规模图像-文本数据上训练模态对齐
+    \item \textbf{指令微调}（SFT）：在高质量指令数据上训练
+    \item \textbf{偏好对齐}（可选）：使用RLHF、DPO或mDPO进一步对齐
+    \item \textbf{自我改进}（可选）：使用Critic模型进行迭代优化
+\end{enumerate}
+
+\subsection{未来方向}
+
+\subsubsection{统一所有模态}
+
+当前多数模型主要处理图像和文本，未来将扩展到：
+\begin{itemize}
+    \item 音频/语音的原生支持
+    \item 视频理解与生成
+    \item 3D场景理解
+    \item 具身智能（Embodied AI）
+\end{itemize}
+
+\subsubsection{更高效的视觉表示}
+
+\begin{itemize}
+    \item 自适应token数量：根据图像内容复杂度动态调整
+    \item 更强的压缩：在更少token中保留更多信息
+    \item 层次化表示：粗粒度语义 + 细粒度细节
+\end{itemize}
+
+\subsubsection{训练效率}
+
+原生多模态训练需要海量计算资源（Chameleon: 500万A100小时）。未来方向：
+\begin{itemize}
+    \item 更高效的预训练方法
+    \item 模块化训练：分阶段训练不同模态
+    \item 合成数据增强
+\end{itemize}
+
+\subsubsection{评估与对齐}
+
+\begin{itemize}
+    \item 更全面的多模态benchmark
+    \item 跨模态对齐的理论理解
+    \item 多模态幻觉（hallucination）问题
+\end{itemize}
+

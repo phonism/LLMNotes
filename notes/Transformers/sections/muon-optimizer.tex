@@ -1,0 +1,295 @@
+\section{Muon优化器}
+\label{sec:muon}
+
+Adam优化器自2014年提出以来，一直是深度学习的标准选择。然而，Adam本质上是\textbf{逐元素}（element-wise）的优化器，没有利用神经网络参数的\textbf{矩阵结构}。Muon（MomentUm Orthogonalized by Newton-schulz）优化器~\citep{jordan2024muon}通过对动量进行矩阵正交化，实现了更高效的参数更新，已被Kimi等大规模模型采用~\citep{liu2025muonscalable}。
+
+\subsection{从Adam到矩阵优化}
+
+\subsubsection{Adam的局限}
+
+Adam的更新规则为：
+\begin{align}
+    m_t &= \beta_1 m_{t-1} + (1 - \beta_1) g_t \\
+    v_t &= \beta_2 v_{t-1} + (1 - \beta_2) g_t^2 \\
+    \theta_t &= \theta_{t-1} - \eta \cdot \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
+\end{align}
+其中所有操作都是\textbf{逐元素}进行的。对于矩阵参数$W \in \R^{d_{out} \times d_{in}}$，Adam将其展平为向量处理，完全忽略了矩阵的行列结构。
+
+\subsubsection{矩阵参数的特殊性}
+
+神经网络的核心参数——线性层权重矩阵——具有天然的矩阵结构：
+\begin{itemize}
+    \item 行向量对应输出特征的组合权重
+    \item 列向量对应输入特征的映射方向
+    \item 奇异值分解揭示了参数的``主方向''
+\end{itemize}
+
+一个关键观察是：SGD和Adam产生的梯度更新通常具有\textbf{极高的条件数}，即接近低秩矩阵。这意味着更新主要沿少数``主方向''进行，而``稀有方向''被严重抑制。
+
+\subsection{Muon的核心思想：正交化动量}
+
+\subsubsection{基本算法}
+
+Muon的核心思想是：将动量矩阵$M$替换为其最近的半正交矩阵，即进行\textbf{极分解}（Polar Decomposition）。
+
+设$M = U\Sigma V^\top$是$M$的奇异值分解，则：
+\begin{equation}
+    \text{msign}(M) = UV^\top
+    \label{eq:msign}
+\end{equation}
+这称为矩阵的\textbf{符号函数}（matrix sign function），类似于标量的sign函数将所有奇异值映射为1。
+
+\begin{algorithm}[htbp]
+\caption{Muon优化器（朴素版）}
+\label{alg:muon_naive}
+\begin{algorithmic}[1]
+\REQUIRE 学习率$\eta$，动量系数$\beta$，初始参数$W_0$
+\STATE 初始化动量 $M_0 = 0$
+\FOR{$t = 1, 2, \ldots$}
+    \STATE 计算梯度 $G_t = \nabla_W \mathcal{L}(W_{t-1})$
+    \STATE 更新动量 $M_t = \beta M_{t-1} + G_t$
+    \STATE 计算正交化更新 $\Delta_t = \text{msign}(M_t)$
+    \STATE 更新参数 $W_t = W_{t-1} - \eta \cdot \Delta_t$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{为什么正交化有效？}
+
+要理解正交化的作用，先看Adam的问题。设梯度矩阵 $G \in \R^{d_{out} \times d_{in}}$ 的奇异值分解为 $G = U\Sigma V^\top$，其中 $\Sigma = \text{diag}(\sigma_1, \ldots, \sigma_r)$，$\sigma_1 \gg \sigma_r$（高条件数）。
+
+\paragraph{Adam的逐元素缩放}
+Adam对每个元素 $g_{ij}$ 独立归一化，这相当于在"元素坐标系"下操作。问题在于：梯度的主方向（$\sigma_1$ 对应）和稀有方向（$\sigma_r$ 对应）在元素坐标系中是耦合的——无法通过逐元素缩放来均衡它们。
+
+\paragraph{Muon的谱归一化}
+$\text{msign}(G) = UV^\top$ 将所有奇异值映射为1：
+\begin{equation}
+    G = U \cdot \text{diag}(\sigma_1, \ldots, \sigma_r) \cdot V^\top \xrightarrow{\text{msign}} U \cdot \text{diag}(1, \ldots, 1) \cdot V^\top
+\end{equation}
+
+这意味着：
+\begin{enumerate}
+    \item \textbf{主方向被抑制}：$\sigma_1 \to 1$，更新幅度降低
+    \item \textbf{稀有方向被放大}：$\sigma_r \to 1$，更新幅度提升
+    \item \textbf{方向信息保留}：$U, V$ 不变，只改变"步长"
+\end{enumerate}
+
+\paragraph{几何直觉}
+想象损失函数的等高线是一个狭长的椭圆（高条件数）。Adam沿梯度方向走，容易在窄谷中震荡。Muon将椭圆"压成圆"——沿各方向走相同步长，这正是牛顿法的效果，但无需计算Hessian。
+
+\begin{remark}[与Shampoo的关系]
+Muon可以理解为"无累积的Shampoo"。Shampoo通过累积梯度的二阶统计量 $L = \sum G G^\top$，$R = \sum G^\top G$，然后用 $L^{-1/4} G R^{-1/4}$ 预条件化更新。Muon直接用当前梯度的SVD达到类似效果，避免了：
+\begin{itemize}
+    \item 累积带来的延迟（需要多步才能准确估计统计量）
+    \item 逆矩阵平方根的高昂计算成本
+    \item 大规模分布式训练中统计量同步的通信开销
+\end{itemize}
+代价是Muon对单步梯度的噪声更敏感，因此使用动量 $M = \beta M + G$ 来平滑。
+\end{remark}
+
+\subsection{Newton-Schulz迭代}
+
+直接计算SVD的复杂度为$O(\min(d_{out}, d_{in})^3)$，对于大矩阵不可接受。Muon使用\textbf{Newton-Schulz迭代}高效近似$\text{msign}(M)$。
+
+\subsubsection{迭代公式}
+
+Newton-Schulz迭代通过多项式逼近矩阵符号函数：
+\begin{equation}
+    X_{k+1} = aX_k + b(X_k X_k^\top)X_k + c(X_k X_k^\top)^2 X_k
+    \label{eq:newton_schulz}
+\end{equation}
+其中$a = 3.4445$，$b = -4.7750$，$c = 2.0315$是优化过的系数。
+
+\subsubsection{为什么Newton-Schulz迭代有效？}
+
+Newton-Schulz迭代的本质是用多项式逼近函数 $f(x) = \text{sign}(x) = x / |x|$。对于矩阵，这变成逐奇异值操作：$f(\sigma_i) = 1$（将所有正奇异值映射到1）。
+
+设 $X_0 = M / \|M\|_F$（归一化使奇异值落入 $(0, 1]$），迭代后：
+\begin{equation}
+    X_k = U \cdot \text{diag}(\varphi^{(k)}(\sigma_1/\|M\|_F), \ldots) \cdot V^\top
+\end{equation}
+其中 $\varphi(x) = ax + bx^3 + cx^5$ 是设计好的五次多项式。
+
+\paragraph{多项式设计的直觉}
+目标是让 $\varphi^{(k)}(x) \to 1$ 对所有 $x \in (0, 1]$ 快速收敛。系数 $a, b, c$ 的选择使得：
+\begin{itemize}
+    \item $\varphi(1) = 1$（不动点）
+    \item $\varphi'(1) = 0$（在不动点处导数为0，加速收敛）
+    \item 对于较小的 $x$，$\varphi(x) > x$（将小值推向1）
+\end{itemize}
+
+实践中\textbf{5次迭代}即可达到足够精度。更少迭代会欠近似，更多迭代无显著收益但增加计算成本。
+
+\subsubsection{实现代码}
+
+\begin{lstlisting}[language=Python, caption={Newton-Schulz迭代实现}]
+def newton_schulz5(G, steps=5, eps=1e-7):
+    """近似计算 msign(G)"""
+    a, b, c = (3.4445, -4.7750, 2.0315)
+    X = G.bfloat16()
+    X = X / (X.norm() + eps)  # 归一化
+
+    # 确保 d_out <= d_in（转置处理）
+    transpose = G.size(0) > G.size(1)
+    if transpose:
+        X = X.T
+
+    for _ in range(steps):
+        A = X @ X.T
+        B = b * A + c * A @ A
+        X = a * X + B @ X
+
+    if transpose:
+        X = X.T
+    return X
+\end{lstlisting}
+
+\textbf{计算复杂度}：每次迭代需要$O(d_{out} \cdot d_{in} \cdot \min(d_{out}, d_{in}))$的矩阵乘法，5次迭代的总开销约为$5m/B$（$m$为模型维度，$B$为batch token数），通常$< 1\%$。
+
+\subsection{Muon的四个版本}
+
+苏剑林在~\citep{su2025muonguide}中总结了Muon的四个主要变体，它们的唯一区别是$\text{msign}$前的\textbf{缩放因子}：
+
+\begin{table}[htbp]
+\centering
+\caption{Muon四个版本的缩放因子}
+\label{tab:muon_versions}
+\begin{tabular}{lll}
+\toprule
+版本 & 缩放因子 & 特点 \\
+\midrule
+朴素版 & $1$ & 最简单，但学习率不可迁移 \\
+KellerJordan版 & $\sqrt{\max(1, d_{out}/d_{in})}$ & 默认版本，Keras实现 \\
+MuP版 & $\sqrt{d_{out}/d_{in}}$ & 学习率可迁移 \\
+Moonlight版 & $0.2 \times \sqrt{\max(d_{out}, d_{in})}$ & 可直接沿用Adam学习率 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{为什么需要缩放？}
+不同形状的矩阵，$\text{msign}(M)$的Frobenius范数不同（等于$\min(d_{out}, d_{in})$）。缩放因子用于：
+\begin{enumerate}
+    \item 使不同层的更新幅度匹配
+    \item 与AdamW的更新尺度对齐
+    \item 实现学习率的跨模型迁移
+\end{enumerate}
+
+\paragraph{实践建议}
+\begin{itemize}
+    \item \textbf{Moonlight版}：可直接沿用Adam的学习率
+    \item \textbf{其他版本}：需将Adam学习率乘以约$0.2 \times \sqrt{d_{hidden}}$
+\end{itemize}
+
+\subsection{$d_{in}$和$d_{out}$的识别}
+
+不同深度学习框架对线性层的实现方式不同，需要正确识别$d_{in}$和$d_{out}$：
+
+\paragraph{PyTorch}
+使用$y = xW^\top + b$，即$W \in \R^{d_{out} \times d_{in}}$：
+\begin{lstlisting}[language=Python]
+d_out, d_in = W.shape[0], W.shape[1]
+\end{lstlisting}
+
+\paragraph{Keras/TensorFlow}
+使用$y = xW + b$，即$W \in \R^{d_{in} \times d_{out}}$：
+\begin{lstlisting}[language=Python]
+d_in, d_out = W.shape[0], W.shape[1]
+\end{lstlisting}
+
+\textbf{注意}：搞错$d_{in}$和$d_{out}$会导致缩放因子计算错误，影响训练效果。
+
+\subsection{哪些参数使用Muon？}
+
+Muon专为\textbf{2D矩阵参数}设计，其他参数仍需使用AdamW：
+
+\begin{table}[htbp]
+\centering
+\caption{参数类型与优化器选择}
+\label{tab:muon_params}
+\begin{tabular}{lll}
+\toprule
+参数类型 & 优化器 & 原因 \\
+\midrule
+隐藏层Linear权重 & Muon & 核心矩阵参数 \\
+Attention的$W_Q, W_K, W_V, W_O$ & Muon & 矩阵参数 \\
+MLP的$W_{gate}, W_{up}, W_{down}$ & Muon & 矩阵参数 \\
+\midrule
+Embedding层 & AdamW & 本质是查找表 \\
+最终分类头 & AdamW & 与embedding对称 \\
+LayerNorm参数 & AdamW & 1D向量 \\
+Bias & AdamW & 1D向量 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{大规模训练：Moonlight}
+
+月之暗面（Moonshot AI）在Moonlight模型~\citep{liu2025muonscalable}中验证了Muon的大规模可扩展性。
+
+\subsubsection{关键技术改进}
+
+\begin{enumerate}
+    \item \textbf{添加权重衰减}：原始Muon没有weight decay，大规模训练需要加入
+    \item \textbf{参数级缩放}：精确调整每个参数的更新比例（即Moonlight版的缩放因子）
+\end{enumerate}
+
+\subsubsection{分布式训练挑战}
+
+Muon需要完整的梯度矩阵来计算正交化更新，这与现有分布式策略（ZeRO、Megatron等按元素切分优化器状态）冲突。Moonlight论文提出了内存最优、通信高效的分布式Muon实现。
+
+\subsubsection{性能对比}
+
+\begin{table}[htbp]
+\centering
+\caption{Muon vs AdamW（Moonlight实验）}
+\label{tab:muon_vs_adam}
+\begin{tabular}{lcc}
+\toprule
+指标 & Muon & AdamW \\
+\midrule
+计算效率 & $\sim 2\times$ & 基准 \\
+达到相同性能所需FLOPs & 52\% & 100\% \\
+样本效率 & 1.92$\times$ & 基准 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Moonlight模型规格：
+\begin{itemize}
+    \item 总参数：15.29B（MoE架构）
+    \item 激活参数：2.24B
+    \item 训练数据：5.7T tokens
+\end{itemize}
+
+\subsection{实践指南}
+
+\paragraph{何时使用Muon？}
+\begin{itemize}
+    \item 大规模预训练：Muon的效率优势随规模增大
+    \item 对训练效率敏感的场景
+    \item 已有AdamW超参数，想进一步优化
+\end{itemize}
+
+\paragraph{超参数设置}
+\begin{itemize}
+    \item \textbf{动量系数}：$\beta = 0.95$（比Adam的0.9略大）
+    \item \textbf{Newton-Schulz步数}：5步
+    \item \textbf{学习率}：
+    \begin{itemize}
+        \item Moonlight版：直接用Adam学习率
+        \item 其他版本：Adam学习率 $\times$ $0.2\sqrt{d_{hidden}}$
+    \end{itemize}
+    \item \textbf{权重衰减}：与AdamW相同
+\end{itemize}
+
+\paragraph{注意事项}
+\begin{enumerate}
+    \item Muon只用于2D矩阵参数，其他参数用AdamW
+    \item 正确识别框架中的$d_{in}$和$d_{out}$
+    \item 对于Attention，建议对$W_Q, W_K, W_V$分别做Newton-Schulz，而非合并
+    \item bfloat16精度足够，无需float32
+\end{enumerate}
+
+\begin{remark}[从向量到矩阵的本质飞跃]
+苏剑林评价~\citep{su2025muonguide}：``Muon相比Adam具有更优雅的设计，体现了从向量到矩阵的本质飞跃。''Adam将矩阵展平为向量处理，而Muon真正利用了矩阵的几何结构。这种``非Element-wise''的优化范式可能代表了未来优化器的发展方向。
+\end{remark}

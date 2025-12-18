@@ -1,0 +1,73 @@
+\section{引言}
+\label{sec:introduction}
+
+\subsection{背景与动机}
+
+深度学习在序列建模任务中的成功离不开模型架构的演进。从早期的循环神经网络(RNN)到长短期记忆网络(LSTM)~\cite{hochreiter1997long}，再到门控循环单元(GRU)，研究者们不断尝试解决长距离依赖问题。然而，这些基于循环结构的模型存在固有的局限性：
+
+\begin{itemize}
+    \item \textbf{顺序计算}：RNN必须按时间步依次处理序列，难以并行化
+    \item \textbf{长距离依赖}：尽管LSTM引入了门控机制，信息在长序列中仍会衰减
+    \item \textbf{计算效率}：训练和推理速度受限于序列长度
+\end{itemize}
+
+2017年，Vaswani等人提出了Transformer架构~\cite{vaswani2017attention}，完全摒弃循环结构，仅使用注意力机制建模序列。这一革命性设计带来了显著优势：
+
+\begin{itemize}
+    \item 完全并行化的计算，大幅提升训练效率
+    \item 通过自注意力机制直接建模任意位置之间的依赖关系
+    \item 灵活的架构设计，易于扩展和迁移
+\end{itemize}
+
+基于Transformer的大语言模型(LLM)在随后几年取得了惊人的进展。从GPT系列~\cite{radford2019language,brown2020language}到LLaMA~\cite{touvron2023llama}、DeepSeek~\cite{deepseek2024v3}等开源模型，参数规模从亿级跃升至万亿级，能力边界不断拓展。这些模型不仅在自然语言处理任务上表现卓越，还展现出强大的涌现能力(emergent abilities)，包括上下文学习、链式推理、代码生成等。
+
+然而，随着模型规模和应用场景的扩展，新的挑战不断涌现：
+
+\begin{itemize}
+    \item \textbf{计算效率}：标准注意力的$O(n^2)$复杂度限制了长上下文建模
+    \item \textbf{训练成本}：千亿参数模型需要数千GPU训练数月
+    \item \textbf{部署挑战}：KV Cache的内存占用成为推理瓶颈
+    \item \textbf{能力边界}：复杂推理、多模态理解等任务仍具挑战性
+\end{itemize}
+
+本文旨在系统性地梳理大语言模型领域的核心技术，从基础理论到前沿应用，帮助读者建立完整的技术图谱。
+
+\subsection{文档结构}
+
+本文共分为八个部分，涵盖大语言模型的完整技术栈：
+
+\paragraph{第一部分：基础理论}
+介绍Transformer的计算基础，包括硬件性能模型（Roofline Model）、内存层次结构、Transformer各组件的FLOPs和参数量分析、Scaling Law（Kaplan与Chinchilla定律）。这些基础知识对于理解后续的优化技术至关重要。
+
+\paragraph{第二部分：Transformer核心组件}
+深入探讨Transformer的三个关键组件：分词器（BPE、WordPiece、SentencePiece、Tiktoken）、位置编码（RoPE及其长度外推方法）和门控机制（SwiGLU、Gated Attention等）。这些组件的设计选择直接影响模型的性能和能力。
+
+\paragraph{第三部分：注意力机制}
+这是本文的重点部分，系统介绍各类注意力机制的演进：
+\begin{itemize}
+    \item \textbf{MLA}：DeepSeek提出的低秩KV压缩方案，大幅降低KV Cache
+    \item \textbf{线性注意力}：将$O(n^2)$降至$O(n)$的理论方法，及其与状态空间模型的联系
+    \item \textbf{FlashAttention}：IO感知的高效注意力实现，从v1到v4的演进
+    \item \textbf{稀疏注意力}：NSA、MoBA、DSA等预训练级稀疏方案的深度对比
+\end{itemize}
+
+\paragraph{第四部分：模型架构}
+聚焦Mixture of Experts (MoE)架构，从基础的Top-K路由到DeepSeek的细粒度专家分割、无辅助损失负载均衡等工业级实践。
+
+\paragraph{第五部分：训练技术}
+涵盖LLM训练的完整技术栈：预训练数据工程（数据来源、质量过滤、配比策略）、后训练数据（SFT数据、偏好数据、合成数据）、分布式训练（数据并行DDP/FSDP、模型并行TP/PP、ZeRO优化器），以及Muon等新型优化器的原理与实践。
+
+\paragraph{第六部分：评测与Benchmark}
+系统介绍LLM评测体系，包括知识类评测（MMLU、MMLU-Pro、GPQA）、推理能力（BBH、ARC）、数学能力（GSM8K、MATH-500、AIME）、代码能力（HumanEval、LiveCodeBench、SWE-bench）、指令遵循（IFEval、MT-Bench、Arena-Hard）、长上下文能力（RULER、LongBench）等主流Benchmark，以及各前沿模型的评测对比。
+
+\paragraph{第七部分：部署优化}
+介绍模型量化（从INT8到FP8再到极低位宽）和推理优化（PagedAttention、投机解码、KV Cache压缩）的核心技术，以及vLLM、SGLang等主流推理框架。
+
+\paragraph{第八部分：前沿应用}
+探讨两个快速发展的前沿方向：
+\begin{itemize}
+    \item \textbf{多模态大模型}：视觉编码器、模态融合、原生多模态架构（GPT-4o、Gemini）、统一理解与生成（Janus、Show-o）
+    \item \textbf{推理大模型}：测试时计算扩展、OpenAI o1、DeepSeek-R1、GRPO算法、知识蒸馏
+\end{itemize}
+
+本文力求在深度与广度之间取得平衡，既提供数学公式和代码实现等技术细节，也注重阐述设计直觉和工程权衡。希望本文能够成为研究者和工程师理解大语言模型技术的有价值参考。

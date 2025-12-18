@@ -1,0 +1,269 @@
+% ==========================================
+% 附录：详细推导与常见问题
+% ==========================================
+
+\chapter{详细推导与常见问题}
+\label{chap:appendix}
+
+% ------------------------------------------
+\section{DPO 详细推导}
+\label{sec:appendix-dpo}
+
+本节给出 DPO Loss 的完整推导过程。
+
+\subsection{Step 1：RLHF 目标函数}
+
+RLHF 的优化目标是：
+\begin{equation}
+    \max_\policy \E_{x \sim \mathcal{D}, y \sim \policy} \left[ r(x, y) \right] - \beta \cdot \text{KL}(\policy(y|x) \| \policy_{\text{ref}}(y|x))
+\end{equation}
+
+\subsection{Step 2：展开 KL 散度}
+
+展开 KL 散度，转为最小化问题：
+\begin{align}
+    J(\theta) &= \max_\policy \E_{x, y \sim \policy} \left[ r(x, y) - \beta \log \frac{\policy(y|x)}{\policy_{\text{ref}}(y|x)} \right] \\
+    &= \min_\policy \E_{x, y \sim \policy} \left[ \beta \log \frac{\policy(y|x)}{\policy_{\text{ref}}(y|x)} - r(x, y) \right] \\
+    &= \min_\policy \E_{x, y \sim \policy} \left[ \log \frac{\policy(y|x)}{\policy_{\text{ref}}(y|x)} - \frac{1}{\beta} r(x, y) \right]
+\end{align}
+
+\subsection{Step 3：引入配分函数 $Z(x)$}
+
+定义配分函数：
+\begin{equation}
+    Z(x) = \sum_y \policy_{\text{ref}}(y|x) \exp\left( \frac{r(x,y)}{\beta} \right)
+\end{equation}
+
+在目标函数中加减 $\log Z(x)$（不影响优化）：
+\begin{align}
+    J(\theta) &= \min_\policy \E_{x, y \sim \policy} \left[ \log \frac{\policy(y|x)}{\policy_{\text{ref}}(y|x)} - \frac{1}{\beta} r(x, y) + \log Z(x) - \log Z(x) \right] \\
+    &= \min_\policy \E_{x, y \sim \policy} \left[ \log \frac{\policy(y|x)}{\frac{1}{Z(x)} \policy_{\text{ref}}(y|x) \exp\left( \frac{r(x,y)}{\beta} \right)} - \log Z(x) \right]
+\end{align}
+
+\subsection{Step 4：最优策略的闭式解}
+
+定义：
+\begin{equation}
+    \policy^*(y|x) = \frac{1}{Z(x)} \policy_{\text{ref}}(y|x) \exp\left( \frac{r(x,y)}{\beta} \right)
+\end{equation}
+
+可以验证 $\policy^*$ 是合法的概率分布（因为 $Z(x)$ 是归一化常数）。
+
+目标函数变为：
+\begin{equation}
+    J(\theta) = \min_\policy \E_x \left[ \text{KL}(\policy(\cdot|x) \| \policy^*(\cdot|x)) - \log Z(x) \right]
+\end{equation}
+
+由于 KL 散度非负且在 $\policy = \policy^*$ 时为零，最优解为 $\policy = \policy^*$。
+
+\begin{keypoint}
+这是 DPO 的核心洞察：KL 正则 RL 问题有闭式解！最优策略是参考策略按 $\exp(r/\beta)$ 重新加权的结果。
+\end{keypoint}
+
+\subsection{Step 5：反解 reward}
+
+从 $\policy^*$ 的定义反解 reward：
+\begin{align}
+    \policy^*(y|x) &= \frac{\policy_{\text{ref}}(y|x)}{Z(x)} \exp\left( \frac{r(x,y)}{\beta} \right) \\
+    \log \policy^*(y|x) &= \log \policy_{\text{ref}}(y|x) - \log Z(x) + \frac{r(x,y)}{\beta}
+\end{align}
+
+解出 $r(x,y)$：
+\begin{equation}
+    r(x,y) = \beta \log \frac{\policy^*(y|x)}{\policy_{\text{ref}}(y|x)} + \beta \log Z(x)
+    \label{eq:reward-implicit-app}
+\end{equation}
+
+\subsection{Step 6：Bradley-Terry 偏好模型}
+
+人类偏好遵循 Bradley-Terry 模型：
+\begin{equation}
+    P(y_w \succ y_l | x) = \sigma(r(x, y_w) - r(x, y_l))
+\end{equation}
+
+\subsection{Step 7：代入 reward，$Z(x)$ 消除}
+
+将 \eqref{eq:reward-implicit-app} 代入：
+\begin{align}
+    r(x, y_w) - r(x, y_l) &= \beta \log \frac{\policy^*(y_w|x)}{\policy_{\text{ref}}(y_w|x)} + \cancel{\beta \log Z(x)} - \beta \log \frac{\policy^*(y_l|x)}{\policy_{\text{ref}}(y_l|x)} - \cancel{\beta \log Z(x)} \\
+    &= \beta \left[ \log \frac{\policy^*(y_w|x)}{\policy_{\text{ref}}(y_w|x)} - \log \frac{\policy^*(y_l|x)}{\policy_{\text{ref}}(y_l|x)} \right]
+\end{align}
+
+关键：$\beta \log Z(x)$ 项相消！
+
+\subsection{Step 8：DPO Loss}
+
+最大化 log-likelihood：
+\begin{equation}
+    \boxed{
+    L_{\text{DPO}}(\theta) = -\E_{(x, y_w, y_l)} \left[ \log \sigma \left( \beta \left[ \log \frac{\policy_\theta(y_w|x)}{\policy_{\text{ref}}(y_w|x)} - \log \frac{\policy_\theta(y_l|x)}{\policy_{\text{ref}}(y_l|x)} \right] \right) \right]
+    }
+\end{equation}
+
+% ------------------------------------------
+\section{KL 估计器推导}
+\label{sec:appendix-kl}
+
+本节推导三种 KL 散度估计器：k1、k2、k3。
+
+\subsection{KL 散度的定义}
+
+\begin{equation}
+    \text{KL}(\policy_\theta \| \policy_{\text{ref}}) = \E_{y \sim \policy_\theta} \left[ \log \frac{\policy_\theta(y|x)}{\policy_{\text{ref}}(y|x)} \right] = \E_{y \sim \policy_\theta} \left[ -\log r \right]
+\end{equation}
+其中 $r = \frac{\policy_{\text{ref}}(y|x)}{\policy_\theta(y|x)}$。
+
+\subsection{k1：直接估计}
+
+\begin{definition}[k1 估计器]
+\begin{equation}
+    k_1 = -\log r = \log \frac{\policy_\theta}{\policy_{\text{ref}}}
+\end{equation}
+\end{definition}
+
+性质：
+\begin{itemize}
+    \item $\E_{\policy_\theta}[k_1] = \text{KL}(\policy_\theta \| \policy_{\text{ref}})$（无偏）
+    \item 方差较大，因为 $\log r$ 可能取很大或很小的值
+\end{itemize}
+
+\subsection{k2：平方形式}
+
+\begin{definition}[k2 估计器]
+\begin{equation}
+    k_2 = \frac{1}{2}(\log r)^2 = \frac{1}{2} \left( \log \frac{\policy_{\text{ref}}}{\policy_\theta} \right)^2
+\end{equation}
+\end{definition}
+
+性质：
+\begin{itemize}
+    \item $\E_{\policy_\theta}[k_2] \neq \text{KL}$（有偏）
+    \item 但 $\nabla_\theta \E[k_2] = \nabla_\theta \text{KL}$（梯度正确）
+    \item 更平滑，适合做 loss
+\end{itemize}
+
+\begin{proof}[梯度等价性证明]
+\begin{align}
+    \nabla_\theta k_2 &= \nabla_\theta \frac{1}{2}(\log r)^2 = \log r \cdot \nabla_\theta \log r \\
+    &= -\log r \cdot \nabla_\theta \log \policy_\theta = k_1 \cdot \nabla_\theta \log \policy_\theta
+\end{align}
+由于 $\E[\nabla_\theta \log \policy_\theta] = 0$（score function 的期望为零），可以证明 $\E[\nabla_\theta k_2] = \E[\nabla_\theta k_1]$。
+\end{proof}
+
+\subsection{k3：Control Variate}
+
+\begin{definition}[k3 估计器]
+\begin{equation}
+    k_3 = (r - 1) - \log r = \frac{\policy_{\text{ref}}}{\policy_\theta} - 1 - \log \frac{\policy_{\text{ref}}}{\policy_\theta}
+\end{equation}
+\end{definition}
+
+性质：
+\begin{itemize}
+    \item $\E_{\policy_\theta}[r - 1] = 0$（因为 $\E_{\policy_\theta}[r] = \sum_y \policy_\theta \cdot \frac{\policy_{\text{ref}}}{\policy_\theta} = 1$）
+    \item $(r-1)$ 作为 control variate，降低方差
+    \item $\E_{\policy_\theta}[k_3] = \text{KL}$（无偏）
+    \item 方差比 k1 小
+\end{itemize}
+
+\begin{keypoint}
+k3 的巧妙之处：利用 $\E[r-1]=0$ 这个性质，加入 $(r-1)$ 项不改变期望，但可以降低方差。这是 control variate 技术的典型应用。
+\end{keypoint}
+
+\subsection{三种估计器的对比}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{估计器} & \textbf{公式} & \textbf{偏差} & \textbf{方差} & \textbf{推荐用法} \\
+        \midrule
+        k1 & $-\log r$ & 无偏 & 高 & in reward \\
+        k2 & $\frac{1}{2}(\log r)^2$ & 有偏 & 低 & as loss \\
+        k3 & $(r-1) - \log r$ & 无偏 & 低 & as loss \\
+        \bottomrule
+    \end{tabular}
+    \caption{KL 估计器对比}
+\end{table}
+
+% ------------------------------------------
+\section{常见问题解答}
+\label{sec:faq}
+
+\subsection{Q1：为什么 RLHF 要加 KL 正则？}
+
+\textbf{答}：KL 正则有多重作用：
+
+\begin{enumerate}
+    \item \textbf{防止 Reward Hacking}：Reward Model 不是完美的，模型可能学到"欺骗" RM 的方式（如生成特定模式获得高分但质量差）。KL 项限制策略偏离 SFT 太远。
+
+    \item \textbf{保持生成质量}：SFT 模型已经学会了基本的语言能力，KL 项确保这些能力不丢失。
+
+    \item \textbf{稳定训练}：约束优化空间，避免策略崩溃或发散。
+
+    \item \textbf{理论保证}：KL 正则 RL 问题有闭式解（DPO 的理论基础）。
+\end{enumerate}
+
+\subsection{Q2：长序列 token-level PPO/GRPO 为什么容易崩？}
+
+\textbf{答}：主要原因是 importance sampling 权重的累积：
+
+\begin{enumerate}
+    \item \textbf{权重累积}：序列级 IS 权重是 token 级权重的乘积：
+    \begin{equation}
+        \rho_{\text{seq}} = \prod_{t=1}^T \rho_t
+    \end{equation}
+    即使每个 $\rho_t$ 接近 1，累积后 $\rho_{\text{seq}}$ 可能非常大或非常小。
+
+    \item \textbf{方差爆炸}：大的 IS 权重导致梯度估计方差急剧增大。
+
+    \item \textbf{Policy Staleness}：长序列生成耗时长，策略 $\policy_\theta$ 在生成过程中已经更新多次，导致 $\policy_\theta$ 和 $\policy_{\text{old}}$ 偏离更大。
+\end{enumerate}
+
+\textbf{解决方案}：
+\begin{itemize}
+    \item GSPO：序列级 IS + 长度归一化
+    \item CISPO：clip IS 权重而非 loss
+    \item 减少更新步数，保持 policy 接近
+\end{itemize}
+
+\subsection{Q3：如何同时优化 Helpfulness / Harmlessness / Honesty？}
+
+\textbf{答}：多目标对齐的常见方法：
+
+\begin{enumerate}
+    \item \textbf{多 Reward Model}：为每个目标训练独立的 RM，加权求和：
+    \begin{equation}
+        r_{\text{total}} = w_1 r_{\text{helpful}} + w_2 r_{\text{harmless}} + w_3 r_{\text{honest}}
+    \end{equation}
+
+    \item \textbf{Constitutional AI}：用规则和原则指导生成，自我批评和修正。
+
+    \item \textbf{多阶段训练}：先优化 harmlessness，再优化 helpfulness。
+
+    \item \textbf{Pareto 优化}：寻找多目标的 Pareto 前沿。
+\end{enumerate}
+
+挑战：不同目标可能冲突（如 helpful 但 harmful 的回答）。
+
+\subsection{Q4：如何避免 Reward Hacking？}
+
+\textbf{答}：Reward Hacking 是指模型学到获得高奖励但实际质量差的行为。防范方法：
+
+\begin{enumerate}
+    \item \textbf{KL 正则}：限制策略偏离参考模型。
+
+    \item \textbf{多样化 RM 训练数据}：覆盖更多场景，减少 RM 的漏洞。
+
+    \item \textbf{RM Ensemble}：使用多个 RM，取平均或最小值。
+
+    \item \textbf{人工评估}：定期人工检查模型输出。
+
+    \item \textbf{对抗训练}：生成可能 hack RM 的样本，加入训练。
+
+    \item \textbf{过程监督}：使用 PRM 提供更细粒度的反馈。
+\end{enumerate}
+
+\begin{keypoint}
+Reward Hacking 的根本原因是 Reward Model 不完美，无法完全捕捉人类偏好。长期解决方案是提升 RM 质量和多维度评估。
+\end{keypoint}

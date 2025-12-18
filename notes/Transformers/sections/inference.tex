@@ -1,0 +1,566 @@
+\section{LLM推理优化}
+\label{sec:inference}
+
+LLM推理面临独特的挑战：模型参数量巨大、自回归生成逐token进行、KV Cache随序列长度增长。本章介绍主流的推理优化技术和推理引擎。
+
+\subsection{推理基础}
+
+\subsubsection{两阶段推理}
+
+LLM推理分为两个阶段：
+
+\paragraph{Prefill阶段}
+处理输入prompt的所有token，生成KV Cache和第一个输出token：
+\begin{itemize}
+    \item \textbf{计算特性}：并行处理所有输入token，计算密集型（Compute-bound）
+    \item \textbf{瓶颈}：矩阵乘法的计算量
+    \item \textbf{指标}：Time To First Token（TTFT）
+\end{itemize}
+
+\paragraph{Decode阶段}
+逐个生成后续token，每步只处理1个新token：
+\begin{itemize}
+    \item \textbf{计算特性}：自回归生成，内存带宽受限（Memory-bound）
+    \item \textbf{瓶颈}：加载模型参数和KV Cache的内存带宽
+    \item \textbf{指标}：Inter-Token Latency（ITL）或Tokens Per Second（TPS）
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\caption{Prefill vs Decode对比}
+\label{tab:prefill_decode}
+\begin{tabular}{lcc}
+\toprule
+特性 & Prefill & Decode \\
+\midrule
+Token数 & $N$（输入长度） & 1 \\
+计算模式 & 并行 & 串行 \\
+瓶颈 & 计算 & 内存带宽 \\
+GPU利用率 & 高 & 低 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{KV Cache}
+
+KV Cache是推理优化的核心。每个Transformer层在处理token时会生成Key和Value向量，这些向量在后续生成中被重复使用。
+
+\paragraph{KV Cache大小}
+\begin{equation}
+    \text{KV Cache} = 2 \times L \times N \times h_{kv} \times d \times \text{bytes}
+\end{equation}
+其中$L$是层数，$N$是序列长度，$h_{kv}$是KV头数，$d$是头维度。
+
+\textbf{示例}：LLaMA-13B，序列长度8K，BF16精度：
+\begin{equation}
+    2 \times 40 \times 8192 \times 40 \times 128 \times 2 = 6.7\text{GB}
+\end{equation}
+单个请求的KV Cache就需要6.7GB，成为主要的显存瓶颈。
+
+\paragraph{KV Cache优化方向}
+\begin{enumerate}
+    \item \textbf{减少KV头数}：GQA/MQA（见第\ref{sec:mla}节）
+    \item \textbf{量化}：INT8/FP8压缩KV Cache
+    \item \textbf{稀疏化}：只保留重要的KV对
+    \item \textbf{共享}：跨层共享KV Cache
+\end{enumerate}
+
+\subsection{批处理策略}
+
+\subsubsection{静态批处理}
+
+传统方法：等待凑齐一批请求后统一处理。
+
+\textbf{问题}：
+\begin{itemize}
+    \item 请求长度不一，短请求需等待长请求完成
+    \item 填充（Padding）浪费计算资源
+    \item 吞吐量低，延迟高
+\end{itemize}
+
+\subsubsection{Continuous Batching}
+
+Continuous Batching~\citep{yu2022orca}动态管理请求：
+\begin{itemize}
+    \item 请求完成后立即释放资源，新请求立即加入
+    \item 无需等待整批完成
+    \item 迭代级别调度，而非请求级别
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.6, font=\small]
+    % Static batching
+    \node[left] at (-1, 2) {\textbf{静态}};
+    \fill[blue!30] (0, 1.5) rectangle (4, 2.5);
+    \fill[blue!50] (0, 0.5) rectangle (6, 1.5);
+    \fill[blue!70] (0, -0.5) rectangle (3, 0.5);
+    \fill[gray!30] (3, -0.5) rectangle (6, 0.5);
+    \fill[gray!30] (4, 1.5) rectangle (6, 2.5);
+    \node at (5, 1) {Padding};
+
+    % Continuous batching
+    \node[left] at (-1, -2) {\textbf{连续}};
+    \fill[blue!30] (0, -2.5) rectangle (4, -1.5);
+    \fill[green!50] (4, -2.5) rectangle (7, -1.5);
+    \fill[blue!50] (0, -3.5) rectangle (6, -2.5);
+    \fill[blue!70] (0, -4.5) rectangle (3, -3.5);
+    \fill[orange!50] (3, -4.5) rectangle (5, -3.5);
+    \fill[red!50] (5, -4.5) rectangle (7, -3.5);
+
+    % Timeline
+    \draw[->, thick] (0, -5.5) -- (8, -5.5);
+    \node[below] at (4, -5.5) {Time};
+\end{tikzpicture}
+\caption{静态批处理 vs Continuous Batching}
+\label{fig:continuous_batching}
+\end{figure}
+
+\subsubsection{Chunked Prefill}
+
+长prompt的Prefill会阻塞Decode请求。Chunked Prefill~\citep{agrawal2024sarathi}将Prefill分块：
+\begin{itemize}
+    \item 长Prefill拆分为多个小块
+    \item 每个块与Decode请求混合执行
+    \item 减少Decode请求的排队延迟
+\end{itemize}
+
+\subsubsection{Prefill-Decode分离}
+
+DistServe~\citep{zhong2024distserve}提出将Prefill和Decode部署到不同的GPU：
+\begin{itemize}
+    \item \textbf{Prefill服务器}：计算密集，可用更高的张量并行度
+    \item \textbf{Decode服务器}：内存密集，优化批处理大小
+    \item \textbf{KV Cache传输}：通过NVLink/PCIe在服务器间传递
+\end{itemize}
+
+\textbf{优势}：
+\begin{itemize}
+    \item Prefill不会阻塞Decode，降低ITL
+    \item 可独立扩展两种资源
+    \item 针对不同阶段优化并行策略
+\end{itemize}
+
+\subsection{PagedAttention与vLLM}
+
+vLLM~\citep{kwon2023efficient}引入PagedAttention，借鉴操作系统虚拟内存的思想管理KV Cache。
+
+\subsubsection{传统KV Cache的问题}
+
+传统实现预分配连续内存存储KV Cache：
+\begin{itemize}
+    \item 按最大序列长度预分配，造成\textbf{内存浪费}
+    \item 不同请求长度不一，产生\textbf{碎片化}
+    \item 无法动态扩展，限制\textbf{并发请求数}
+\end{itemize}
+
+\subsubsection{PagedAttention原理}
+
+PagedAttention将KV Cache分成固定大小的\textbf{Page}（块）：
+\begin{itemize}
+    \item 每个Page存储固定数量token的KV
+    \item Page可以非连续存储（类似虚拟内存）
+    \item 按需分配，用完即释放
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.7, font=\small]
+    % Logical view
+    \node at (1.5, 3) {\textbf{逻辑视图}};
+    \draw[fill=blue!20] (0, 0) rectangle (3, 2.5);
+    \foreach \i in {0,1,2,3,4} {
+        \draw (0, \i*0.5) -- (3, \i*0.5);
+        \node[left] at (0, \i*0.5+0.25) {\tiny Block \i};
+    }
+
+    % Arrow
+    \draw[->, thick] (3.5, 1.25) -- (5, 1.25);
+    \node[above] at (4.25, 1.25) {Page Table};
+
+    % Physical memory
+    \node at (7.5, 3) {\textbf{物理显存}};
+    \draw (5.5, 0) rectangle (9.5, 2.5);
+    \fill[blue!40] (5.5, 2) rectangle (6.5, 2.5);
+    \fill[blue!20] (7, 1.5) rectangle (8, 2);
+    \fill[blue!60] (8.5, 0.5) rectangle (9.5, 1);
+    \fill[blue!30] (5.5, 0) rectangle (6.5, 0.5);
+    \fill[blue!50] (7.5, 1) rectangle (8.5, 1.5);
+    \node at (6, 2.25) {\tiny 0};
+    \node at (7.5, 1.75) {\tiny 1};
+    \node at (9, 0.75) {\tiny 2};
+    \node at (6, 0.25) {\tiny 3};
+    \node at (8, 1.25) {\tiny 4};
+\end{tikzpicture}
+\caption{PagedAttention：非连续KV Cache存储}
+\label{fig:paged_attention}
+\end{figure}
+
+\subsubsection{vLLM性能}
+
+vLLM结合PagedAttention和Continuous Batching：
+\begin{itemize}
+    \item 相比HuggingFace Transformers，吞吐量提升\textbf{24倍}
+    \item 显存利用率接近100\%（无碎片）
+    \item 支持更大的并发批处理
+\end{itemize}
+
+\subsection{Prefix Caching与SGLang}
+
+\subsubsection{Prefix Caching动机}
+
+许多应用场景存在\textbf{共享前缀}：
+\begin{itemize}
+    \item 多轮对话：System Prompt相同
+    \item Few-shot学习：示例相同
+    \item 批量处理：相同的指令模板
+\end{itemize}
+
+重复计算相同前缀的KV Cache造成浪费。
+
+\subsubsection{RadixAttention}
+
+SGLang~\citep{zheng2024sglang}提出RadixAttention，使用\textbf{基数树}（Radix Tree）管理KV Cache：
+\begin{itemize}
+    \item 树的每条边对应一段token序列
+    \item 共享前缀的请求共享KV Cache
+    \item LRU策略管理缓存淘汰
+\end{itemize}
+
+\textbf{优势}：
+\begin{itemize}
+    \item 自动检测和复用共享前缀
+    \item 相比vLLM，吞吐量提升可达\textbf{5-6倍}
+    \item 支持复杂的LLM程序（多次调用、分支）
+\end{itemize}
+
+\subsubsection{SGLang特性}
+
+SGLang是目前最快的开源推理引擎之一：
+\begin{itemize}
+    \item \textbf{RadixAttention}：自动Prefix Caching
+    \item \textbf{结构化输出}：压缩有限状态机加速JSON生成
+    \item \textbf{投机解码}：支持EAGLE等方法
+    \item \textbf{多模态}：支持Vision-Language模型
+\end{itemize}
+
+\subsection{投机解码}
+
+投机解码（Speculative Decoding）~\citep{leviathan2023fast,chen2023accelerating}是加速自回归生成的重要技术，其核心思想是``先用小模型快速猜测，再用大模型批量验收''。
+
+\subsubsection{核心思想与工作流程}
+
+自回归生成的瓶颈在于每步只生成1个token，且由于大模型是Memory-bound的，输入1个token和输入$K$个token的前向时间几乎相同——计算不是瓶颈，读取权重才是。投机解码正是利用了这一特性。
+
+\paragraph{工作流程}
+\begin{enumerate}
+    \item \textbf{Draft阶段}：用小模型（Draft Model）自回归生成$K$个候选token
+    \item \textbf{Verify阶段}：将这$K$个token\textbf{并行}输入大模型（Target Model），一次前向得到每个位置的next token预测
+    \item \textbf{Accept/Reject}：从头开始逐个比对，连续一致的token直接接受；一旦不一致，在分歧点由大模型给出正确token，后续draft token全部丢弃
+    \item 重复上述过程直到生成结束
+\end{enumerate}
+
+\textbf{关键保证}：即使draft全部猜错，也能从大模型获得至少1个正确token，因此投机解码的下限就是普通自回归解码。
+
+\subsubsection{采样场景下的验证机制}
+
+上述流程在贪婪解码（temperature=0）下很直观：直接比较token是否相等。但在采样场景下，大模型本身的输出也是随机的，如何定义``猜对''？
+
+设Draft模型在位置$t$生成token $x$的分布为$q(x)$，Target模型的分布为$p(x)$。投机解码需要保证\textbf{最终输出的分布严格等于$p(x)$}（无偏性），而不仅仅是加速。
+
+\paragraph{接受概率}
+对于draft生成的token $x$，以如下概率接受：
+\begin{equation}
+    a(x) = \min\left(1, \frac{p(x)}{q(x)}\right)
+\end{equation}
+
+直觉理解：
+\begin{itemize}
+    \item 若$q(x) \leq p(x)$：大模型比小模型更认可这个token，必然接受
+    \item 若$q(x) > p(x)$：小模型``过于自信''，以概率$p(x)/q(x)$接受
+\end{itemize}
+
+\paragraph{拒绝后的重采样：为什么需要残差分布？}
+
+一个自然的问题：拒绝后为什么不直接从$p(x)$采样？因为接受分支已经``预支''了部分概率质量。
+
+\textbf{概率账本分析}：被接受分支输出token $x$的概率为：
+\begin{equation}
+    \Pr[\text{accept and output } x] = q(x) \cdot a(x) = \min(p(x), q(x))
+\end{equation}
+
+要使最终分布等于$p(x)$，拒绝分支必须补齐剩余的概率质量：
+\begin{equation}
+    p(x) - \min(p(x), q(x)) = \max(0, p(x) - q(x))
+\end{equation}
+
+因此，拒绝时从\textbf{残差分布}重采样：
+\begin{equation}
+    p'(x) = \frac{\max(0, p(x) - q(x))}{\sum_{x'} \max(0, p(x') - q(x'))}
+\end{equation}
+
+\paragraph{无偏性的严格证明}
+
+记总接受概率为$\beta = \sum_x \min(p(x), q(x))$，则拒绝概率为$1-\beta$。对任意token $x$，其最终输出概率为：
+\begin{align}
+    \Pr[\text{output } x] &= \underbrace{\min(p(x), q(x))}_{\text{接受分支}} + \underbrace{(1-\beta) \cdot \frac{\max(0, p(x)-q(x))}{1-\beta}}_{\text{拒绝分支}} \\
+    &= \min(p(x), q(x)) + \max(0, p(x)-q(x)) \\
+    &= p(x) \quad \checkmark
+\end{align}
+最后一步利用了恒等式$\min(a,b) + \max(0, a-b) = a$。这证明了投机解码在采样场景下是\textbf{无损}的——输出分布严格等于只用Target模型逐token采样。
+
+\paragraph{替代方案：全局上界Rejection Sampling}
+
+经典rejection sampling的另一种做法是：先计算全局上界$M = \max_x \frac{p(x)}{q(x)}$，然后以概率$\frac{p(x)}{M \cdot q(x)}$接受。在这种方案下：
+\begin{itemize}
+    \item 接受分支得到的是$p/M$（缩放版的目标分布）
+    \item 拒绝后可以直接从$p$重采样（因为没有``预支''问题）
+    \item 但接受率为$1/M$，通常远低于残差方案的$\sum_x \min(p(x), q(x))$
+\end{itemize}
+残差采样之所以成为标准做法，正是因为它在保证无偏性的同时，最大化了接受率。
+
+\begin{remark}[两token例子]
+设词表$\{A, B\}$，$p(A)=0.9, p(B)=0.1$，$q(A)=0.5, q(B)=0.5$。
+\begin{itemize}
+    \item A的接受概率：$\min(1, 0.9/0.5)=1$，接受分支贡献$0.5$
+    \item B的接受概率：$\min(1, 0.1/0.5)=0.2$，接受分支贡献$0.5 \times 0.2=0.1$
+    \item 拒绝概率：$1 - 0.5 - 0.1 = 0.4$
+    \item 残差分布：A剩余$0.9-0.5=0.4$，B剩余$0.1-0.1=0$，归一化后$p'(A)=1$
+    \item 最终：$A = 0.5 + 0.4 \times 1 = 0.9$，$B = 0.1 + 0.4 \times 0 = 0.1$ \checkmark
+\end{itemize}
+若拒绝后直接从$p$采样，B会变成$0.1 + 0.4 \times 0.1 = 0.14$，分布已偏离！
+\end{remark}
+
+\paragraph{贪婪解码作为特例}
+
+当temperature=0时，$p$和$q$退化为在argmax上概率为1的delta分布。此时验证规则简化为：
+\begin{itemize}
+    \item 若draft token等于Target的argmax $\Rightarrow$ 接受（$p(x)=q(x)=1$）
+    \item 否则 $\Rightarrow$ 拒绝并由Target给出argmax
+\end{itemize}
+这解释了为什么在贪婪解码下，``猜对''直观上就是``token相等''——它是采样验证机制的退化情况。
+
+\subsubsection{加速比分析}
+
+设Draft模型的平均接受率为$\alpha$，每次投机$K$个token：
+\begin{equation}
+    \text{平均接受长度} = \frac{1 - \alpha^{K+1}}{1 - \alpha}
+\end{equation}
+
+\textbf{加速比}取决于：
+\begin{itemize}
+    \item 接受率$\alpha$：Draft与Target越接近越好
+    \item 投机长度$K$：过大会降低接受率
+    \item Draft模型速度：需要比Target快很多（通常10-50倍小）
+    \item 场景特点：batch较小、交互式低延迟场景收益更明显
+\end{itemize}
+
+\subsubsection{EAGLE系列：从Chain到Tree}
+
+EAGLE~\citep{li2024eagle}是目前SOTA的投机解码方法，其核心创新是利用Target模型的\textbf{隐状态}来指导Draft生成。
+
+\paragraph{EAGLE-1：Chain模式}
+
+与普通Draft模型的区别在于输入：
+\begin{equation}
+    \text{Draft Input} = \text{Embedding}(x_t) + \text{Project}(h_t^{\text{target}})
+\end{equation}
+其中$h_t^{\text{target}}$是Target模型的隐状态。这使得Draft模型能够``看到''Target模型的中间表示，显著提高猜测准确率。
+
+\textbf{Stable KV}：验证后，清除Draft模型中由自身隐状态生成的KV Cache，只保留由Target隐状态生成的部分，确保下一轮的输入分布与训练时一致。
+
+\paragraph{EAGLE-2：Tree模式}
+
+Chain模式每次只生成一条候选序列。Tree模式的改进是：每步生成top-$k$个候选token，形成树状结构，增加命中概率。
+
+\begin{itemize}
+    \item \textbf{Expand阶段}：每层选top-$k$，动态维护累计得分最高的路径
+    \item \textbf{Select阶段}：对所有叶节点按累计得分排序，选top-$K$送入Target验证
+    \item \textbf{Tree Attention}：需要特殊的attention mask，确保每个token只关注其祖先节点
+\end{itemize}
+
+\paragraph{EAGLE-3：统一训练与推理}
+
+EAGLE-1/2的一个问题是：训练时Draft模型看到的全是Target隐状态（stable KV），但推理时大部分隐状态来自Draft自身（unstable KV）。这种train-test mismatch导致：
+\begin{itemize}
+    \item 第一个draft token命中率随数据量提升
+    \item 第二个及之后的token命中率急剧下降（累积误差）
+\end{itemize}
+
+EAGLE-3的解决方案：
+\begin{enumerate}
+    \item 训练时加入unstable KV情况，统一train与test
+    \item 去除隐状态监督损失，只保留next token prediction
+    \item 使用多层Target隐状态（low/mid/high features）
+\end{enumerate}
+
+这些改进使EAGLE-3获得了scaling性质——更多训练数据带来持续的性能提升。
+
+\begin{table}[htbp]
+\centering
+\caption{投机解码方法对比}
+\label{tab:speculative_methods}
+\begin{tabular}{lcccc}
+\toprule
+方法 & 额外模型 & 训练需求 & 加速比 & 特点 \\
+\midrule
+独立Draft & 是 & 无 & 2-3$\times$ & 简单通用 \\
+Self-Speculative & 否 & 无 & 1.5-2$\times$ & 显存友好 \\
+Medusa & 否 & 训练Head & 2-3$\times$ & 并行预测 \\
+EAGLE-1 & 否 & 训练Head & 2.5-3$\times$ & Chain + 隐状态 \\
+EAGLE-2 & 否 & 训练Head & 3-4$\times$ & Tree扩展 \\
+EAGLE-3 & 否 & 训练Head & 4-5$\times$ & 统一train/test \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{工业应用现状}
+
+投机解码已成为主流推理引擎的标配优化：
+\begin{itemize}
+    \item \textbf{Google}：官方博客明确提到speculative decoding用于加速生成，``used across Google products''
+    \item \textbf{NVIDIA TensorRT-LLM}：完整支持speculative sampling，特定配置下可达3.6$\times$吞吐提升
+    \item \textbf{vLLM/SGLang}：支持draft model和n-gram等多种proposal方式
+    \item \textbf{OpenAI}：API提供``Predicted Outputs''功能，用户提供预测文本，模型统计accepted/rejected tokens——思路与投机解码一致，只是proposal来自用户而非draft model
+\end{itemize}
+
+\begin{remark}[适用场景]
+投机解码在以下场景收益最明显：
+\begin{itemize}
+    \item 交互式低延迟（QPS中等、batch小）：大模型逐token生成时GPU利用率低
+    \item Draft与Target分布接近：验收率高才有稳定收益
+    \item 生成内容可预测性强：代码补全、格式化输出等
+\end{itemize}
+对于大batch高吞吐场景，GPU利用率本已较高，投机解码的收益会减弱。
+\end{remark}
+
+\subsection{KV Cache压缩}
+
+\subsubsection{KV Cache量化}
+
+将KV Cache从FP16/BF16量化到低精度：
+
+\paragraph{INT8/FP8量化}
+vLLM、TensorRT-LLM支持的标准方法：
+\begin{itemize}
+    \item 显存减少50\%
+    \item 精度损失很小
+    \item 硬件原生支持
+\end{itemize}
+
+\paragraph{更激进的量化}
+KVQuant~\citep{hooper2024kvquant}实现3-4bit量化：
+\begin{itemize}
+    \item Per-channel量化 + 离群值处理
+    \item 支持百万级上下文（单卡A100）
+    \item 1\%离群值保留可保持精度
+\end{itemize}
+
+KIVI~\citep{liu2024kivi}实现2bit量化：
+\begin{itemize}
+    \item Key用2bit，Value用2bit
+    \item 无需训练，即插即用
+    \item 显存减少约4倍
+\end{itemize}
+
+\subsubsection{KV Cache稀疏化}
+
+并非所有KV对都同等重要，可以选择性保留。
+
+\paragraph{H2O (Heavy-Hitter Oracle)}
+动态识别重要token~\citep{zhang2024h2o}：
+\begin{itemize}
+    \item 基于注意力分数累积判断重要性
+    \item 保留"Heavy Hitter"token
+    \item 吞吐量提升40\%+
+\end{itemize}
+
+\paragraph{SnapKV}
+基于观察窗口选择重要KV~\citep{li2024snapkv}：
+\begin{itemize}
+    \item 每个Head只关注部分位置
+    \item 聚类保留关键KV
+    \item 16K输入：3.6倍加速，8.2倍显存节省
+\end{itemize}
+
+\subsection{推理引擎对比}
+
+\begin{table}[htbp]
+\centering
+\caption{主流LLM推理引擎对比}
+\label{tab:inference_engines}
+\begin{tabular}{lcccc}
+\toprule
+引擎 & 核心技术 & Prefix Cache & 投机解码 & 特点 \\
+\midrule
+vLLM & PagedAttention & 支持 & 支持 & 最广泛使用 \\
+SGLang & RadixAttention & 原生 & EAGLE等 & 结构化输出快 \\
+TensorRT-LLM & 深度优化 & 支持 & 多种 & NVIDIA官方 \\
+llama.cpp & CPU优化 & 有限 & 支持 & 本地部署 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{vLLM}
+
+vLLM是目前最流行的开源推理引擎：
+\begin{itemize}
+    \item \textbf{PagedAttention}：高效KV Cache管理
+    \item \textbf{Continuous Batching}：动态批处理
+    \item \textbf{张量并行}：多GPU推理
+    \item \textbf{量化}：FP8、AWQ、GPTQ
+    \item \textbf{生态}：支持HuggingFace模型、OpenAI兼容API
+\end{itemize}
+
+\subsubsection{SGLang}
+
+SGLang专注于复杂LLM应用：
+\begin{itemize}
+    \item \textbf{RadixAttention}：自动Prefix Caching
+    \item \textbf{Frontend语言}：简化多次调用的编程
+    \item \textbf{结构化输出}：JSON Schema约束生成
+    \item \textbf{性能}：在某些场景比vLLM快5-6倍
+\end{itemize}
+
+\subsubsection{TensorRT-LLM}
+
+NVIDIA官方推理库：
+\begin{itemize}
+    \item 深度优化的CUDA Kernel
+    \item 支持Hopper特性（FP8、TMA）
+    \item In-flight Batching
+    \item 与Triton Inference Server集成
+\end{itemize}
+
+\subsection{推理优化最佳实践}
+
+\paragraph{延迟优先场景}
+\begin{itemize}
+    \item 使用Prefix Caching（SGLang）
+    \item 投机解码（EAGLE）
+    \item 小批处理 + 高并行度
+\end{itemize}
+
+\paragraph{吞吐优先场景}
+\begin{itemize}
+    \item Continuous Batching（vLLM）
+    \item 大批处理
+    \item KV Cache量化
+\end{itemize}
+
+\paragraph{长上下文场景}
+\begin{itemize}
+    \item KV Cache量化（KVQuant、KIVI）
+    \item KV Cache稀疏化（SnapKV、H2O）
+    \item Prefill-Decode分离
+\end{itemize}
+
+\begin{remark}[推理优化的权衡]
+没有万能方案，需要根据场景选择：
+\begin{itemize}
+    \item \textbf{交互式应用}：优先TTFT和ITL
+    \item \textbf{批处理任务}：优先吞吐量
+    \item \textbf{边缘部署}：优先显存效率
+\end{itemize}
+\end{remark}
+

@@ -1,0 +1,755 @@
+\section{稀疏注意力}
+\label{sec:sparse-attention}
+
+前两节介绍的FlashAttention和MLA分别从计算效率和内存占用角度优化了注意力机制，但它们都保留了完整的$O(N^2)$注意力计算——只是让这个计算更快、更省内存。本节探索另一条路径：如果大多数注意力权重本就接近零，我们能否\textbf{跳过这些无意义的计算}？
+
+稀疏注意力的核心思想是：只计算"重要"的token对，将$O(N^2)$降至$O(Nk)$，其中$k \ll N$。与后面将介绍的线性注意力不同，稀疏注意力保留了精确的softmax计算，只是在更小的范围内进行。
+
+\subsection{稀疏注意力概述}
+
+\subsubsection{为什么需要稀疏注意力}
+
+标准Softmax Attention的复杂度为$O(N^2)$，但实际上并非所有token对都同等重要：
+\begin{itemize}
+    \item 注意力分布通常是稀疏的（少数token获得大部分权重）
+    \item 远距离token的注意力通常较弱
+    \item 语义相关的token往往聚集在特定位置
+\end{itemize}
+
+稀疏注意力的核心思想：\textbf{只计算重要的注意力对}，将复杂度从$O(N^2)$降至$O(Nk)$，其中$k \ll N$。
+
+\subsubsection{稀疏注意力 vs 线性注意力}
+
+\begin{table}[htbp]
+\centering
+\caption{稀疏注意力与线性注意力对比}
+\label{tab:sparse_vs_linear}
+\begin{tabular}{lcc}
+\toprule
+特性 & 稀疏注意力 & 线性注意力 \\
+\midrule
+复杂度 & $O(Nk)$ & $O(Nd^2)$ \\
+注意力类型 & 精确Softmax & 近似/替代Softmax \\
+长程精确检索 & 强 & 弱 \\
+KV Cache & 需要完整 & 可压缩 \\
+与原始Transformer兼容 & 高 & 中 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{滑动窗口注意力}
+
+滑动窗口注意力（Sliding Window Attention, SWA）是最直观的稀疏注意力形式：每个token只关注其周围固定窗口内的token。
+
+\subsubsection{Mistral的滑动窗口~\citep{jiang2023mistral}}
+
+Mistral 7B是首个将滑动窗口注意力规模化部署的开源模型，窗口大小为4096。
+
+\paragraph{核心机制}
+每个位置$t$的token只关注$[t-w, t]$范围内的token：
+\begin{equation}
+    \text{Attention}_t = \text{softmax}\left(\frac{q_t K_{[t-w:t]}^\top}{\sqrt{d}}\right) V_{[t-w:t]}
+\end{equation}
+
+\paragraph{层间信息传递}
+滑动窗口的关键洞察是：通过Transformer的堆叠层，信息可以``跨窗口''传播。在第$k$层，位置$t$的token实际上可以访问到$[t - k \cdot w, t]$范围的信息。对于32层模型、窗口大小4096，理论感受野可达128K。
+
+\paragraph{推理优化}
+\begin{itemize}
+    \item \textbf{滚动缓存}（Rolling Buffer）：KV Cache只需保留最近$w$个token
+    \item \textbf{内存节省}：8K序列长度下节省50\%缓存
+    \item \textbf{速度提升}：配合FlashAttention和xFormers，16K序列上获得2倍加速
+\end{itemize}
+
+\subsubsection{Longformer与BigBird}
+
+Longformer~\citep{beltagy2020longformer}和BigBird~\citep{zaheer2020bigbird}是早期将稀疏注意力系统化的工作。
+
+\paragraph{Longformer}
+结合三种注意力模式：
+\begin{enumerate}
+    \item \textbf{滑动窗口}：局部上下文建模
+    \item \textbf{膨胀滑动窗口}（Dilated）：扩大感受野
+    \item \textbf{全局注意力}：特定token（如[CLS]）关注全局
+\end{enumerate}
+
+\paragraph{BigBird}
+在Longformer基础上增加\textbf{随机注意力}：
+\begin{equation}
+    A = A_{\text{sliding}} + A_{\text{global}} + A_{\text{random}}
+\end{equation}
+理论证明BigBird是完整注意力的通用近似器，支持最长8倍于BERT的序列。
+
+\subsubsection{StreamingLLM~\citep{xiao2024streamingllm}}
+
+StreamingLLM解决了一个重要问题：如何让LLM处理``无限长''的流式输入。
+
+\paragraph{Attention Sink现象}
+研究发现，无论输入多长，模型总是对\textbf{最开头的几个token}分配异常高的注意力权重——即使这些token在语义上并不重要。这被称为``注意力汇聚''（Attention Sink）。
+
+\paragraph{SinkAttention}
+StreamingLLM提出保留两部分KV Cache：
+\begin{itemize}
+    \item \textbf{Sink Tokens}：序列开头的4个token（固定）
+    \item \textbf{滑动窗口}：最近的$w$个token
+\end{itemize}
+\begin{equation}
+    \text{KV Cache} = \text{Sink}_{[1:4]} \cup \text{Window}_{[t-w:t]}
+\end{equation}
+
+\textbf{效果}：在4M+ token的流式场景下保持稳定性能，而普通滑动窗口在超过预训练长度后崩溃。
+
+\subsection{KV Cache稀疏化}
+
+KV Cache稀疏化是推理时的稀疏注意力：动态丢弃``不重要''的KV条目。
+
+\subsubsection{H2O~\citep{zhang2024h2o}}
+
+Heavy-Hitter Oracle（H2O）基于一个观察：少数``重击手''token累积了大部分注意力权重。
+
+\paragraph{算法}
+\begin{enumerate}
+    \item 维护每个token的累积注意力分数
+    \item 保留分数最高的Top-k token（Heavy Hitters）
+    \item 结合最近的滑动窗口token
+\end{enumerate}
+
+\paragraph{层级策略}
+不同层使用不同的保留策略，高层（更稀疏的注意力分布）可以更激进地压缩。
+
+\subsubsection{SnapKV~\citep{li2024snapkv}}
+
+SnapKV的核心洞察是：注意力模式在prefill阶段基本确定，可以``一次性''剪枝。
+
+\paragraph{方法}
+\begin{enumerate}
+    \item 在prefill阶段末尾，分析最后一个窗口的注意力分布
+    \item 识别整个上下文中的重要位置
+    \item 永久保留这些位置的KV，丢弃其余
+\end{enumerate}
+
+\textbf{优势}：只需一次剪枝决策，无需每步动态更新。\\
+\textbf{局限}：无法适应decoding阶段的动态变化。
+
+\subsubsection{PyramidKV}
+
+PyramidKV发现不同层的注意力稀疏度不同：
+\begin{itemize}
+    \item 低层：注意力较分散，需要更多KV
+    \item 高层：注意力集中，可大幅压缩
+\end{itemize}
+因此采用\textbf{金字塔形}的KV分配：底层多、高层少。
+
+\begin{table}[htbp]
+\centering
+\caption{KV Cache稀疏化方法对比}
+\label{tab:kv_sparse}
+\begin{tabular}{lccc}
+\toprule
+方法 & 剪枝时机 & 动态性 & 集成框架 \\
+\midrule
+H2O & 每步 & 动态 & vLLM \\
+SnapKV & Prefill后 & 静态 & vLLM \\
+StreamingLLM & 持续 & 静态 & -- \\
+PyramidKV & 层级 & 静态 & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{MoBA：块稀疏注意力}
+\label{sec:moba}
+
+MoBA（Mixture of Block Attention）~\citep{lu2025moba}是块级稀疏注意力的代表性工作，已部署于Kimi的长上下文服务。
+
+\subsubsection{核心思想：将MoE应用于Attention}
+
+MoBA的核心洞察是：\textbf{并非所有上下文对当前token都同等重要}。与其对整个序列计算注意力，不如让模型自主学习``关注哪些块''。
+
+\paragraph{标准注意力}
+\begin{equation}
+    \text{Attn}(q, K, V) = \text{softmax}(qK^\top)V
+\end{equation}
+
+\paragraph{MoBA}
+\begin{equation}
+    \text{MoBA}(q, K, V) = \text{softmax}(qK_{[\mathcal{I}]}^\top)V_{[\mathcal{I}]}
+    \label{eq:moba}
+\end{equation}
+其中$\mathcal{I} \subseteq [N]$是被选中的KV子集，由路由机制决定。
+
+\subsubsection{块划分与路由机制}
+
+\paragraph{块划分}
+将长度为$N$的上下文均匀划分为$n$个块，每块大小$B = N/n$：
+\begin{equation}
+    \mathcal{I}_i = [(i-1) \cdot B + 1, \, i \cdot B], \quad i = 1, \ldots, n
+\end{equation}
+
+\paragraph{路由分数计算}
+对每个query $q$，计算其与各块的亲和度分数：
+\begin{equation}
+    s_i = \langle q, \, \text{mean\_pool}(K_{[\mathcal{I}_i]}) \rangle
+    \label{eq:moba_score}
+\end{equation}
+即query与块内所有key的平均向量的内积。这是一个\textbf{无参数}的路由机制。
+
+\paragraph{Top-k选择}
+选择分数最高的$k$个块进行注意力计算（典型设置$k = 3$）：
+\begin{equation}
+    g_i = \begin{cases}
+        1 & \text{if } s_i \in \text{Top-}k(\{s_j\}_{j=1}^n) \\
+        0 & \text{otherwise}
+    \end{cases}
+\end{equation}
+
+\subsubsection{因果性保证}
+
+在自回归场景下：
+\begin{enumerate}
+    \item \textbf{未来块屏蔽}：对于位置$t$的query，所有$i > \lceil t/B \rceil$的块设$s_i = -\infty$
+    \item \textbf{当前块强制选中}：query所在的块始终被路由
+\end{enumerate}
+
+\subsubsection{性能表现}
+
+\begin{table}[htbp]
+\centering
+\caption{MoBA性能}
+\label{tab:moba_performance}
+\begin{tabular}{lcc}
+\toprule
+指标 & MoBA & Full Attention \\
+\midrule
+LM Loss差异 & \multicolumn{2}{c}{$< 10^{-3}$} \\
+稀疏度 @32K & \multicolumn{2}{c}{95.31\%} \\
+加速比 @1M & \multicolumn{2}{c}{6.5$\times$} \\
+加速比 @10M & \multicolumn{2}{c}{16$\times$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{NSA：原生稀疏注意力}
+
+Native Sparse Attention（NSA）~\citep{deepseek2025nsa}是DeepSeek提出的层级稀疏注意力机制，已部署于DeepSeek-V3.2。
+
+\subsubsection{三条注意力路径}
+
+NSA将注意力计算分解为三条并行路径：
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.7, font=\small]
+    % Input
+    \node[draw, rounded corners, fill=blue!20] (input) at (0, 0) {Query $q$};
+
+    % Three paths
+    \node[draw, rounded corners, fill=green!20] (comp) at (-4, -2) {Compression};
+    \node[draw, rounded corners, fill=orange!20] (sel) at (0, -2) {Selection};
+    \node[draw, rounded corners, fill=red!20] (sw) at (4, -2) {Sliding Window};
+
+    % Arrows from input
+    \draw[->, thick] (input) -- (comp);
+    \draw[->, thick] (input) -- (sel);
+    \draw[->, thick] (input) -- (sw);
+
+    % Descriptions
+    \node[below, text width=3cm, align=center] at (comp.south) {粗粒度\\块压缩};
+    \node[below, text width=3cm, align=center] at (sel.south) {细粒度\\Top-k选择};
+    \node[below, text width=3cm, align=center] at (sw.south) {局部\\滑动窗口};
+
+    % Merge
+    \node[draw, rounded corners, fill=purple!20] (merge) at (0, -5) {合并输出};
+    \draw[->, thick] (comp) -- (merge);
+    \draw[->, thick] (sel) -- (merge);
+    \draw[->, thick] (sw) -- (merge);
+\end{tikzpicture}
+\caption{NSA的三条注意力路径}
+\label{fig:nsa_paths}
+\end{figure}
+
+\paragraph{1. Compression Attention（压缩注意力）}
+使用可学习的MLP将连续token压缩为块级表示：
+\begin{equation}
+    \tilde{K}_i = \text{MLP}(K_{[(i-1)l+1:il]}), \quad \tilde{V}_i = \text{MLP}(V_{[(i-1)l+1:il]})
+\end{equation}
+其中$l$是压缩块大小（NSA中$l=32$）。这捕获\textbf{全局粗粒度}信息。
+
+\paragraph{2. Selection Attention（选择注意力）}
+通过Lightning Indexer选择最相关的块保持原始精度：
+\begin{enumerate}
+    \item 计算query与所有块的相关性分数
+    \item 选择Top-$n$个块（NSA中$n=16$个块，块大小$l'=64$）
+    \item 对选中块进行精确Softmax注意力
+\end{enumerate}
+这保留\textbf{细粒度精确}信息。
+
+\paragraph{3. Sliding Window Attention（滑动窗口注意力）}
+对最近的$w$个token进行完整注意力（NSA中$w=512$）：
+\begin{equation}
+    O_{sw} = \text{Attention}(q, K_{[t-w:t]}, V_{[t-w:t]})
+\end{equation}
+这保证\textbf{局部上下文}的精确建模。
+
+\subsubsection{Lightning Indexer}
+
+Lightning Indexer是NSA的核心创新，用于高效选择相关块：
+
+\begin{itemize}
+    \item 维护独立的\textbf{FP8量化}Key缓存（非MLA的KV Cache）
+    \item 每个query计算与所有块的相关性分数
+    \item 选择Top-k块（默认2048个token）
+    \item 硬件优化：DeepGEMM实现的高效CUDA kernel
+\end{itemize}
+
+\textbf{关键设计}：索引计算与注意力计算分离，索引使用低精度快速完成。
+
+\subsubsection{端到端可训练}
+
+与ClusterKV、MagicPIG等依赖不可微操作的方法不同，NSA是\textbf{原生可训练}的——从预训练阶段就使用稀疏注意力。
+
+\paragraph{可微的稀疏机制}
+NSA的三个分支都支持梯度回传：
+\begin{enumerate}
+    \item \textbf{Token Compression}：可学习的MLP $\phi$将块级KV压缩为单个表示，带块内位置编码
+    \item \textbf{Token Selection}：块重要性分数通过压缩token的注意力softmax计算，梯度可流过选择过程
+    \item \textbf{门控机制}：通过MLP+Sigmoid学习三个分支的权重
+\end{enumerate}
+
+\paragraph{预训练配置}
+DeepSeek使用27B参数模型（MoE架构，3B激活参数）验证NSA：
+\begin{itemize}
+    \item \textbf{模型规格}：30层，hidden\_dim=2560，GQA（4组，64头）
+    \item \textbf{MoE结构}：72个路由专家 + 2个共享专家，top-k=6
+    \item \textbf{训练数据}：270B tokens，8K序列长度
+    \item \textbf{长上下文适配}：继续训练 + SFT在32K序列上，使用YaRN位置编码
+\end{itemize}
+
+\paragraph{训练加速}
+NSA在训练阶段也实现了显著加速（64K序列长度，A100 GPU）：
+\begin{itemize}
+    \item \textbf{前向传播}：9.0$\times$加速
+    \item \textbf{反向传播}：6.0$\times$加速
+    \item 加速比随序列长度增加：8K时4$\times$，16K时6.4$\times$，32K时9.1$\times$，64K时11.6$\times$
+\end{itemize}
+
+\paragraph{后训练：推理能力}
+通过从DeepSeek-R1蒸馏，使用10B tokens的32K长度数学推理轨迹进行SFT。在AIME数学benchmark上，NSA-R比Full Attention-R提升+0.075，证明稀疏注意力不损害复杂推理能力。
+
+\subsubsection{硬件对齐设计}
+
+NSA针对现代GPU进行了深度优化，使用自定义Triton kernel：
+
+\paragraph{Group-Centric Loading}
+利用GQA的特性，将同一组内所有query head及其共享的稀疏KV块索引一次性加载到SRAM，避免重复内存访问。
+
+\paragraph{Shared KV Fetching}
+顺序加载被选中的连续KV块，最小化内存传输次数。由于不同query块的内循环长度几乎相同，可使用Triton的grid scheduler简化优化。
+
+\paragraph{算术强度平衡}
+通过组内共享消除冗余KV传输，在GPU流处理器间均衡计算负载，实现接近最优的算术强度。
+
+\subsubsection{NSA参数配置}
+
+\begin{table}[htbp]
+\centering
+\caption{NSA默认参数}
+\label{tab:nsa_params}
+\begin{tabular}{lcc}
+\toprule
+参数 & 符号 & 值 \\
+\midrule
+压缩块大小 & $l$ & 32 \\
+选择块大小 & $l'$ & 64 \\
+选择块数量 & $n$ & 16 \\
+滑动窗口大小 & $w$ & 512 \\
+滑动步长 & $d$ & 16 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{DSA：DeepSeek稀疏注意力}
+
+DSA（DeepSeek Sparse Attention，2025年9月）是DeepSeek在V3.2中部署的新一代稀疏注意力，与NSA有本质区别。DSA摒弃了NSA复杂的三分支设计，采用更简洁的\textbf{细粒度token级检索}。
+
+\subsubsection{与NSA的核心区别}
+
+\begin{table}[htbp]
+\centering
+\caption{NSA vs DSA设计对比}
+\label{tab:nsa_vs_dsa}
+\begin{tabular}{lcc}
+\toprule
+特性 & NSA & DSA \\
+\midrule
+选择粒度 & 块级（block） & Token级 \\
+分支数量 & 3（压缩+选择+窗口） & 1（直接选择） \\
+重要度计算 & 可学习MLP & 可学习$w$权重 \\
+Attention变种 & GQA & MLA \\
+验证模型 & 27B & 671B \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{算法设计}
+
+DSA的核心思想：每个query只需关注固定数量$k$个最相关的token（$k=2048$）。
+
+\paragraph{重要度分数计算}
+DSA引入可学习权重$w$计算token重要度：
+\begin{equation}
+    \text{score}_i = w \cdot f(q, k_i)
+\end{equation}
+这是一个折中方案——比NSA的MLP简单，但比MoBA的无参数mean-pooling更有表达力。
+
+\paragraph{Top-k检索}
+根据重要度分数选择Top-$k$个token进行精确注意力计算：
+\begin{equation}
+    \mathcal{I} = \text{Top-}k(\{\text{score}_i\}_{i=1}^N), \quad |\mathcal{I}| = 2048
+\end{equation}
+
+\paragraph{复杂度分析}
+单query需访问固定$k$个token，因此整体复杂度为$O(Nk)$，是真正的\textbf{线性复杂度}。
+
+\subsubsection{训练挑战与解决}
+
+细粒度token级检索比块级更难训练。DSA采用以下技巧：
+\begin{itemize}
+    \item \textbf{Warm-up}：逐步增加稀疏度
+    \item \textbf{知识蒸馏}：从Full Attention模型蒸馏
+    \item \textbf{MLA适配}：专门针对Multi-Latent Attention优化
+\end{itemize}
+
+\subsubsection{工程实现}
+
+\begin{itemize}
+    \item \textbf{TileLang Kernel}：细粒度稀疏+MLA需要定制kernel，TileLang比Triton性能更优
+    \item \textbf{vLLM/SGLang集成}：Day-0支持，使用DeepGEMM和FlashMLA
+    \item \textbf{Blackwell优化}：与NVIDIA合作优化B200
+\end{itemize}
+
+\subsubsection{性能收益}
+
+\begin{itemize}
+    \item 长上下文API成本降低约\textbf{50\%}
+    \item 64K序列上实现显著加速
+    \item 671B模型上验证，质量几乎无损
+\end{itemize}
+
+\subsection{NSA vs MoBA vs DSA：三种方法深度对比}
+
+2025年出现了三种重要的``学习式''稀疏注意力方法。本节从多个维度进行详细对比。
+
+\subsubsection{算法设计对比}
+
+\begin{table}[htbp]
+\centering
+\caption{三种方法算法设计对比}
+\label{tab:three_algo_comparison}
+\begin{tabular}{lccc}
+\toprule
+设计维度 & NSA & MoBA & DSA \\
+\midrule
+\multicolumn{4}{l}{\textit{基本信息}} \\
+发布时间 & 2025.02 & 2025.02 & 2025.09 \\
+提出者 & DeepSeek & Moonshot (Kimi) & DeepSeek \\
+Attention基础 & GQA & GQA & MLA \\
+\midrule
+\multicolumn{4}{l}{\textit{稀疏策略}} \\
+选择粒度 & 块级 & 块级 & Token级 \\
+分支数量 & 3（压缩+选择+窗口） & 1 & 1 \\
+路由机制 & 可学习MLP & 无参数mean-pool & 可学习$w$ \\
+局部窗口 & 有（$w$=512） & 当前块强制选中 & 无 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{超参数与复杂度对比}
+
+\begin{table}[htbp]
+\centering
+\caption{超参数与复杂度对比}
+\label{tab:three_params_comparison}
+\begin{tabular}{lccc}
+\toprule
+参数 & NSA & MoBA & DSA \\
+\midrule
+\multicolumn{4}{l}{\textit{关键超参}} \\
+块大小 & $l$=32, $l'$=64 & $L$=4096 & -- \\
+选择数量 & $n$=16块 & $k$=12块 & $k$=2048 tokens \\
+滑动窗口 & $w$=512 & -- & -- \\
+\midrule
+\multicolumn{4}{l}{\textit{单query访问token数}} \\
+@32K上下文 & $\sim$2560 & 49152 & 2048 \\
+@128K上下文 & $\sim$5120 & 49152 & 2048 \\
+是否随$N$增长 & 是（$O(N/L)$） & 否（固定$kL$） & 否（固定$k$） \\
+\midrule
+\multicolumn{4}{l}{\textit{复杂度（vs原版$O(N^2)$）}} \\
+理论复杂度 & $O(N^2/L)$ & $O(N \cdot kL)$ & $O(Nk)$ \\
+实际系数 & $O(N^2/32)$ & $O(N \cdot 49152)$ & $O(N \cdot 2048)$ \\
+@64K稀疏度 & $\sim$97\% & $\sim$23\% & $\sim$97\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{重要度计算机制}
+
+三种方法采用不同的``检索''策略来确定哪些token值得关注：
+
+\paragraph{NSA：可学习MLP压缩}
+\begin{equation}
+    \tilde{k}_i = \text{MLP}(K_{[(i-1)l+1:il]}), \quad \text{score}_i = q \cdot \tilde{k}_i
+\end{equation}
+使用一个额外的MLP将块内所有key压缩为单个表示，再计算与query的相似度。\textbf{优点}：表达力强。\textbf{缺点}：引入额外参数和计算。
+
+\paragraph{MoBA：无参数Mean-Pooling}
+\begin{equation}
+    \text{score}_i = q \cdot \text{mean}(K_{[(i-1)L+1:iL]})
+\end{equation}
+直接对块内key做平均，再与query内积。\textbf{优点}：无额外参数，简洁优雅。\textbf{缺点}：表达力受限，块内信息被``抹平''。
+
+\paragraph{DSA：可学习权重$w$}
+\begin{equation}
+    \text{score}_i = w \cdot f(q, k_i)
+\end{equation}
+介于两者之间——有可学习参数，但比MLP简单。\textbf{优点}：平衡表达力与复杂度。\textbf{缺点}：具体形式未完全公开。
+
+\subsubsection{训练与工程对比}
+
+\begin{table}[htbp]
+\centering
+\caption{训练与工程实现对比}
+\label{tab:three_training_comparison}
+\begin{tabular}{lccc}
+\toprule
+维度 & NSA & MoBA & DSA \\
+\midrule
+\multicolumn{4}{l}{\textit{训练}} \\
+训练方式 & 原生预训练 & 继续训练 & 原生预训练 \\
+验证模型规模 & 27B & 8B & 671B \\
+训练数据量 & 270B tokens & -- & -- \\
+训练序列长度 & 8K$\to$32K & -- & -- \\
+需要蒸馏 & 可选（R1蒸馏） & 否 & 是（关键） \\
+需要Warm-up & 否 & 否 & 是（关键） \\
+\midrule
+\multicolumn{4}{l}{\textit{工程实现}} \\
+Kernel实现 & Triton & Triton & TileLang \\
+与MLA兼容 & 否 & 否 & 是 \\
+推理框架支持 & -- & -- & vLLM/SGLang \\
+\midrule
+\multicolumn{4}{l}{\textit{加速效果}} \\
+前向加速@64K & 9$\times$ & 6.5$\times$@1M & -- \\
+后向加速@64K & 6$\times$ & -- & -- \\
+解码加速@64K & 11.6$\times$ & 16$\times$@10M & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{设计哲学差异}
+
+\paragraph{NSA：全面覆盖，层级融合}
+NSA的设计理念是\textbf{不遗漏任何重要信息}：
+\begin{itemize}
+    \item \textbf{压缩分支}：捕获全局粗粒度信息
+    \item \textbf{选择分支}：保留细粒度精确信息
+    \item \textbf{窗口分支}：确保局部上下文不丢失
+    \item 三分支通过可学习门控融合
+\end{itemize}
+\textbf{代价}：超参较多（$l$, $l'$, $n$, $w$, $d$, 门控参数），调优和迁移复杂。
+
+\paragraph{MoBA：简洁优雅，MoE思想}
+MoBA的设计理念是\textbf{将MoE的路由思想应用于Attention}：
+\begin{itemize}
+    \item 把KV Cache视为``专家池''，每个块是一个``专家''
+    \item 无参数路由，让注意力分数自然决定选择
+    \item 当前块强制选中，保证局部信息
+\end{itemize}
+\textbf{优势}：设计最简洁，与现有架构兼容性好。很多人认为MoBA更有潜力成为下一代Transformer的基础组件。\\
+\textbf{疑问}：块大小4096较大（约1页PDF），是否会退化为sliding window等trivial模式？
+
+\paragraph{DSA：激进稀疏，端到端优化}
+DSA的设计理念是\textbf{极限稀疏+精心训练}：
+\begin{itemize}
+    \item Token级选择，每个query只看2048个token（约3\%@64K）
+    \item 与MLA深度集成，需要定制TileLang kernel
+    \item 训练难度大，依赖warm-up和蒸馏
+\end{itemize}
+\textbf{优势}：稀疏度最高，推理效率最好，在671B超大模型上验证。\\
+\textbf{挑战}：Token级检索是否会遗漏关键信息？小模型能否复现？
+
+\subsubsection{稀疏模式可视化理解}
+
+假设上下文长度$N$=32K，三种方法的稀疏模式差异：
+
+\begin{table}[htbp]
+\centering
+\caption{@32K上下文的稀疏模式}
+\label{tab:sparsity_pattern}
+\begin{tabular}{lccc}
+\toprule
+特性 & NSA & MoBA & DSA \\
+\midrule
+块数量 & 1024块（每块32 token） & 8块（每块4096 token） & 32K个token \\
+选中数量 & 16块+窗口 & 12块 & 2048 token \\
+选中token数 & $\sim$2560 & $\sim$49152 & 2048 \\
+稀疏度 & 92\% & 0\%（看全部） & 94\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{关键观察}：在32K这个长度上，MoBA实际上几乎没有稀疏（选中12块$\times$4096=49152 > 32K）！MoBA的稀疏优势在更长序列（如128K+）才能体现。
+
+\subsubsection{适用场景建议}
+
+\begin{table}[htbp]
+\centering
+\caption{适用场景建议}
+\label{tab:when_to_use}
+\begin{tabular}{lp{10cm}}
+\toprule
+方法 & 适用场景 \\
+\midrule
+NSA & 需要精确保留多尺度信息；可接受复杂超参调优；使用GQA架构 \\
+MoBA & 追求简洁设计；希望无缝替换现有Attention；序列长度128K+ \\
+DSA & 使用MLA架构；追求极致稀疏度；有足够资源做蒸馏训练；超大模型（100B+） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{开放问题与未来方向}
+
+\paragraph{固定$k$是否合理？}
+DSA和MoBA都假设每个query只需看固定数量的token，不随$N$增长。这个假设值得深思：
+\begin{itemize}
+    \item \textbf{反对观点}：上下文很长时，固定$k$可能遗漏关键信息。Needle-in-haystack任务可能受影响。
+    \item \textbf{支持观点}：每个token的``信息容量''有限。人类阅读长文档时也不会逐字关注。
+    \item \textbf{折中思路}：可能需要自适应$k$，或结合全局压缩分支（如NSA）。
+\end{itemize}
+
+\paragraph{稀疏度应该自适应吗？}
+目前三种方法的稀疏度都是人为设定的超参。未来方向可能包括：
+\begin{itemize}
+    \item 不同层使用不同稀疏度（类似PyramidKV的思想）
+    \item 不同query根据任务复杂度动态调整$k$
+    \item 通过强化学习或可微搜索自动确定稀疏策略
+\end{itemize}
+
+\paragraph{稀疏 vs 压缩：两条技术路线}
+\begin{itemize}
+    \item \textbf{稀疏路线}（NSA/MoBA/DSA）：动态``检索''重要token，不改变KV Cache大小
+    \item \textbf{压缩路线}（Qwen3-Next线性注意力）：压缩KV Cache本身，信息更紧凑
+    \item 两者可能结合：先压缩再稀疏，或用稀疏注意力指导压缩
+\end{itemize}
+
+\paragraph{Post-training方法是否被``降维打击''？}
+原生稀疏注意力（NSA/DSA）的出现，对H2O、SnapKV、Quest等post-training稀疏方法形成挑战：
+\begin{itemize}
+    \item Post-training方法：在已训练好的模型上``事后''稀疏化
+    \item 原生方法：从预训练开始就使用稀疏注意力
+    \item 原生方法的优势：模型从一开始就学会``如何稀疏''，效果更好
+    \item Post-training方法的优势：可应用于任意已有模型，无需重新训练
+\end{itemize}
+
+\subsection{Ring Attention与上下文并行}
+
+当序列长度超过单GPU显存容量时，需要将注意力计算分布到多个设备上。
+
+\subsubsection{Ring Attention~\citep{liu2023ringattention}}
+
+Ring Attention将长序列分割到多个GPU，通过环形通信实现分布式注意力计算。
+
+\paragraph{算法流程}
+\begin{enumerate}
+    \item 将Query、Key、Value按序列维度分割到$P$个GPU
+    \item 每个GPU持有本地Query块，计算与本地KV的注意力
+    \item KV块在GPU之间环形传递，累积计算全局注意力
+    \item 使用online softmax避免数值溢出
+\end{enumerate}
+
+\paragraph{通信隐藏}
+关键优化是\textbf{计算-通信重叠}：在计算当前KV块注意力的同时，异步传递下一个KV块。
+
+\subsubsection{LLaMA 3的上下文并行}
+
+LLaMA 3训练采用All-Gather方式的Context Parallelism~\citep{dubey2024llama3}：
+\begin{itemize}
+    \item 先All-Gather收集所有KV，再计算本地Query的注意力
+    \item 为负载均衡，将序列分为$2 \times \text{CP}$个块并shuffle
+    \item 支持128K上下文的高效训练
+\end{itemize}
+
+\paragraph{与Ring Attention对比}
+\begin{itemize}
+    \item Ring Attention：点对点通信，延迟可隐藏
+    \item All-Gather：集合通信，实现更简单但延迟在关键路径
+\end{itemize}
+
+\subsection{稀疏注意力方法全景}
+
+\begin{table}[htbp]
+\centering
+\caption{稀疏注意力方法全景对比}
+\label{tab:sparse_comparison}
+\begin{tabular}{lccccc}
+\toprule
+方法 & 稀疏策略 & 复杂度 & 全局信息 & 部署 \\
+\midrule
+Sliding Window & 固定窗口 & $O(Nw)$ & 无 & Mistral \\
+Longformer & 窗口+全局 & $O(N(w+g))$ & 全局token & Longformer \\
+BigBird & 窗口+全局+随机 & $O(N(w+g+r))$ & 全局+随机 & BigBird \\
+StreamingLLM & Sink+窗口 & $O(N(s+w))$ & Sink tokens & -- \\
+MoBA & 块路由 & $O(N \cdot kL)$ & Top-k块 & Kimi \\
+NSA & 压缩+选择+窗口 & $O(N^2/L)$ & 压缩+选择 & -- \\
+DSA & Token级检索 & $O(Nk)$ & Top-k token & DeepSeek-V3.2 \\
+Ring Attention & 分布式 & $O(N^2/P)$ & 完整 & LLaMA 3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{remark}[稀疏注意力的演进]
+从Longformer/BigBird的``手工设计模式''到MoBA/NSA/DSA的``学习式稀疏''，稀疏注意力正经历范式转变。2025年，稀疏注意力首次在600B+规模模型上得到验证（DeepSeek-V3.2），标志着该技术从学术研究走向工业主流。
+\end{remark}
+
+\subsection{与其他方法的关系}
+
+\subsubsection{与FlashAttention的关系}
+
+稀疏注意力与FlashAttention是\textbf{正交}的优化：
+\begin{itemize}
+    \item FlashAttention优化\textbf{IO效率}（不改变计算量）
+    \item 稀疏注意力减少\textbf{计算量}（只计算部分注意力）
+    \item 两者可以结合：对选中的稀疏token使用FlashAttention计算
+\end{itemize}
+
+\subsubsection{与KV Cache压缩的关系}
+
+\begin{itemize}
+    \item \textbf{KV Cache压缩}（如SnapKV、H2O）：推理时丢弃不重要的KV
+    \item \textbf{稀疏注意力}：训练和推理时都只计算部分注意力
+    \item 稀疏注意力是更根本的解决方案，从架构层面减少计算
+\end{itemize}
+
+\subsection{实践建议}
+
+\paragraph{何时使用稀疏注意力}
+\begin{itemize}
+    \item 长上下文场景（32K+）
+    \item 需要精确检索能力（passkey retrieval等）
+    \item 希望保持Softmax注意力的特性
+\end{itemize}
+
+\paragraph{何时使用线性注意力}
+\begin{itemize}
+    \item 超长上下文（1M+）
+    \item KV Cache显存受限
+    \item 可以接受一定的精度损失
+\end{itemize}
+
+\begin{remark}[稀疏注意力的发展趋势]
+稀疏注意力正从``手工设计模式''（如固定滑动窗口）向``学习式稀疏''演进：
+\begin{itemize}
+    \item MoBA：无参数路由，让模型学习关注哪些块
+    \item NSA：可学习的压缩和选择机制
+    \item 未来：更细粒度、更自适应的稀疏策略
+\end{itemize}
+\end{remark}
+

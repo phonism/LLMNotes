@@ -1,0 +1,263 @@
+\section{Transformer中的门控机制}
+\label{sec:gating}
+
+在前几节中，我们分析了Transformer的计算复杂度和位置编码设计。本节关注另一个核心问题：如何让模型学会\textbf{选择性地传递信息}。标准的线性变换对所有输入一视同仁，而门控机制赋予网络"开关"能力——根据上下文动态决定哪些信息应该通过、哪些应该被抑制。
+
+\subsection{为什么需要门控？}
+
+考虑标准的全连接层 $y = Wx + b$：无论输入 $x$ 的内容如何，权重 $W$ 始终相同。这种\textbf{静态映射}存在根本局限——网络无法根据输入内容调整自身行为。
+
+门控机制引入了\textbf{数据依赖的动态性}：
+\begin{equation}
+    y = g(x) \odot f(x)
+\end{equation}
+其中 $g(x) \in [0, 1]^d$ 是门控信号，$f(x)$ 是候选输出。关键洞察是：$g$ 本身依赖于输入 $x$，使得变换从静态的 $f$ 变为动态的 $g \odot f$。
+
+\paragraph{信息瓶颈视角}
+从信息论角度，门控实现了\textbf{自适应压缩}。设 $I(X; Y)$ 为输入输出的互信息：
+\begin{itemize}
+    \item 无门控：$Y = f(X)$，互信息由 $f$ 的容量决定
+    \item 有门控：$Y = g(X) \odot f(X)$，当 $g \to 0$ 时可主动丢弃信息
+\end{itemize}
+这种"主动遗忘"能力对于过滤噪声、聚焦关键信息至关重要。在LSTM中，遗忘门正是通过这一机制解决了长程依赖问题~\citep{hochreiter1997long}。
+
+\paragraph{稀疏激活视角}
+门控还天然诱导稀疏性。当 $g_i \approx 0$ 时，第 $i$ 个维度被"关闭"。这与ReLU的稀疏激活类似，但更灵活：ReLU的稀疏模式由权重固定，而门控的稀疏模式随输入动态变化。实验表明，门控网络的激活稀疏度可达60-80\%，显著高于非门控网络~\citep{shazeer2020glu}。
+
+\subsection{MLP层的门控：SwiGLU}
+
+如第~\ref{sec:transformer_math}节所述，现代Transformer普遍采用SwiGLU替代标准FFN：
+
+\paragraph{标准FFN}
+\begin{equation}
+    \text{FFN}(x) = W_2 \cdot \text{GELU}(W_1 x)
+\end{equation}
+
+\paragraph{SwiGLU FFN}
+\begin{equation}
+    \text{SwiGLU}(x) = W_2 \cdot \underbrace{(\text{SiLU}(W_1 x) \odot W_3 x)}_{\text{gating}}
+\end{equation}
+
+这里 $W_3 x$ 作为门控信号，控制 $\text{SiLU}(W_1 x)$ 的信息流通。为保持参数量一致，SwiGLU将中间维度从 $F = 4D$ 调整为 $F = \frac{8}{3}D$。
+
+\subsection{Attention层的门控：Gated Attention}
+
+\citet{qiu2025gatedattention}提出在Scaled Dot-Product Attention（SDPA）输出后添加一个sigmoid门控：
+
+\paragraph{标准SDPA}
+\begin{equation}
+    Y = \text{softmax}\left(\frac{QK^\top}{\sqrt{H}}\right)V
+\end{equation}
+
+\paragraph{Gated Attention}
+\begin{equation}
+    Y' = Y \odot \sigma(XW_g)
+    \label{eq:gated_attn}
+\end{equation}
+其中 $\sigma$ 是sigmoid函数，$W_g \in \R^{D \times D}$ 是可学习的门控投影矩阵。
+
+\begin{table}[htbp]
+\centering
+\caption{门控位置与激活函数的消融实验}
+\label{tab:gating_ablation}
+\begin{tabular}{lcc}
+\toprule
+Configuration & Effectiveness & Notes \\
+\midrule
+Gate on Values & \checkmark & 有效但非最优 \\
+Gate on Keys & \checkmark & 有效但非最优 \\
+Gate on Dense output & \checkmark & 有效但非最优 \\
+\textbf{Gate on SDPA output} & \checkmark\checkmark & \textbf{最优位置} \\
+\midrule
+Sigmoid activation & \checkmark\checkmark & \textbf{最优激活} \\
+SiLU activation & \checkmark & 效果略差 \\
+Additive gating & $\times$ & 显著差于乘法门控 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{为什么在SDPA输出后门控最优？}
+
+表~\ref{tab:gating_ablation}的消融实验揭示了一个有趣现象：门控位置对效果影响显著。理解这一点需要分析attention的信息流：
+
+\begin{enumerate}
+    \item \textbf{Gate on Values}：$Y = \text{softmax}(QK^\top/\sqrt{H}) \cdot (V \odot g)$
+
+    问题：门控作用于V后，softmax仍强制将权重分配到所有位置。即使某个value被门控为零，对应的注意力权重仍会被计算和分配。
+
+    \item \textbf{Gate on SDPA output}：$Y' = [\text{softmax}(QK^\top/\sqrt{H}) \cdot V] \odot g$
+
+    优势：门控作用于最终输出，可以\textbf{整体抑制}整个attention head的贡献。这打破了softmax的强制分配约束——即使softmax必须分配权重，门控可以让整个输出趋近于零。
+\end{enumerate}
+
+本质上，SDPA输出门控实现了\textbf{head级别的动态剪枝}：网络可以学会在某些上下文中"关闭"特定的attention head，这是values门控无法实现的。
+
+\subsection{Attention Sink：一个深层的结构性问题}
+
+Attention Sink是理解注意力机制局限性的关键窗口。MIT HAN Lab在StreamingLLM~\citep{xiao2024streamingllm}中首次系统研究了这一现象，随后OpenAI、小米、月之暗面等团队提出了各自的解决方案。
+
+\subsubsection{现象与发现}
+
+\paragraph{现象观察}
+在长序列任务中，研究者发现一个反直觉的现象：大量注意力权重集中在序列开头的少数token（通常是第一个token），即使这些token语义上并不重要（如标点符号或填充符）。更重要的是，\textbf{越深的层，这种现象越明显}。
+
+StreamingLLM的关键发现是：当使用滑动窗口注意力时，一旦初始token被移出窗口，模型输出会\textbf{完全崩溃}——产生无意义的乱码。但只需保留最初的4个token，性能就能大幅恢复。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.75]
+    % 浅层注意力矩阵
+    \begin{scope}[shift={(-3.2,0)}]
+        \node[above] at (1.6, 3.5) {\small 浅层 Attention};
+        % 绘制5x5网格
+        \foreach \i in {0,...,4} {
+            \foreach \j in {0,...,4} {
+                \pgfmathsetmacro{\dist}{abs(\i-\j)}
+                \pgfmathsetmacro{\intensity}{max(0, 85 - \dist*18 + (\j==0 ? 8 : 0))}
+                \fill[blue!\intensity!white] (\j*0.65, 2.6-\i*0.6) rectangle (\j*0.65+0.6, 2.6-\i*0.6-0.55);
+                \draw[gray!40] (\j*0.65, 2.6-\i*0.6) rectangle (\j*0.65+0.6, 2.6-\i*0.6-0.55);
+            }
+        }
+    \end{scope}
+
+    % 深层注意力矩阵（Attention Sink明显）
+    \begin{scope}[shift={(2.2,0)}]
+        \node[above] at (1.6, 3.5) {\small 深层 Attention};
+        \foreach \i in {0,...,4} {
+            \foreach \j in {0,...,4} {
+                \pgfmathsetmacro{\sinkintensity}{(\j==0 ? 92 : 0)}
+                \pgfmathsetmacro{\dist}{abs(\i-\j)}
+                \pgfmathsetmacro{\localintensity}{max(0, 45 - \dist*12)}
+                \pgfmathsetmacro{\intensity}{max(\sinkintensity, \localintensity)}
+                \fill[red!\intensity!white] (\j*0.65, 2.6-\i*0.6) rectangle (\j*0.65+0.6, 2.6-\i*0.6-0.55);
+                \draw[gray!40] (\j*0.65, 2.6-\i*0.6) rectangle (\j*0.65+0.6, 2.6-\i*0.6-0.55);
+            }
+        }
+        % Sink标注
+        \draw[thick, red!70!black, ->] (0.3, -0.7) -- (0.3, -0.35);
+        \node[below, font=\scriptsize, red!70!black] at (0.3, -0.7) {Sink};
+    \end{scope}
+\end{tikzpicture}
+\caption{Attention Sink现象示意图。浅层注意力主要沿对角线分布（关注局部上下文），深层则在第一列出现显著的注意力聚集（Sink）——所有query都倾向于attend到第一个token，即使该token语义上并不重要。}
+\label{fig:attention_sink}
+\end{figure}
+
+\paragraph{表面原因：Softmax的概率约束}
+
+问题的直接原因在于softmax的归一化特性：
+\begin{equation}
+    \sum_{j=1}^{T} \text{softmax}(q_i^\top k_j / \sqrt{H}) = 1
+\end{equation}
+
+这一约束意味着每个query \textbf{必须}将全部注意力分配出去，即使理想情况下应该"不关注任何token"。网络的应对策略是学习一个"垃圾桶"位置来吸收多余的注意力。
+
+\subsubsection{深层原因：Context-Aware Identity Layer假设}
+
+仅用softmax约束无法解释为什么sink token的value接近零、为什么越深层sink越严重。一个更深刻的假设是：
+
+\begin{quote}
+\textit{Attention Sink源于Transformer对"上下文感知的恒等层"的内在需求——模型需要能够根据上下文决定某个Attention Block不输出任何变化。}
+\end{quote}
+
+\paragraph{证据一：Sink Token的Value接近零}
+实证研究表明，第一个token的value向量范数显著小于其他token。这意味着即使被attend到，对输出的贡献也很小。模型\textbf{主动学习}将sink token的value置零。
+
+\paragraph{证据二：Early Decoding与层深相关性}
+如果用语言模型头探测中间层的输出，会发现模型存在"early decoding"现象——从某一层开始，预测结果就与最终层相同。这说明浅层已经完成了主要计算，深层需要做的是\textbf{保持恒等变换}。
+
+而实现恒等变换的方式就是让Attention输出零。由于softmax约束，模型必须通过attend到一个value为零的特殊token来实现这一点。
+
+\paragraph{证据三：Sink Token的Key具有独立子空间}
+实验表明，当sink发生时，sink token的key与其他所有key几乎正交或负相关，且模长显著更小。这说明模型为$k_{\text{sink}}$分配了一个专用子空间：当query想要输出零时，它会指向这个子空间，精确attend到sink token。
+
+\subsubsection{解决方案谱系}
+
+理解了Attention Sink的本质后，各种解决方案可以归为两类：\textbf{显式提供sink}和\textbf{消除对sink的需求}。
+
+\paragraph{方案一：保留初始Token（StreamingLLM）}
+最简单的方法是在滑动窗口中永久保留前几个token：
+\begin{equation}
+    \text{Attention Range} = \{1, 2, \ldots, k_{\text{sink}}\} \cup \{t - w + 1, \ldots, t\}
+\end{equation}
+StreamingLLM保留4个初始token，使模型能稳定处理\textbf{400万+token}的流式输入。
+
+\paragraph{方案二：可学习的Softmax Bias}
+OpenAI的GPT-OSS系列~\citep{openai2025gptoss}和小米的MiMo-V2-Flash都采用了在softmax分母中引入可学习偏置的方案：
+\begin{equation}
+    \text{Attention}_{ij} = \frac{\exp(q_i^\top k_j / \sqrt{d})}{\sum_k \exp(q_i^\top k_k / \sqrt{d}) + \exp(b_h)}
+\end{equation}
+其中$b_h$是每个attention head的可学习标量。当$b_h$很大时，分母增大，所有注意力权重被"稀释"，等效于模型可以选择"不关注任何token"。这种方法仅增加每个head一个参数，但从根本上解决了softmax的强制分配问题。
+
+MiMo-V2-Flash进一步将此技术与激进的128-token滑动窗口结合，实现了KV Cache减少约6倍，同时通过sink bias保持长上下文稳定性。
+
+\paragraph{方案三：Output Gating（Kimi Linear）}
+月之暗面的Kimi Linear~\citep{moonshot2025kimilinear}在线性注意力模块中采用output gating来缓解sink：
+\begin{equation}
+    Y' = Y \odot \text{gate}(X)
+\end{equation}
+这使得attention可以输出零向量，无需依赖sink token。其Kimi Delta Attention (KDA)模块将此机制与细粒度遗忘门结合，在保持线性复杂度的同时超越了全注意力性能。
+
+\paragraph{方案四：SDPA Output Gating（Qwen）}
+如前所述，Qwen的Gated Attention在SDPA输出后添加sigmoid门控，同样消除了对sink token的需求。
+
+\begin{table}[htbp]
+\centering
+\caption{Attention Sink解决方案对比}
+\label{tab:attention_sink_solutions}
+\begin{tabular}{lccc}
+\toprule
+方案 & 额外参数 & 消除Sink & 代表模型 \\
+\midrule
+保留初始Token & 0 & 否（绕过） & StreamingLLM \\
+Softmax Bias & $n_h$ & 是 & GPT-OSS, MiMo-V2-Flash \\
+Output Gating & $D^2$ & 是 & Kimi Linear, Qwen \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{理论统一}
+
+这些方案可以从统一的视角理解：它们都在解决\textbf{Attention如何输出零}的问题。
+
+\begin{itemize}
+    \item \textbf{StreamingLLM}：让模型继续使用学到的sink机制
+    \item \textbf{Softmax Bias}：修改softmax使其可以输出接近零的分布
+    \item \textbf{Output Gating}：在softmax之后乘以可学习门控，强制输出为零
+\end{itemize}
+
+值得注意的是，output gating不仅消除了sink，还\textbf{释放了被sink占用的维度}。模型不再需要为$k_{\text{sink}}$分配专用子空间，这些容量可以用于更有意义的表示学习。这可能是Gated Attention带来性能提升的深层原因之一。
+
+\begin{remark}[非归一化注意力]
+理论上，如果注意力分数不需要归一化（或可以为负），模型可以直接组合出零输出，不需要sink。实验表明非归一化注意力确实消除了sink现象，但这会带来训练稳定性问题。Softmax Bias和Output Gating是在保持训练稳定性的前提下解决sink的折中方案。
+\end{remark}
+
+\subsection{训练稳定性与长上下文}
+
+Gated Attention还带来额外的训练优势：
+
+\paragraph{训练稳定性}
+\begin{itemize}
+    \item 损失曲线更平滑，减少loss spike
+    \item 可以使用更大的学习率（$4.0 \times 10^{-3}$ 到 $4.5 \times 10^{-3}$）
+\end{itemize}
+
+\paragraph{长上下文外推}
+结合YaRN位置编码插值：
+\begin{itemize}
+    \item 训练长度：32k tokens
+    \item 外推测试：128k tokens
+    \item 性能衰减显著小于基线模型
+\end{itemize}
+
+\subsection{工业应用}
+
+Gated Attention已被集成到Qwen3-Next架构中，并部署于Qwen3-Next-80B-A3B-Instruct模型，验证了其在大规模工业应用中的有效性。该工作入选NeurIPS 2025 Oral（前1.5\%）。
+
+\begin{remark}[MLP门控 vs Attention门控]
+两种门控的作用互补：
+\begin{itemize}
+    \item \textbf{MLP门控（SwiGLU）}：在特征变换阶段选择性激活神经元
+    \item \textbf{Attention门控}：在信息聚合阶段选择性传递attention输出
+\end{itemize}
+现代模型（如Qwen3-Next）同时采用两者。
+\end{remark}

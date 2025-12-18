@@ -1,0 +1,462 @@
+\section{大模型数据工程}
+\label{sec:data}
+
+数据是大语言模型的基石。本节系统介绍预训练数据、后训练数据和评估数据的构建方法，以及数据配比的经验法则。
+
+\subsection{预训练数据}
+
+\subsubsection{数据来源}
+
+现代LLM的预训练数据通常来自以下来源：
+
+\begin{table}[htbp]
+\centering
+\caption{主要预训练数据来源}
+\label{tab:pretrain_data_sources}
+\begin{tabular}{llcc}
+\toprule
+数据源 & 描述 & 规模 & 质量 \\
+\midrule
+\textbf{网页数据} & & & \\
+Common Crawl & 最大的网页爬虫数据 & PB级 & 低 \\
+RefinedWeb & 过滤后的高质量网页 & 5T tokens & 中 \\
+C4 & Colossal Clean Crawled Corpus & 800B tokens & 中 \\
+\midrule
+\textbf{高质量文本} & & & \\
+Wikipedia & 百科全书 & 数十B tokens & 高 \\
+Books & 书籍（Books3, Pile-Books） & 数十B tokens & 高 \\
+arXiv & 学术论文 & 数十B tokens & 高 \\
+\midrule
+\textbf{代码} & & & \\
+GitHub & 开源代码仓库 & 数百B tokens & 中-高 \\
+The Stack & 去重的开源代码 & 3T tokens & 高 \\
+StarCoder Data & 精选编程数据 & 1T tokens & 高 \\
+\midrule
+\textbf{对话/社交} & & & \\
+Reddit & 社交媒体讨论 & 数百B tokens & 中 \\
+StackExchange & 问答社区 & 数十B tokens & 高 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{数据处理流程}
+
+从原始数据到训练数据需要经过多个处理阶段：
+
+\paragraph{1. 文本提取}
+\begin{itemize}
+    \item HTML解析：使用trafilatura、jusText等工具提取正文
+    \item PDF解析：使用PyMuPDF、pdfplumber处理学术文档
+    \item 代码处理：保留注释和文档字符串
+\end{itemize}
+
+\paragraph{2. 质量过滤}
+\begin{itemize}
+    \item \textbf{启发式规则}：
+    \begin{itemize}
+        \item 文档长度过滤（过短/过长）
+        \item 特殊字符比例
+        \item 重复行/段落比例
+        \item 语言检测（fastText语言分类器）
+    \end{itemize}
+    \item \textbf{模型打分}：
+    \begin{itemize}
+        \item 困惑度过滤（用小模型计算PPL）
+        \item 质量分类器（如GPT-3用的质量分类器）
+        \item 教育价值评分（FineWeb-Edu使用的方法）
+    \end{itemize}
+\end{itemize}
+
+\paragraph{3. 去重}
+去重是预训练数据处理的关键步骤，重复数据会导致：
+\begin{itemize}
+    \item 训练效率下降
+    \item 模型记忆而非泛化
+    \item 隐私泄露风险
+\end{itemize}
+
+主要去重方法：
+\begin{itemize}
+    \item \textbf{精确去重}：基于哈希的完全匹配
+    \item \textbf{模糊去重}：MinHash + LSH（Locality-Sensitive Hashing）
+    \item \textbf{文档级 vs 段落级}：不同粒度的去重策略
+\end{itemize}
+
+\begin{lstlisting}
+# MinHash去重示例
+from datasketch import MinHash, MinHashLSH
+
+def get_minhash(text, num_perm=128):
+    m = MinHash(num_perm=num_perm)
+    for word in text.split():
+        m.update(word.encode('utf8'))
+    return m
+
+# 创建LSH索引
+lsh = MinHashLSH(threshold=0.8, num_perm=128)
+for doc_id, text in documents:
+    minhash = get_minhash(text)
+    lsh.insert(doc_id, minhash)
+\end{lstlisting}
+
+\paragraph{4. 敏感内容过滤}
+\begin{itemize}
+    \item PII（个人身份信息）移除：邮箱、电话、身份证号等
+    \item 有害内容过滤：使用分类器检测
+    \item 版权内容处理：根据许可证过滤
+\end{itemize}
+
+\subsubsection{数据配比}
+
+数据配比（Data Mix）对模型能力有重要影响：
+
+\begin{table}[htbp]
+\centering
+\caption{主流模型的数据配比（估计值）}
+\label{tab:data_mix}
+\begin{tabular}{lccccc}
+\toprule
+模型 & 网页 & 代码 & 书籍 & 学术 & 其他 \\
+\midrule
+GPT-3 & 60\% & 3\% & 16\% & - & 21\% \\
+LLaMA & 67\% & 4.5\% & 4.5\% & 2.5\% & 21.5\% \\
+LLaMA 2 & 89\% & - & - & - & 11\% \\
+DeepSeek & 56\% & 18\% & - & 5\% & 21\% \\
+Qwen & 类似LLaMA & 较高代码占比 & - & - & - \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{配比原则}
+\begin{itemize}
+    \item \textbf{代码数据}：提升推理能力，通常占5-20\%
+    \item \textbf{数学数据}：提升数学能力，但占比过高可能损害通用能力
+    \item \textbf{多语言数据}：根据目标市场调整，中文模型通常30-50\%中文
+    \item \textbf{高质量数据}：虽然量少，但应该多次采样（upsampling）
+\end{itemize}
+
+\subsubsection{数据规模与Scaling Law}
+
+Chinchilla Scaling Law~\citep{hoffmann2022chinchilla}指出，计算最优的数据量与模型参数成正比：
+\begin{equation}
+    D_{opt} \approx 20 \times N
+\end{equation}
+其中$D$是token数，$N$是参数量。即7B模型需要约140B tokens。
+
+然而，实践中常常使用更多数据（over-training）：
+\begin{itemize}
+    \item LLaMA-7B：1T tokens（约143倍参数量）
+    \item LLaMA 2-7B：2T tokens（约286倍）
+    \item LLaMA 3-8B：15T tokens（约1875倍）
+\end{itemize}
+
+\paragraph{为什么Over-training？}
+\begin{itemize}
+    \item 推理成本固定，训练成本可摊销
+    \item 更小的模型更容易部署
+    \item 数据重复使用在一定程度内是有益的
+\end{itemize}
+
+\subsubsection{多轮训练与课程学习}
+
+\paragraph{数据课程（Data Curriculum）}
+按照特定顺序呈现数据可以提升模型性能：
+\begin{enumerate}
+    \item \textbf{阶段1}：通用网页数据，建立基础语言能力
+    \item \textbf{阶段2}：增加高质量数据比例（书籍、维基百科）
+    \item \textbf{阶段3}：增加代码和数学数据
+    \item \textbf{阶段4}：Annealing阶段，使用最高质量数据，降低学习率
+\end{enumerate}
+
+\paragraph{退火阶段（Annealing）}
+训练末期使用高质量数据的策略：
+\begin{itemize}
+    \item 学习率从正常值退火到接近0
+    \item 数据切换为最高质量子集
+    \item 通常占总训练的1-5\%
+    \item LLaMA 3报告此阶段显著提升benchmark性能
+\end{itemize}
+
+\subsection{后训练数据}
+
+后训练（Post-training）包括监督微调（SFT）和人类偏好对齐（RLHF/DPO），数据需求与预训练截然不同。
+
+\subsubsection{SFT数据}
+
+\paragraph{数据格式}
+SFT数据通常是指令-响应对：
+\begin{verbatim}
+{
+  "instruction": "将以下句子翻译成英文",
+  "input": "今天天气很好",
+  "output": "The weather is nice today."
+}
+\end{verbatim}
+
+或多轮对话格式：
+\begin{verbatim}
+{
+  "conversations": [
+    {"role": "user", "content": "什么是机器学习？"},
+    {"role": "assistant", "content": "机器学习是..."},
+    {"role": "user", "content": "它有哪些应用？"},
+    {"role": "assistant", "content": "机器学习的应用包括..."}
+  ]
+}
+\end{verbatim}
+
+\paragraph{数据来源}
+\begin{itemize}
+    \item \textbf{人工标注}：质量最高，成本最高
+    \item \textbf{众包平台}：如Scale AI、Surge AI
+    \item \textbf{开源数据集}：
+    \begin{itemize}
+        \item FLAN Collection：多任务指令数据
+        \item OpenAssistant：社区标注对话
+        \item ShareGPT：用户分享的ChatGPT对话
+        \item Alpaca：GPT-4生成的指令数据
+    \end{itemize}
+    \item \textbf{合成数据}：用强模型生成（Self-Instruct、Evol-Instruct）
+\end{itemize}
+
+\paragraph{数据规模}
+SFT数据量远小于预训练：
+\begin{itemize}
+    \item 早期：几千到几万条（Alpaca 52K）
+    \item 现代：几十万到几百万条
+    \item 质量比数量更重要（LIMA论文：1000条精选数据即可）
+\end{itemize}
+
+\paragraph{数据质量控制}
+\begin{itemize}
+    \item 响应长度：避免过短/过长的回复
+    \item 格式一致性：统一的回复风格
+    \item 多样性：覆盖不同任务类型
+    \item 准确性：人工审核或模型验证
+\end{itemize}
+
+\subsubsection{偏好数据}
+
+RLHF和DPO需要偏好对数据：
+
+\paragraph{数据格式}
+\begin{verbatim}
+{
+  "prompt": "解释量子计算",
+  "chosen": "量子计算是一种利用量子力学原理...",
+  "rejected": "量子计算就是很快的计算机..."
+}
+\end{verbatim}
+
+\paragraph{收集方法}
+\begin{enumerate}
+    \item \textbf{人工标注}：
+    \begin{itemize}
+        \item 给定prompt，生成多个响应
+        \item 人类标注者选择更好的响应
+        \item 成本高，但质量可控
+    \end{itemize}
+    \item \textbf{AI反馈}：
+    \begin{itemize}
+        \item 用GPT-4等强模型做评判
+        \item Constitutional AI：用规则约束AI反馈
+        \item RLAIF（RL from AI Feedback）
+    \end{itemize}
+    \item \textbf{隐式反馈}：
+    \begin{itemize}
+        \item 用户点赞/点踩
+        \item 用户选择哪个回复继续对话
+        \item 用户编辑/重新生成
+    \end{itemize}
+\end{enumerate}
+
+\paragraph{数据规模}
+\begin{itemize}
+    \item InstructGPT：约33K比较对
+    \item LLaMA 2 Chat：约100万偏好数据
+    \item 现代实践：几十万到几百万对
+\end{itemize}
+
+\subsubsection{合成数据}
+
+合成数据在后训练中越来越重要：
+
+\paragraph{Self-Instruct}
+用模型自己生成指令和响应：
+\begin{enumerate}
+    \item 从种子任务开始
+    \item 让模型生成新的指令
+    \item 过滤低质量/重复的指令
+    \item 让模型生成响应
+\end{enumerate}
+
+\paragraph{Evol-Instruct}
+WizardLM提出的指令进化方法：
+\begin{itemize}
+    \item \textbf{深度进化}：增加复杂度、约束、推理步骤
+    \item \textbf{广度进化}：变换话题、领域、风格
+\end{itemize}
+
+\begin{lstlisting}
+# 深度进化prompt示例
+"""
+请将以下指令改写得更复杂，加入更多约束条件：
+原始指令：写一首关于春天的诗
+进化指令：写一首关于春天的七言绝句，要求包含至少三种春天的景物，
+         使用对仗工整的句式，并在最后一句表达对时光流逝的感慨。
+"""
+\end{lstlisting}
+
+\paragraph{蒸馏数据}
+从强模型蒸馏知识到弱模型：
+\begin{itemize}
+    \item 用GPT-4/Claude生成高质量响应
+    \item 收集推理过程（Chain-of-Thought）
+    \item DeepSeek-R1蒸馏：用R1的推理轨迹训练小模型
+\end{itemize}
+
+\subsection{评估数据}
+
+\subsubsection{通用能力评估}
+
+\begin{table}[htbp]
+\centering
+\caption{主要评估基准}
+\label{tab:eval_benchmarks}
+\begin{tabular}{llll}
+\toprule
+基准 & 类型 & 规模 & 评估内容 \\
+\midrule
+\textbf{知识与推理} & & & \\
+MMLU & 多选题 & 57科目 & 世界知识 \\
+HellaSwag & 选择题 & 10K & 常识推理 \\
+ARC & 选择题 & 7.8K & 科学推理 \\
+WinoGrande & 选择题 & 44K & 常识推理 \\
+\midrule
+\textbf{数学} & & & \\
+GSM8K & 应用题 & 8.5K & 小学数学 \\
+MATH & 竞赛题 & 12.5K & 高中竞赛数学 \\
+\midrule
+\textbf{代码} & & & \\
+HumanEval & 代码生成 & 164 & Python编程 \\
+MBPP & 代码生成 & 974 & Python编程 \\
+\midrule
+\textbf{长文本} & & & \\
+RULER & 多任务 & - & 长上下文理解 \\
+LongBench & 多任务 & 4.75K & 长文本能力 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{对话能力评估}
+
+\begin{itemize}
+    \item \textbf{MT-Bench}：多轮对话评估，GPT-4作为评判
+    \item \textbf{AlpacaEval}：单轮指令跟随，与GPT-4比较
+    \item \textbf{Arena Hard}：基于Chatbot Arena的困难子集
+    \item \textbf{Chatbot Arena}：用户盲评，ELO排名
+\end{itemize}
+
+\subsubsection{安全性评估}
+
+\begin{itemize}
+    \item \textbf{TruthfulQA}：测试模型是否会生成虚假信息
+    \item \textbf{ToxiGen}：测试有害内容生成
+    \item \textbf{BBQ}：测试社会偏见
+    \item \textbf{Red-teaming}：对抗性攻击测试
+\end{itemize}
+
+\subsection{数据工程实践}
+
+\subsubsection{数据飞轮}
+
+现代LLM公司通常建立数据飞轮：
+\begin{enumerate}
+    \item 部署模型服务用户
+    \item 收集用户交互数据（带隐私保护）
+    \item 标注高质量样本
+    \item 训练更好的模型
+    \item 回到步骤1
+\end{enumerate}
+
+\subsubsection{数据质量 vs 数量}
+
+\begin{table}[htbp]
+\centering
+\caption{数据质量与数量的权衡}
+\label{tab:quality_vs_quantity}
+\begin{tabular}{lcc}
+\toprule
+阶段 & 优先级 & 理由 \\
+\midrule
+预训练早期 & 数量 & 需要大量数据建立基础能力 \\
+预训练后期 & 质量 & Annealing阶段，精选数据提升性能 \\
+SFT & 质量 $>$ 数量 & 几千条高质量数据可能胜过百万低质量 \\
+RLHF & 质量 & 偏好标注错误会导致reward hacking \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{LIMA的启示}
+LIMA论文~\citep{zhou2023lima}表明：
+\begin{itemize}
+    \item 1000条精心策划的SFT数据可以产生强大的对话模型
+    \item 数据多样性比数量更重要
+    \item 响应风格的一致性很关键
+\end{itemize}
+
+\subsubsection{数据污染}
+
+评估数据泄露到训练数据中是严重问题：
+
+\paragraph{检测方法}
+\begin{itemize}
+    \item N-gram重叠检测
+    \item 困惑度异常检测
+    \item 模型记忆测试（completion）
+\end{itemize}
+
+\paragraph{预防措施}
+\begin{itemize}
+    \item 训练数据与评估数据去重
+    \item 使用时间切分（训练数据早于评估数据）
+    \item 定期更新评估基准
+\end{itemize}
+
+\subsection{开源数据集}
+
+\begin{table}[htbp]
+\centering
+\caption{重要开源数据集}
+\label{tab:open_datasets}
+\begin{tabular}{llll}
+\toprule
+数据集 & 类型 & 规模 & 特点 \\
+\midrule
+\textbf{预训练} & & & \\
+RedPajama & 通用 & 1.2T tokens & LLaMA数据复现 \\
+The Pile & 通用 & 825GB & 多源混合 \\
+FineWeb & 网页 & 15T tokens & 高质量过滤 \\
+FineWeb-Edu & 网页 & 1.3T tokens & 教育内容 \\
+StarCoder Data & 代码 & 1T tokens & 许可证友好 \\
+\midrule
+\textbf{SFT} & & & \\
+FLAN Collection & 指令 & 数百万 & 多任务 \\
+OpenAssistant & 对话 & 161K & 多语言 \\
+UltraChat & 对话 & 1.5M & 合成对话 \\
+\midrule
+\textbf{偏好} & & & \\
+HH-RLHF & 偏好对 & 170K & Anthropic发布 \\
+UltraFeedback & 偏好对 & 64K & GPT-4标注 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{remark}[数据工程建议]
+\begin{itemize}
+    \item \textbf{预训练}：投资于数据处理流水线，去重和过滤至关重要
+    \item \textbf{SFT}：质量优先，人工审核每一条数据
+    \item \textbf{偏好对齐}：确保标注一致性，避免噪声标签
+    \item \textbf{持续改进}：建立数据飞轮，不断收集和迭代
+\end{itemize}
+\end{remark}

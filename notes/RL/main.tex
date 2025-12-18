@@ -1,0 +1,82 @@
+% ==========================================
+% 强化学习笔记 - 主文档
+% 编译方式：XeLaTeX + Biber
+% ==========================================
+
+\documentclass[12pt, a4paper, oneside, openany]{ctexbook}
+
+% 导入配置文件
+\input{preamble.tex}
+
+% ==========================================
+% 文档信息
+% ==========================================
+\settitle{\textbf{强化学习笔记}}
+\setauthor{卢奇 \\ \texttt{luqi.code@gmail.com}}
+\date{}
+
+% ==========================================
+% 正文开始
+% ==========================================
+\begin{document}
+
+% 标题页
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+% 目录
+\tableofcontents
+\newpage
+
+% ==========================================
+% 章节导入
+% ==========================================
+
+% 第一章：绪论
+\input{chapters/01-introduction.tex}
+
+% 第二章：基于价值的强化学习
+\input{chapters/02-value-based-rl.tex}
+
+% 第三章：基于策略的强化学习
+\input{chapters/03-policy-based-rl.tex}
+
+% 第四章：基于模型的方法与多智能体学习（合并原第四、五章）
+\input{chapters/04-model-based-marl.tex}
+
+% 第五章：大语言模型与强化学习
+\input{chapters/05-llm-rl.tex}
+
+% 第六章：总结与展望
+\input{chapters/06-summary.tex}
+
+% 更多章节可以继续添加
+% \input{chapters/03-dynamic-programming.tex}
+% \input{chapters/04-monte-carlo.tex}
+% \input{chapters/05-td-learning.tex}
+% \input{chapters/06-value-function-approximation.tex}
+% \input{chapters/07-policy-gradient.tex}
+% \input{chapters/08-actor-critic.tex}
+% \input{chapters/09-deep-rl.tex}
+
+% ==========================================
+% 附录
+% ==========================================
+\appendix
+
+% 附录A：常见问题解答
+\input{appendix-qa.tex}
+
+% \section{常用符号表}
+% 这里可以添加符号表
+
+% \section{代码实现}
+% 这里可以添加完整代码实现
+
+% ==========================================
+% 参考文献
+% ==========================================
+\printbibliography[title=参考文献]
+
+\end{document}

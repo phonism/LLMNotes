@@ -1,0 +1,346 @@
+\section{Scaling Law}
+\label{sec:scaling_law}
+
+Scaling Law（缩放定律）揭示了大语言模型性能与计算量、数据量、模型规模之间的幂律关系，是指导LLM训练资源分配的核心理论。
+
+\subsection{基本概念}
+
+\subsubsection{什么是Scaling Law}
+
+Scaling Law描述了模型性能（通常用损失函数$L$衡量）如何随资源增加而改善：
+\begin{equation}
+    L = \left(\frac{N_c}{N}\right)^{\alpha_N} + \left(\frac{D_c}{D}\right)^{\alpha_D} + L_\infty
+\end{equation}
+其中：
+\begin{itemize}
+    \item $N$：模型参数量
+    \item $D$：训练数据量（tokens）
+    \item $L_\infty$：不可约损失（数据本身的熵）
+    \item $N_c, D_c, \alpha_N, \alpha_D$：拟合常数
+\end{itemize}
+
+\subsubsection{为什么Scaling Law重要}
+
+\begin{itemize}
+    \item \textbf{资源分配}：给定计算预算，如何分配模型大小和数据量
+    \item \textbf{性能预测}：在小规模实验预测大规模模型的性能
+    \item \textbf{投资决策}：估算达到目标性能所需的资源
+\end{itemize}
+
+\subsection{Kaplan Scaling Law (2020)}
+
+OpenAI的Kaplan等人~\citep{kaplan2020scaling}首次系统研究了LLM的Scaling Law。
+
+\subsubsection{核心发现}
+
+\paragraph{性能与规模的幂律关系}
+\begin{align}
+    L(N) &= \left(\frac{N_c}{N}\right)^{\alpha_N}, \quad \alpha_N \approx 0.076 \\
+    L(D) &= \left(\frac{D_c}{D}\right)^{\alpha_D}, \quad \alpha_D \approx 0.095 \\
+    L(C) &= \left(\frac{C_c}{C}\right)^{\alpha_C}, \quad \alpha_C \approx 0.050
+\end{align}
+其中$C$是计算量（FLOPs）。
+
+\paragraph{关键结论}
+\begin{enumerate}
+    \item \textbf{模型规模主导}：在固定计算预算下，更大的模型（训练更少步数）比小模型（训练更多步数）更优
+    \item \textbf{最优分配}：计算量增加10倍时，模型参数应增加约5.5倍，数据量增加约1.8倍
+    \item \textbf{架构不敏感}：Scaling Law对Transformer的具体超参数（层数、宽度）不敏感
+\end{enumerate}
+
+\subsubsection{计算最优模型}
+
+Kaplan建议的计算最优分配：
+\begin{equation}
+    N_{opt} \propto C^{0.73}, \quad D_{opt} \propto C^{0.27}
+\end{equation}
+
+这意味着随着计算预算增加，应该更多地投资于模型规模而非数据量。
+
+\subsection{Chinchilla Scaling Law (2022)}
+
+DeepMind的Hoffmann等人~\citep{hoffmann2022chinchilla}挑战了Kaplan的结论，提出了更均衡的分配策略。
+
+\subsubsection{核心发现}
+
+\paragraph{数据的重要性被低估}
+Chinchilla研究表明，之前的模型普遍欠拟合（undertrained）：
+\begin{itemize}
+    \item GPT-3 (175B)：训练了300B tokens，但最优应该是约3.5T tokens
+    \item Gopher (280B)：训练了300B tokens，同样严重不足
+\end{itemize}
+
+\paragraph{新的最优分配}
+\begin{equation}
+    N_{opt} \propto C^{0.50}, \quad D_{opt} \propto C^{0.50}
+\end{equation}
+
+更简洁的表述：
+\begin{equation}
+    D_{opt} \approx 20 \times N
+    \label{eq:chinchilla}
+\end{equation}
+
+即\textbf{最优训练数据量约为模型参数的20倍}。
+
+\subsubsection{为什么是20倍？推导直觉}
+
+这个看似任意的常数背后有清晰的数学逻辑。考虑计算预算约束 $C = 6ND$（FLOPs $\approx$ 6 × 参数 × tokens），目标是最小化损失：
+
+\begin{equation}
+    L(N, D) = \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}} + L_\infty
+\end{equation}
+
+在约束 $C = 6ND$ 下求极值，使用拉格朗日乘数法：
+\begin{equation}
+    \frac{\partial L}{\partial N} \bigg/ \frac{\partial L}{\partial D} = \frac{D}{N}
+\end{equation}
+
+代入幂律形式：
+\begin{equation}
+    \frac{\alpha A / N^{\alpha+1}}{\beta B / D^{\beta+1}} = \frac{D}{N} \implies \frac{D}{N} = \left(\frac{\alpha A}{\beta B}\right)^{\frac{1}{\alpha+\beta+2}}
+\end{equation}
+
+Chinchilla的实验测得 $\alpha \approx 0.34$，$\beta \approx 0.28$，代入后得到 $D/N \approx 20$。
+
+\paragraph{物理直觉}
+这个结果可以这样理解：模型参数需要足够的"训练信号"才能收敛到最优值。每个参数平均需要看到约20个tokens的信息才能学到有意义的表示。参数太多（相对于数据）会欠拟合——模型有容量但缺乏信号；数据太多（相对于参数）会浪费——模型容量已饱和，额外数据无法被利用。
+
+\paragraph{Kaplan vs Chinchilla：争议的本质}
+两个团队得出不同结论的根本原因在于\textbf{实验设计}：
+\begin{itemize}
+    \item Kaplan固定训练步数，变化模型大小——这倾向于发现"大模型更好"
+    \item Chinchilla固定计算量，同时变化模型和数据——这才能找到真正的帕累托最优
+\end{itemize}
+
+Chinchilla的设计更接近实际资源分配问题：给定固定预算，如何分配？
+
+\subsubsection{Chinchilla模型验证}
+
+DeepMind训练了70B参数的Chinchilla模型，使用1.4T tokens：
+\begin{itemize}
+    \item 计算量与Gopher (280B)相同
+    \item 性能全面超越Gopher
+    \item 推理成本降低4倍（参数量是1/4）
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\caption{Chinchilla vs Gopher性能对比}
+\label{tab:chinchilla_vs_gopher}
+\begin{tabular}{lccc}
+\toprule
+模型 & 参数量 & 训练Tokens & MMLU \\
+\midrule
+Gopher & 280B & 300B & 60.0\% \\
+Chinchilla & 70B & 1.4T & 67.6\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{对工业界的影响}
+
+Chinchilla Law深刻影响了后续模型的设计：
+
+\begin{table}[htbp]
+\centering
+\caption{主流模型的参数-数据配比}
+\label{tab:model_data_ratio}
+\begin{tabular}{lccc}
+\toprule
+模型 & 参数量 & 训练Tokens & Tokens/参数 \\
+\midrule
+GPT-3 & 175B & 300B & 1.7$\times$ \\
+Chinchilla & 70B & 1.4T & 20$\times$ \\
+LLaMA & 65B & 1.4T & 21.5$\times$ \\
+LLaMA 2 & 70B & 2T & 28.6$\times$ \\
+LLaMA 3 & 70B & 15T & 214$\times$ \\
+Qwen 2 & 72B & 7T+ & 97$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{超越Chinchilla：推理最优的视角}
+
+Chinchilla法则解决的是"训练最优"问题：给定计算预算，如何最小化训练后的损失？但在工业部署中，问题的形式不同：给定\textbf{总预算}（训练+推理），如何最大化用户价值？
+
+\subsubsection{训练-推理权衡的数学框架}
+
+设总成本为训练成本加上生命周期内的推理成本：
+\begin{equation}
+    \text{Total Cost} = C_{train} + n_{infer} \times C_{infer}(N)
+\end{equation}
+
+其中 $C_{train} = 6ND$，$C_{infer}(N) \propto N$（推理成本与参数量成正比）。
+
+\paragraph{关键洞察}
+Chinchilla最优假设 $n_{infer} = 0$——只考虑训练。但当 $n_{infer}$ 很大时，推理成本主导总成本。此时最优策略发生根本转变：
+\begin{itemize}
+    \item \textbf{小模型}：$C_{infer}$ 低，即使每个query成本微小，累积量也可观
+    \item \textbf{Over-training}：用额外训练成本换取更小模型的性能，摊薄到海量推理中
+\end{itemize}
+
+\paragraph{定量分析}
+假设目标性能固定，两种策略的成本对比：
+\begin{enumerate}
+    \item Chinchilla最优：70B模型 + 1.4T tokens，$C_{train} \propto 70 \times 1.4 = 98$
+    \item Over-training：8B模型 + 15T tokens，$C_{train} \propto 8 \times 15 = 120$
+\end{enumerate}
+
+训练成本增加22\%，但推理成本降低88\%（$8/70$）。当 $n_{infer} > 10^9$ 时（对于ChatGPT级产品很常见），Over-training策略的总成本显著更低。
+
+\subsubsection{LLaMA的策略}
+
+LLaMA系列采用激进的Over-training：
+\begin{itemize}
+    \item LLaMA-7B：1T tokens（143$\times$参数）
+    \item LLaMA 2-7B：2T tokens（286$\times$参数）
+    \item LLaMA 3-8B：15T tokens（1875$\times$参数）
+\end{itemize}
+
+\begin{remark}[Over-training的收益递减]
+虽然Over-training有益，但收益递减：
+\begin{itemize}
+    \item 早期：每增加1倍数据，性能显著提升
+    \item 后期：需要更多数据才能获得同样提升
+    \item 存在实际上限：数据重复使用最终会导致过拟合
+\end{itemize}
+\end{remark}
+
+\subsection{多维度Scaling Law}
+
+\subsubsection{下游任务Scaling}
+
+预训练Loss的Scaling Law不完全转化为下游任务性能：
+
+\begin{itemize}
+    \item \textbf{涌现能力}：某些能力在特定规模突然出现
+    \item \textbf{任务依赖}：不同任务的Scaling曲线不同
+    \item \textbf{评估敏感}：度量方式影响观察到的Scaling行为
+\end{itemize}
+
+\subsubsection{RLHF/DPO的Scaling}
+
+后训练也遵循Scaling Law，但形式不同：
+
+\begin{itemize}
+    \item \textbf{基座模型规模}：更大的基座模型对齐效果更好
+    \item \textbf{偏好数据量}：收益递减明显，质量比数量重要
+    \item \textbf{Reward Model}：RM规模通常应与Policy规模匹配
+\end{itemize}
+
+\subsubsection{推理时Scaling（Test-time Compute）}
+
+OpenAI o1等推理模型展示了新的Scaling维度：
+
+\begin{equation}
+    \text{Performance} = f(\text{Pretraining Compute}, \text{Inference Compute})
+\end{equation}
+
+\begin{itemize}
+    \item 通过更多推理时计算（更长的思考链）提升性能
+    \item 与预训练计算形成互补
+    \item 开辟了``用推理换性能''的新范式
+\end{itemize}
+
+\subsection{Scaling Law的局限与争议}
+
+\subsubsection{局限性}
+
+\begin{itemize}
+    \item \textbf{外推风险}：从小规模实验外推大规模可能失准
+    \item \textbf{数据质量}：Scaling Law假设数据质量恒定
+    \item \textbf{架构依赖}：不同架构可能有不同的Scaling行为
+    \item \textbf{任务特定}：通用Scaling Law可能不适用于特定任务
+\end{itemize}
+
+\subsubsection{数据墙（Data Wall）}
+
+\paragraph{高质量数据枯竭}
+\begin{itemize}
+    \item 互联网高质量文本有限（估计约10-15T tokens）
+    \item 继续Scaling需要合成数据或其他来源
+    \item 数据重复使用有上限
+\end{itemize}
+
+\paragraph{应对策略}
+\begin{itemize}
+    \item \textbf{合成数据}：用模型生成训练数据
+    \item \textbf{数据增强}：改写、翻译、多样化
+    \item \textbf{多模态数据}：图像、视频、音频
+    \item \textbf{代码数据}：GitHub等代码仓库
+\end{itemize}
+
+\subsubsection{涌现能力的争议}
+
+\paragraph{涌现是真实的吗？}
+有研究认为``涌现能力''可能是评估度量的假象：
+\begin{itemize}
+    \item 使用连续度量（如token-level准确率）替代离散度量
+    \item 重新分析后，很多``涌现''变成平滑的Scaling
+\end{itemize}
+
+\paragraph{实践意义}
+无论涌现是否真实存在，大模型确实展现出小模型没有的能力，这对应用仍然重要。
+
+\subsection{Scaling Law的实践应用}
+
+\subsubsection{预测模型性能}
+
+利用Scaling Law进行性能预测：
+\begin{enumerate}
+    \item 训练多个小规模模型（不同大小、不同数据量）
+    \item 拟合Scaling Law参数
+    \item 外推预测大规模模型性能
+    \item 决定是否值得投资大规模训练
+\end{enumerate}
+
+\subsubsection{资源分配决策}
+
+给定计算预算$C$，如何分配：
+
+\paragraph{训练最优（Chinchilla）}
+\begin{align}
+    N &= \sqrt{C / 6D} \\
+    D &= 20N
+\end{align}
+
+\paragraph{推理最优}
+根据预期推理量$n_{infer}$调整：
+\begin{itemize}
+    \item $n_{infer}$小：接近Chinchilla最优
+    \item $n_{infer}$大：Over-train更小的模型
+\end{itemize}
+
+\subsubsection{Scaling Law拟合示例}
+
+\begin{lstlisting}
+import numpy as np
+from scipy.optimize import curve_fit
+
+def scaling_law(x, a, b, c):
+    """L = a / x^b + c"""
+    return a / np.power(x, b) + c
+
+# 实验数据：(参数量, 损失)
+params = [125e6, 350e6, 760e6, 1.3e9, 2.7e9, 6.7e9]
+losses = [3.50, 3.25, 3.10, 2.95, 2.80, 2.65]
+
+# 拟合
+popt, _ = curve_fit(scaling_law, params, losses)
+a, b, c = popt
+
+# 预测70B模型的损失
+pred_loss = scaling_law(70e9, a, b, c)
+print(f"Predicted loss for 70B: {pred_loss:.2f}")
+\end{lstlisting}
+
+\begin{remark}[Scaling Law使用建议]
+\begin{itemize}
+    \item \textbf{小规模验证}：在投入大规模训练前，用小模型验证假设
+    \item \textbf{多点拟合}：至少3-5个不同规模的数据点
+    \item \textbf{保守外推}：外推倍数不宜过大（通常$<$10倍）
+    \item \textbf{任务相关}：关注目标任务的Scaling，而非只看Loss
+    \item \textbf{持续监控}：大规模训练时监控是否符合预期
+\end{itemize}
+\end{remark}

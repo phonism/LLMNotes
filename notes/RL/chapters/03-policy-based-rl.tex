@@ -1,0 +1,1162 @@
+% ==========================================
+% 第三章：基于策略的强化学习
+% ==========================================
+
+\chapter{基于策略的强化学习}
+\label{chap:policy-based}
+
+% ------------------------------------------
+\section{引言：直接优化策略}
+\label{sec:policy-intro}
+
+\subsection{核心问题}
+
+在第二章中，我们介绍了 Value-Based 方法：先学习 $\Qval^*$，再通过 $\argmax$ 导出策略。这种方法在离散动作空间中效果很好，但遇到以下问题时会遇到困难：
+
+\begin{quote}
+\textbf{如果动作空间是连续的（如机器人关节角度），如何计算 $\argmax_a \Qval(s,a)$？}
+
+\textbf{如果最优策略是随机的（如石头剪刀布），如何用确定性策略表示？}
+\end{quote}
+
+Policy-Based 方法提供了一种更直接的思路：\textbf{直接参数化策略 $\policy_\theta(a|s)$，通过梯度上升最大化期望回报}。
+
+\subsection{Value-Based 方法的局限性}
+
+尽管 Q-Learning 和 DQN 取得了很大成功，但存在以下局限：
+
+\begin{enumerate}
+    \item \textbf{连续动作空间困难}：$\max_a \Qval(s,a)$ 需要枚举或优化所有动作，在连续空间中无法直接计算
+
+    \item \textbf{函数逼近不稳定}（Deadly Triad）：当同时使用函数逼近、Bootstrapping 和 Off-policy 学习时，算法可能发散
+
+    \item \textbf{优化目标间接}：Value-Based 方法最小化 TD 误差，而非直接优化期望回报 $J(\policy)$
+
+    \item \textbf{只能学习确定性策略}：$\argmax$ 输出确定动作，但在某些环境中随机策略更优（如博弈、部分可观测环境）
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        box/.style={draw, rounded corners, fill=blue!10, minimum width=3cm, minimum height=1.2cm, align=center},
+        arrow/.style={->, thick, >=stealth}
+    ]
+        % Value-Based
+        \begin{scope}[shift={(-4,0)}]
+            \node[box, fill=orange!20] (q) at (0,0) {学习 $\Qval^*$};
+            \node[box, fill=green!20] (pi) at (0,-2.5) {$\policy^* = \argmax$};
+            \draw[arrow] (q) -- (pi);
+            \node[font=\bfseries] at (0, 1.2) {Value-Based};
+            \node[font=\scriptsize, red] at (0, -3.8) {需要枚举动作};
+        \end{scope}
+
+        % Policy-Based
+        \begin{scope}[shift={(4,0)}]
+            \node[box, fill=purple!20] (policy) at (0,-1.25) {直接学习 $\policy_\theta$};
+            \node[font=\bfseries] at (0, 1.2) {Policy-Based};
+            \node[font=\scriptsize, green!60!black] at (0, -3.8) {直接输出动作分布};
+        \end{scope}
+
+        % VS
+        \node[font=\Large] at (0, -1.25) {vs};
+    \end{tikzpicture}
+    \caption{Value-Based vs. Policy-Based。前者间接导出策略，后者直接参数化策略。}
+    \label{fig:value-vs-policy}
+\end{figure}
+
+\subsection{参数化策略}
+
+Policy-Based 方法直接参数化策略 $\policy_\theta(a|s)$，通过梯度上升最大化期望回报：
+\begin{equation}
+    J(\theta) = \E_{\trajectory \sim \policy_\theta} \left[ G_0 \right] = \E_{\trajectory \sim \policy_\theta} \left[ \sum_{t=0}^{T} \discount^t r_t \right]
+\end{equation}
+
+策略参数化的常见形式：
+
+\begin{itemize}
+    \item \textbf{离散动作空间}：Softmax 输出 Categorical 分布
+    \begin{equation}
+        \policy_\theta(a|s) = \frac{\exp(f_\theta(s,a))}{\sum_{a'} \exp(f_\theta(s,a'))}
+    \end{equation}
+
+    \item \textbf{连续动作空间}：输出高斯分布的参数 $(\mu_\theta(s), \sigma_\theta(s))$
+    \begin{equation}
+        \policy_\theta(a|s) = \mathcal{N}(a \mid \mu_\theta(s), \sigma_\theta^2(s))
+    \end{equation}
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.9]
+        % Discrete
+        \begin{scope}[shift={(-4,0)}]
+            \node[font=\bfseries] at (0, 2) {离散动作};
+            \draw[->] (-1.5, 0) -- (1.5, 0) node[right, font=\scriptsize] {动作};
+            \draw[->] (-1.5, 0) -- (-1.5, 1.5) node[above, font=\scriptsize] {概率};
+
+            % Bars
+            \fill[blue!60] (-1, 0) rectangle (-0.5, 1.2);
+            \fill[blue!60] (-0.2, 0) rectangle (0.3, 0.6);
+            \fill[blue!60] (0.6, 0) rectangle (1.1, 0.3);
+
+            \node[font=\tiny] at (-0.75, -0.3) {$a_1$};
+            \node[font=\tiny] at (0.05, -0.3) {$a_2$};
+            \node[font=\tiny] at (0.85, -0.3) {$a_3$};
+
+            \node[font=\scriptsize] at (0, -1) {Softmax 输出};
+        \end{scope}
+
+        % Continuous
+        \begin{scope}[shift={(4,0)}]
+            \node[font=\bfseries] at (0, 2) {连续动作};
+            \draw[->] (-2, 0) -- (2, 0) node[right, font=\scriptsize] {动作 $a$};
+            \draw[->] (-2, 0) -- (-2, 1.5) node[above, font=\scriptsize] {概率密度};
+
+            % Gaussian curve
+            \draw[thick, blue, domain=-1.8:1.8, samples=50] plot (\x, {1.2*exp(-\x*\x/0.5)});
+
+            \draw[dashed] (0, 0) -- (0, 1.2);
+            \node[font=\tiny] at (0, -0.3) {$\mu_\theta(s)$};
+            \draw[<->] (-0.7, 0.7) -- (0.7, 0.7);
+            \node[font=\tiny] at (0, 0.9) {$\sigma_\theta(s)$};
+
+            \node[font=\scriptsize] at (0, -1) {高斯分布输出};
+        \end{scope}
+    \end{tikzpicture}
+    \caption{策略参数化：离散动作用 Softmax，连续动作用高斯分布}
+    \label{fig:policy-parameterization}
+\end{figure}
+
+\begin{keypoint}
+Policy-Based 方法的优势：
+\begin{enumerate}
+    \item \textbf{处理连续动作}：直接输出动作分布，无需 $\argmax$
+    \item \textbf{学习随机策略}：可以输出动作的概率分布
+    \item \textbf{直接优化目标}：梯度上升直接最大化 $J(\theta)$
+    \item \textbf{更好的收敛性质}：策略参数的小变化导致策略的小变化（光滑）
+\end{enumerate}
+\end{keypoint}
+
+% ------------------------------------------
+\section{Policy Gradient 定理}
+\label{sec:policy-gradient}
+
+Policy Gradient 定理是 Policy-Based RL 的理论基础，它给出了目标函数 $J(\theta)$ 关于参数 $\theta$ 的梯度表达式。
+
+\subsection{目标函数定义}
+
+\begin{definition}[策略性能指标]
+\begin{equation}
+    J(\theta) = \E_{\trajectory \sim \policy_\theta} \left[ R(\trajectory) \right] = \int p(\trajectory | \theta) R(\trajectory) d\trajectory
+\end{equation}
+其中 $R(\trajectory) = G_0 = \sum_{t=0}^{T} \discount^t r_t$ 是轨迹的总回报。
+\end{definition}
+
+问题：如何计算 $\nabla_\theta J(\theta)$？
+
+直接求导会遇到困难：$R(\trajectory)$ 依赖于环境动力学 $P(s'|s,a)$，而我们通常不知道 $P$。
+
+\subsection{Log-Derivative Trick}
+
+计算 $\nabla_\theta J(\theta)$ 的关键技巧是 \textbf{Log-Derivative Trick}（也称为 REINFORCE trick 或 Score Function）：
+
+\begin{lemma}[Log-Derivative Trick]
+\label{lem:log-derivative}
+对于任意概率分布 $p(x|\theta)$：
+\begin{equation}
+    \nabla_\theta p(x|\theta) = p(x|\theta) \nabla_\theta \log p(x|\theta)
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+由对数的求导法则（链式法则）：
+\begin{equation}
+    \nabla_\theta \log p(x|\theta) = \frac{\nabla_\theta p(x|\theta)}{p(x|\theta)}
+\end{equation}
+两边同乘 $p(x|\theta)$：
+\begin{equation}
+    p(x|\theta) \nabla_\theta \log p(x|\theta) = \nabla_\theta p(x|\theta)
+\end{equation}
+\end{proof}
+
+\begin{note}
+Log-Derivative Trick 的妙处：将对 $p(x|\theta)$ 的求导转化为对 $\log p(x|\theta)$ 的求导，而后者往往更容易计算，特别是当 $p$ 是乘积形式时。
+\end{note}
+
+\subsection{Policy Gradient 定理的完整推导}
+
+\begin{theorem}[Policy Gradient Theorem]
+\label{thm:policy-gradient}
+\begin{equation}
+    \nabla_\theta J(\theta) = \E_{\trajectory \sim \policy_\theta} \left[ \sum_{t=0}^{T} \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot G_t \right]
+    \label{eq:policy-gradient}
+\end{equation}
+其中 $G_t = \sum_{k=0}^{T-t} \discount^k r_{t+k}$ 是从时刻 $t$ 开始的 reward-to-go。
+\end{theorem}
+
+\begin{proof}
+\textbf{Step 1}：应用 Log-Derivative Trick
+
+从目标函数的定义出发：
+\begin{align}
+    \nabla_\theta J(\theta) &= \nabla_\theta \int p(\trajectory|\theta) R(\trajectory) d\trajectory \\
+    &= \int \nabla_\theta p(\trajectory|\theta) R(\trajectory) d\trajectory \quad \text{（交换积分和求导）}\\
+    &= \int p(\trajectory|\theta) \nabla_\theta \log p(\trajectory|\theta) R(\trajectory) d\trajectory \quad \text{（Log-Derivative Trick）}\\
+    &= \E_{\trajectory \sim \policy_\theta} \left[ \nabla_\theta \log p(\trajectory|\theta) \cdot R(\trajectory) \right]
+\end{align}
+
+\textbf{Step 2}：展开 $\nabla_\theta \log p(\trajectory|\theta)$
+
+回顾轨迹概率分解（第一章公式 \eqref{eq:trajectory-prob}）：
+\begin{equation}
+    p(\trajectory|\theta) = p(s_0) \prod_{t=0}^{T-1} \policy_\theta(a_t|s_t) P(s_{t+1}|s_t,a_t)
+\end{equation}
+
+取对数：
+\begin{equation}
+    \log p(\trajectory|\theta) = \log p(s_0) + \sum_{t=0}^{T-1} \log \policy_\theta(a_t|s_t) + \sum_{t=0}^{T-1} \log P(s_{t+1}|s_t,a_t)
+\end{equation}
+
+对 $\theta$ 求梯度：
+\begin{equation}
+    \nabla_\theta \log p(\trajectory|\theta) = \underbrace{\nabla_\theta \log p(s_0)}_{=0} + \sum_{t=0}^{T-1} \nabla_\theta \log \policy_\theta(a_t|s_t) + \underbrace{\sum_{t=0}^{T-1} \nabla_\theta \log P(s_{t+1}|s_t,a_t)}_{=0}
+\end{equation}
+
+\begin{important}
+\textbf{关键观察}：$p(s_0)$ 是环境的初始状态分布，$P(s_{t+1}|s_t,a_t)$ 是环境的动力学模型，它们都与策略参数 $\theta$ 无关，因此梯度为零！
+
+最终：
+\begin{equation}
+    \nabla_\theta \log p(\trajectory|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \policy_\theta(a_t|s_t)
+    \label{eq:grad-log-trajectory}
+\end{equation}
+
+这意味着：\textbf{即使不知道环境动力学 $P$，我们也能计算 Policy Gradient}——这是 Policy Gradient 方法能够 Model-Free 的根本原因。
+\end{important}
+
+\textbf{Step 3}：代入得到基本形式
+
+将 \eqref{eq:grad-log-trajectory} 代入：
+\begin{equation}
+    \nabla_\theta J(\theta) = \E_{\trajectory \sim \policy_\theta} \left[ \left( \sum_{t=0}^{T} \nabla_\theta \log \policy_\theta(a_t|s_t) \right) \cdot R(\trajectory) \right]
+    \label{eq:pg-basic}
+\end{equation}
+
+\textbf{Step 4}：引入 Reward-to-go（因果性）
+
+展开 \eqref{eq:pg-basic}：
+\begin{equation}
+    \nabla_\theta J(\theta) = \E \left[ \sum_{t=0}^{T} \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot \sum_{t'=0}^{T} r_{t'} \right]
+\end{equation}
+
+考虑交叉项 $\nabla_\theta \log \policy_\theta(a_t|s_t) \cdot r_{t'}$，当 $t' < t$ 时：
+\begin{itemize}
+    \item $r_{t'}$ 是在时刻 $t'$ 获得的奖励，发生在动作 $a_t$ 之前
+    \item $a_t$ 的选择不可能影响过去的奖励 $r_{t'}$
+    \item 因此 $\E[\nabla_\theta \log \policy_\theta(a_t|s_t) \cdot r_{t'}] = 0$（由引理 \ref{lem:score-zero}）
+\end{itemize}
+
+只有 $t' \geq t$ 的奖励才与 $a_t$ 相关，因此可以用 reward-to-go $G_t = \sum_{k=0}^{T-t} \discount^k r_{t+k}$ 替代 $R(\trajectory)$：
+\begin{equation}
+    \nabla_\theta J(\theta) = \E_{\trajectory \sim \policy_\theta} \left[ \sum_{t=0}^{T} \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot G_t \right]
+\end{equation}
+\end{proof}
+
+\begin{lemma}[Score Function 的期望为零]
+\label{lem:score-zero}
+对于任意策略 $\policy_\theta$：
+\begin{equation}
+    \E_{a \sim \policy_\theta(\cdot|s)} \left[ \nabla_\theta \log \policy_\theta(a|s) \right] = 0
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+\begin{align}
+    \E_{a \sim \policy_\theta} \left[ \nabla_\theta \log \policy_\theta(a|s) \right]
+    &= \sum_a \policy_\theta(a|s) \cdot \frac{\nabla_\theta \policy_\theta(a|s)}{\policy_\theta(a|s)} \\
+    &= \sum_a \nabla_\theta \policy_\theta(a|s) \\
+    &= \nabla_\theta \sum_a \policy_\theta(a|s) \\
+    &= \nabla_\theta 1 = 0
+\end{align}
+\end{proof}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.85]
+        % Timeline
+        \draw[->, thick] (0,0) -- (12,0) node[right] {时间};
+
+        % Time points
+        \foreach \x/\t in {1/0, 3/1, 5/2, 7/t, 9/{t+1}, 11/T} {
+            \fill (\x, 0) circle (2pt);
+            \node[below] at (\x, -0.2) {$\t$};
+        }
+
+        % Actions
+        \foreach \x in {1, 3, 5, 7, 9} {
+            \node[above, font=\scriptsize, blue] at (\x, 0.3) {$a$};
+        }
+
+        % Rewards
+        \foreach \x in {2, 4, 6, 8, 10} {
+            \node[above, font=\scriptsize, red] at (\x, 0.6) {$r$};
+        }
+
+        % Highlight current action
+        \fill[blue!30] (6.7, -0.3) rectangle (7.3, 0.3);
+        \node[below, font=\small] at (7, -0.6) {当前动作 $a_t$};
+
+        % Past rewards (not affected)
+        \draw[decorate, decoration={brace, amplitude=5pt, raise=5pt, mirror}] (1,-0.8) -- (6,-0.8)
+            node[midway, below=10pt, font=\scriptsize] {过去奖励：与 $a_t$ 无关};
+
+        % Future rewards (affected)
+        \draw[decorate, decoration={brace, amplitude=5pt, raise=5pt}] (7,0.9) -- (11,0.9)
+            node[midway, above=8pt, font=\scriptsize] {$G_t = r_t + \gamma r_{t+1} + \cdots$};
+    \end{tikzpicture}
+    \caption{因果性：动作 $a_t$ 只影响未来奖励，不影响过去。因此 Policy Gradient 只需要 reward-to-go $G_t$。}
+    \label{fig:causality}
+\end{figure}
+
+\begin{keypoint}
+Policy Gradient 定理的直观理解：
+\begin{itemize}
+    \item $\nabla_\theta \log \policy_\theta(a_t|s_t)$ 是"增加动作 $a_t$ 概率"的方向
+    \item $G_t$ 是该动作之后获得的累积奖励
+    \item 如果 $G_t > 0$：沿梯度方向更新，增加 $a_t$ 的概率
+    \item 如果 $G_t < 0$：反向更新，减少 $a_t$ 的概率
+\end{itemize}
+简言之：\textbf{好的动作更可能被选择，坏的动作更少被选择}。
+\end{keypoint}
+
+% ------------------------------------------
+\section{REINFORCE 算法}
+\label{sec:reinforce}
+
+REINFORCE 是最简单的 Policy Gradient 算法，直接使用蒙特卡洛采样来估计梯度。
+
+\begin{algorithm}[H]
+\caption{REINFORCE}
+\label{alg:reinforce}
+\KwInput{学习率 $\alpha$，初始策略参数 $\theta$}
+\ForEach{episode}{
+    采样轨迹 $\trajectory = (s_0, a_0, r_0, \ldots, s_T)$ 按策略 $\policy_\theta$\;
+    \ForEach{$t = 0, 1, \ldots, T$}{
+        计算 $G_t = \sum_{k=0}^{T-t} \discount^k r_{t+k}$\;
+    }
+    更新参数：$\theta \leftarrow \theta + \alpha \sum_{t=0}^{T} \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot G_t$\;
+}
+\end{algorithm}
+
+\subsection{无偏性}
+
+\begin{theorem}[REINFORCE 是无偏估计]
+REINFORCE 的梯度估计：
+\begin{equation}
+    \hat{g} = \sum_{t=0}^{T} \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot G_t
+\end{equation}
+是 $\nabla_\theta J(\theta)$ 的无偏估计，即 $\E[\hat{g}] = \nabla_\theta J(\theta)$。
+\end{theorem}
+
+\begin{proof}
+这是 Policy Gradient 定理（定理 \ref{thm:policy-gradient}）的直接推论。轨迹 $\tau$ 按 $\policy_\theta$ 采样，$G_t$ 是真实回报，期望就是 $\nabla_\theta J(\theta)$。
+\end{proof}
+
+\subsection{高方差问题}
+
+尽管 REINFORCE 无偏，但方差很大：
+
+\begin{itemize}
+    \item $G_t$ 累积了从 $t$ 到终止的所有随机性（环境随机 + 策略随机）
+    \item 轨迹越长，方差越大
+    \item 奖励稀疏时，大部分轨迹的 $G_t \approx 0$，偶尔出现大的 $G_t$
+    \item $G_t$ 包含了很多与具体动作 $a_t$ 无关的噪声
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.8]
+        % Axis
+        \draw[->] (0,0) -- (8,0) node[right] {Episode};
+        \draw[->] (0,-2) -- (0,3) node[above] {$\hat{g}$（梯度估计）};
+
+        % High variance samples
+        \foreach \x in {1,2,3,4,5,6,7} {
+            \pgfmathsetmacro{\y}{2*rand}
+            \fill[blue] (\x, \y) circle (2pt);
+        }
+
+        % True gradient
+        \draw[red, thick, dashed] (0, 0.5) -- (8, 0.5);
+        \node[red, right] at (8, 0.5) {$\nabla J$};
+
+        % Label
+        \node[font=\scriptsize] at (4, -2.5) {高方差：每次估计波动很大};
+    \end{tikzpicture}
+    \caption{REINFORCE 的高方差问题示意图。虽然期望正确，但单次估计波动大。}
+    \label{fig:reinforce-variance}
+\end{figure}
+
+% ------------------------------------------
+\section{Baseline 与方差降低}
+\label{sec:baseline}
+
+\subsection{Baseline 技巧}
+
+一个巧妙的技巧是：从 $G_t$ 中减去一个 baseline $b(s_t)$，可以降低方差而不引入偏差。
+
+\begin{theorem}[Baseline 不改变期望]
+\label{thm:baseline}
+对于任意只依赖于状态 $s$（不依赖于动作 $a$）的函数 $b(s)$：
+\begin{equation}
+    \E_{a \sim \policy_\theta(\cdot|s)} \left[ \nabla_\theta \log \policy_\theta(a|s) \cdot b(s) \right] = 0
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+由于 $b(s)$ 不依赖于 $a$，可以提出期望外：
+\begin{align}
+    \E_{a \sim \policy_\theta} \left[ \nabla_\theta \log \policy_\theta(a|s) \cdot b(s) \right]
+    &= b(s) \cdot \E_{a \sim \policy_\theta} \left[ \nabla_\theta \log \policy_\theta(a|s) \right] \\
+    &= b(s) \cdot \sum_a \policy_\theta(a|s) \cdot \frac{\nabla_\theta \policy_\theta(a|s)}{\policy_\theta(a|s)} \\
+    &= b(s) \cdot \sum_a \nabla_\theta \policy_\theta(a|s) \\
+    &= b(s) \cdot \nabla_\theta \underbrace{\sum_a \policy_\theta(a|s)}_{= 1} \\
+    &= b(s) \cdot \nabla_\theta 1 = 0
+\end{align}
+\end{proof}
+
+因此，Policy Gradient 可以写成：
+\begin{equation}
+    \nabla_\theta J(\theta) = \E \left[ \sum_t \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot (G_t - b(s_t)) \right]
+    \label{eq:pg-with-baseline}
+\end{equation}
+
+减去 baseline 不改变期望，但可以显著降低方差！
+
+\subsection{为什么 Baseline 能降低方差？}
+
+直觉解释：
+\begin{itemize}
+    \item $G_t$ 可能总是正的（如奖励都是正数），导致所有动作概率都被增加
+    \item 减去 $b(s)$（如平均回报），使得 $G_t - b(s_t)$ 有正有负
+    \item 好于平均的动作被增强，差于平均的动作被削弱
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.9]
+        % Without baseline
+        \begin{scope}[shift={(-4,0)}]
+            \node[font=\bfseries] at (0, 3) {无 Baseline};
+            \draw[->] (-1.5, 0) -- (1.5, 0) node[right, font=\scriptsize] {动作};
+            \draw[->] (-1.5, 0) -- (-1.5, 2.3);
+            \node[font=\scriptsize, anchor=south] at (-1.5, 2.3) {$G_t$};
+
+            % All positive
+            \fill[blue!60] (-1, 0) rectangle (-0.5, 1.8);
+            \fill[blue!60] (-0.2, 0) rectangle (0.3, 1.2);
+            \fill[blue!60] (0.6, 0) rectangle (1.1, 1.5);
+
+            \node[font=\tiny, red] at (0, -0.5) {全正，所有动作都被增强};
+        \end{scope}
+
+        % With baseline
+        \begin{scope}[shift={(4,0)}]
+            \node[font=\bfseries] at (0, 3) {有 Baseline};
+            \draw[->] (-1.5, 0) -- (1.5, 0) node[right, font=\scriptsize] {动作};
+            \draw[->] (-1.5, -1) -- (-1.5, 2.3);
+            \node[font=\scriptsize, anchor=south] at (-1.5, 2.3) {$G_t - b$};
+
+            % Mixed
+            \fill[green!60] (-1, 0) rectangle (-0.5, 1.0);
+            \fill[red!60] (-0.2, 0) rectangle (0.3, -0.6);
+            \fill[green!60] (0.6, 0) rectangle (1.1, 0.5);
+
+            % Baseline
+            \draw[dashed, gray] (-1.5, 0) -- (1.5, 0);
+            \node[font=\tiny, gray, right] at (1.5, 0) {$b(s)$};
+
+            \node[font=\tiny, green!60!black] at (0, -1.5) {好动作增强，坏动作削弱};
+        \end{scope}
+    \end{tikzpicture}
+    \caption{Baseline 的效果：将"绝对好坏"变为"相对好坏"，提供更清晰的学习信号。}
+    \label{fig:baseline-effect}
+\end{figure}
+
+\subsection{最优 Baseline}
+
+\begin{theorem}[最优 Baseline]
+在不改变期望的前提下，使方差最小的 baseline 是状态价值函数：
+\begin{equation}
+    b^*(s) = \Val^\policy(s)
+\end{equation}
+\end{theorem}
+
+\begin{proof}[证明思路]
+方差 $\text{Var}[\hat{g}]$ 关于 $b(s)$ 是二次函数，对 $b(s)$ 求导并令其为零：
+\begin{equation}
+    \frac{\partial \text{Var}[\hat{g}]}{\partial b(s)} = 0 \implies b^*(s) = \frac{\E[(\nabla \log \policy)^2 \cdot G]}{\E[(\nabla \log \policy)^2]}
+\end{equation}
+在一定近似下（$(\nabla \log \policy)^2$ 与 $G$ 独立），$b^*(s) \approx \E[G|s] = \Val^\policy(s)$。
+\end{proof}
+
+当 $b(s) = \Val^\policy(s)$ 时，$G_t - \Val^\policy(s_t)$ 的期望正是 advantage 函数！
+
+% ------------------------------------------
+\section{Advantage Function 与 Actor-Critic}
+\label{sec:advantage-ac}
+
+\subsection{Advantage 的定义与直觉}
+
+回顾第一章的 Advantage 函数定义：
+\begin{equation}
+    \advantage^\policy(s,a) = \Qval^\policy(s,a) - \Val^\policy(s)
+\end{equation}
+
+当使用 $\Val^\policy(s)$ 作为 baseline 时：
+\begin{align}
+    \E_\policy \left[ G_t - \Val^\policy(s_t) \mid s_t, a_t \right] &= \E_\policy[G_t | s_t, a_t] - \Val^\policy(s_t) \\
+    &= \Qval^\policy(s_t, a_t) - \Val^\policy(s_t) \\
+    &= \advantage^\policy(s_t, a_t)
+\end{align}
+
+因此，Policy Gradient with Advantage：
+\begin{equation}
+    \nabla_\theta J(\theta) = \E \left[ \sum_t \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot \advantage^\policy(s_t, a_t) \right]
+    \label{eq:pg-advantage}
+\end{equation}
+
+\begin{keypoint}
+Advantage $\advantage(s,a)$ 的直觉：
+\begin{itemize}
+    \item $\Val(s)$：在状态 $s$ 的"平均"表现
+    \item $\Qval(s,a)$：在状态 $s$ 选择动作 $a$ 的表现
+    \item $\advantage(s,a) = \Qval(s,a) - \Val(s)$：动作 $a$ 比平均好多少
+\end{itemize}
+$\advantage > 0$：这个动作好于平均，应该增加其概率
+$\advantage < 0$：这个动作差于平均，应该减少其概率
+\end{keypoint}
+
+\subsection{Advantage 的估计方法}
+
+实践中，需要估计 $\advantage^\policy$。常见估计方法：
+
+\begin{enumerate}
+    \item \textbf{Monte Carlo 估计}：
+    \begin{equation}
+        \hat{\advantage}_t^{\text{MC}} = G_t - \hat{\Val}(s_t)
+    \end{equation}
+    无偏但高方差（$G_t$ 累积了整条轨迹的随机性）。
+
+    \item \textbf{TD 估计}（1-step）：
+    \begin{equation}
+        \hat{\advantage}_t^{\text{TD}} = r_t + \discount \hat{\Val}(s_{t+1}) - \hat{\Val}(s_t) = \delta_t
+    \end{equation}
+    低方差但有偏（依赖于 $\hat{\Val}$ 的准确性）。
+
+    \item \textbf{n-step 估计}：介于两者之间
+    \begin{equation}
+        \hat{\advantage}_t^{(n)} = \sum_{k=0}^{n-1} \discount^k r_{t+k} + \discount^n \hat{\Val}(s_{t+n}) - \hat{\Val}(s_t)
+    \end{equation}
+
+    \item \textbf{GAE}（下一节介绍）：通过 $\lambda$ 参数灵活权衡偏差和方差。
+\end{enumerate}
+
+\subsection{Actor-Critic 架构}
+
+为了估计 $\hat{\Val}(s)$，我们引入一个 \textbf{Critic} 网络。Actor-Critic 方法同时学习：
+\begin{itemize}
+    \item \textbf{Actor}：策略网络 $\policy_\theta(a|s)$，输出动作分布
+    \item \textbf{Critic}：价值网络 $\hat{\Val}_\phi(s)$，估计状态价值
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.95,
+        box/.style={draw, rounded corners, minimum width=3cm, minimum height=1.2cm, align=center},
+        arrow/.style={->, thick, >=stealth}
+    ]
+        % Actor
+        \node[box, fill=orange!30] (actor) at (0, 1) {Actor $\policy_\theta(a|s)$};
+
+        % Critic
+        \node[box, fill=purple!25] (critic) at (0, -1.5) {Critic $\hat{\Val}_\phi(s)$};
+
+        % Environment
+        \node[box, fill=green!25] (env) at (6, -0.25) {Environment};
+
+        % State input
+        \node[circle, draw, fill=blue!20, minimum size=0.8cm] (state) at (-4, -0.25) {$s$};
+
+        % Arrows
+        \draw[arrow] (state) -- (actor);
+        \draw[arrow] (state) -- (critic);
+        \draw[arrow] (actor.east) -- node[above, font=\scriptsize] {$a \sim \policy_\theta$} (env.north west);
+        \draw[arrow] (env.south west) -- node[below, font=\scriptsize] {$s', r$} +(-2, 0) |- (critic.east);
+
+        % Advantage signal
+        \draw[arrow, blue, thick] (critic.north) -- node[left, font=\scriptsize] {$\hat{\advantage}_t$} (actor.south);
+
+        % Update arrows
+        \draw[arrow, red, dashed] (critic.west) -- +(-1, 0) node[left, font=\scriptsize] {TD Loss};
+        \draw[arrow, red, dashed] (actor.west) -- +(-1, 0) node[left, font=\scriptsize] {PG Loss};
+
+        % Legend
+        \node[font=\scriptsize, text width=3cm] at (6, -2.5) {
+            Critic 提供 $\hat{\Val}(s)$\\
+            计算 $\hat{\advantage}_t$\\
+            用于更新 Actor
+        };
+    \end{tikzpicture}
+    \caption{Actor-Critic 架构。Critic 估计 $\Val(s)$，提供 advantage 信号来更新 Actor。}
+    \label{fig:actor-critic}
+\end{figure}
+
+\subsection{A2C 算法}
+
+A2C（Advantage Actor-Critic）的核心更新规则：
+
+\textbf{Actor 更新}（Policy Gradient with Advantage）：
+\begin{equation}
+    \theta \leftarrow \theta + \alpha_\theta \sum_t \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot \hat{\advantage}_t
+\end{equation}
+
+\textbf{Critic 更新}（Value Function Regression）：
+
+方式一：使用 MC target
+\begin{equation}
+    \phi \leftarrow \phi - \alpha_\phi \nabla_\phi \sum_t \left( \hat{\Val}_\phi(s_t) - G_t \right)^2
+\end{equation}
+
+方式二：使用 TD target（更常用）
+\begin{equation}
+    \phi \leftarrow \phi - \alpha_\phi \nabla_\phi \sum_t \left( \hat{\Val}_\phi(s_t) - (r_t + \discount \hat{\Val}_\phi(s_{t+1})) \right)^2
+\end{equation}
+
+\begin{algorithm}[H]
+\caption{Advantage Actor-Critic (A2C)}
+\label{alg:a2c}
+\KwInput{Actor 参数 $\theta$，Critic 参数 $\phi$，学习率 $\alpha_\theta, \alpha_\phi$}
+\ForEach{episode}{
+    采样轨迹 $(s_0, a_0, r_0, \ldots, s_T)$ 按 $\policy_\theta$\;
+    \ForEach{$t = 0, \ldots, T-1$}{
+        计算 TD 残差：$\delta_t = r_t + \discount \hat{\Val}_\phi(s_{t+1}) - \hat{\Val}_\phi(s_t)$\;
+        或计算 MC advantage：$\hat{\advantage}_t = G_t - \hat{\Val}_\phi(s_t)$\;
+    }
+    更新 Actor：$\theta \leftarrow \theta + \alpha_\theta \sum_t \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot \hat{\advantage}_t$\;
+    更新 Critic：$\phi \leftarrow \phi - \alpha_\phi \nabla_\phi \sum_t (\hat{\Val}_\phi(s_t) - \text{target})^2$\;
+}
+\end{algorithm}
+
+\begin{keypoint}
+为什么需要 Critic？
+\begin{itemize}
+    \item 提供 $\hat{\Val}(s)$ 来计算 advantage $\hat{\advantage}_t$
+    \item 比纯 MC（使用 $G_t$）方差更小
+    \item 可每步更新，不用等 episode 结束
+    \item Critic 的估计虽有偏差，但整体降低了梯度估计的方差
+\end{itemize}
+\end{keypoint}
+
+% ------------------------------------------
+\section{Generalized Advantage Estimation (GAE)}
+\label{sec:gae}
+
+GAE 提供了一种在偏差和方差之间灵活权衡的 advantage 估计方法，是现代 Policy Gradient 算法（如 PPO）的核心组件。
+
+\subsection{从 n-step Advantage 到 GAE}
+
+回顾 n-step advantage 估计：
+\begin{equation}
+    \hat{\advantage}_t^{(n)} = \sum_{k=0}^{n-1} \discount^k r_{t+k} + \discount^n \hat{\Val}(s_{t+n}) - \hat{\Val}(s_t)
+\end{equation}
+
+\begin{itemize}
+    \item $n=1$：TD advantage，$\hat{\advantage}_t^{(1)} = \delta_t = r_t + \discount \hat{\Val}(s_{t+1}) - \hat{\Val}(s_t)$（低方差，高偏差）
+    \item $n=\infty$：MC advantage，$\hat{\advantage}_t^{(\infty)} = G_t - \hat{\Val}(s_t)$（高方差，低偏差）
+\end{itemize}
+
+自然的问题：能否组合不同 $n$ 的估计，取得更好的权衡？答案是 \textbf{GAE}——通过对所有 n-step advantage 进行指数加权平均，用一个参数 $\lambda$ 灵活控制偏差-方差的平衡点。
+
+\subsection{GAE 的定义与推导}
+
+\begin{definition}[Generalized Advantage Estimation]
+\begin{equation}
+    \hat{\advantage}_t^{\text{GAE}(\gamma, \lambda)} = \sum_{l=0}^{\infty} (\discount \lambda)^l \delta_{t+l}
+    \label{eq:gae}
+\end{equation}
+其中 $\delta_t = r_t + \discount \hat{\Val}(s_{t+1}) - \hat{\Val}(s_t)$ 是 TD 残差，$\lambda \in [0,1]$ 是衰减参数。
+\end{definition}
+
+\begin{theorem}[GAE 等价于 n-step Advantage 的加权和]
+\label{thm:gae-equivalence}
+\begin{equation}
+    \hat{\advantage}_t^{\text{GAE}} = (1-\lambda) \sum_{n=1}^{\infty} \lambda^{n-1} \hat{\advantage}_t^{(n)}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+首先，注意到 n-step advantage 可以写成 TD 残差的和：
+\begin{equation}
+    \hat{\advantage}_t^{(n)} = \sum_{k=0}^{n-1} \discount^k \delta_{t+k}
+\end{equation}
+
+这可以通过展开验证：
+\begin{align}
+    \sum_{k=0}^{n-1} \discount^k \delta_{t+k} &= \sum_{k=0}^{n-1} \discount^k \left( r_{t+k} + \discount \hat{\Val}(s_{t+k+1}) - \hat{\Val}(s_{t+k}) \right) \\
+    &= \sum_{k=0}^{n-1} \discount^k r_{t+k} + \sum_{k=0}^{n-1} \discount^{k+1} \hat{\Val}(s_{t+k+1}) - \sum_{k=0}^{n-1} \discount^k \hat{\Val}(s_{t+k})
+\end{align}
+
+后两项是 telescoping sum：
+\begin{align}
+    &= \sum_{k=0}^{n-1} \discount^k r_{t+k} + \discount^n \hat{\Val}(s_{t+n}) - \hat{\Val}(s_t) \\
+    &= \hat{\advantage}_t^{(n)}
+\end{align}
+
+现在计算 GAE 的加权和形式：
+\begin{align}
+    (1-\lambda) \sum_{n=1}^{\infty} \lambda^{n-1} \hat{\advantage}_t^{(n)}
+    &= (1-\lambda) \sum_{n=1}^{\infty} \lambda^{n-1} \sum_{k=0}^{n-1} \discount^k \delta_{t+k}
+\end{align}
+
+交换求和顺序。对于固定的 $k$，它出现在 $n > k$ 的所有项中：
+\begin{align}
+    &= (1-\lambda) \sum_{k=0}^{\infty} \discount^k \delta_{t+k} \sum_{n=k+1}^{\infty} \lambda^{n-1} \\
+    &= (1-\lambda) \sum_{k=0}^{\infty} \discount^k \delta_{t+k} \cdot \frac{\lambda^k}{1-\lambda} \\
+    &= \sum_{k=0}^{\infty} (\discount\lambda)^k \delta_{t+k} \\
+    &= \hat{\advantage}_t^{\text{GAE}}
+\end{align}
+\end{proof}
+
+\subsection{$\lambda$ 参数的偏差-方差权衡}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{@{}cccl@{}}
+        \toprule
+        $\lambda$ 值 & 等价形式 & 偏差 & 方差 \\
+        \midrule
+        $\lambda = 0$ & $\delta_t$（TD） & 高（依赖 $\hat{\Val}$） & 低 \\
+        $\lambda = 1$ & $G_t - \hat{\Val}(s_t)$（MC） & 低 & 高 \\
+        $\lambda \in (0,1)$ & 加权平均 & 中等 & 中等 \\
+        \bottomrule
+    \end{tabular}
+    \caption{GAE 参数 $\lambda$ 的效果}
+    \label{tab:gae-lambda}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.85]
+        % Lambda = 0
+        \begin{scope}[shift={(0,0)}]
+            \node[font=\bfseries] at (2.5, 2) {$\lambda = 0$};
+            \draw[->, thick] (0,0) -- (5,0) node[right, font=\scriptsize] {$l$};
+            \fill[blue!70] (0.5, 0) rectangle (1, 1.5);
+            \node[font=\tiny] at (0.75, -0.3) {$\delta_t$};
+            \node[font=\scriptsize] at (2.5, -1) {只用当前 TD 残差};
+        \end{scope}
+
+        % Lambda = 0.5
+        \begin{scope}[shift={(6,0)}]
+            \node[font=\bfseries] at (2.5, 2) {$\lambda = 0.5$};
+            \draw[->, thick] (0,0) -- (5,0) node[right, font=\scriptsize] {$l$};
+            \fill[blue!70] (0.5, 0) rectangle (1, 1.5);
+            \fill[blue!50] (1.5, 0) rectangle (2, 0.75);
+            \fill[blue!30] (2.5, 0) rectangle (3, 0.375);
+            \fill[blue!15] (3.5, 0) rectangle (4, 0.1875);
+            \node[font=\scriptsize] at (2.5, -1) {指数衰减权重};
+        \end{scope}
+
+        % Lambda = 1
+        \begin{scope}[shift={(12,0)}]
+            \node[font=\bfseries] at (2.5, 2) {$\lambda = 1$};
+            \draw[->, thick] (0,0) -- (5,0) node[right, font=\scriptsize] {$l$};
+            \fill[blue!70] (0.5, 0) rectangle (1, 1.5);
+            \fill[blue!70] (1.5, 0) rectangle (2, 1.5);
+            \fill[blue!70] (2.5, 0) rectangle (3, 1.5);
+            \fill[blue!70] (3.5, 0) rectangle (4, 1.5);
+            \node[font=\scriptsize] at (2.5, -1) {所有 TD 残差等权};
+        \end{scope}
+    \end{tikzpicture}
+    \caption{GAE 中 $(\gamma\lambda)^l$ 权重随 $l$ 的变化。$\lambda$ 越小，越依赖近期的 TD 残差。}
+    \label{fig:gae-weights}
+\end{figure}
+
+实践中，$\lambda = 0.95$ 或 $\lambda = 0.97$ 是常用的选择。
+
+\begin{keypoint}
+GAE 的直觉理解：
+\begin{itemize}
+    \item $\delta_t = r_t + \gamma\hat{\Val}(s_{t+1}) - \hat{\Val}(s_t)$ 是"一步后用 Critic 估计剩余价值"的 advantage
+    \item GAE 把多步 $\delta$ 加权求和，$(\gamma\lambda)^l$ 让远处的 $\delta$ 权重指数衰减
+    \item $\lambda$ 越小，越依赖 Critic 估计（偏差大但方差小）
+    \item $\lambda$ 越大，越依赖实际回报（偏差小但方差大）
+\end{itemize}
+GAE 与第二章的 TD($\lambda$) 有类似的思想，都是通过 $\lambda$ 在 TD 和 MC 之间权衡。
+\end{keypoint}
+
+\subsection{GAE 的实际计算}
+
+GAE 可以通过递推高效计算：
+
+\begin{equation}
+    \hat{\advantage}_t^{\text{GAE}} = \delta_t + \gamma\lambda \hat{\advantage}_{t+1}^{\text{GAE}}
+\end{equation}
+
+边界条件：$\hat{\advantage}_T^{\text{GAE}} = 0$（episode 结束后）。
+
+从后往前计算，复杂度为 $O(T)$。
+
+% ------------------------------------------
+\section{重要性采样与 Off-Policy Policy Gradient}
+\label{sec:importance-sampling}
+
+\subsection{On-Policy 的问题}
+
+Policy Gradient 是 on-policy 的：每次更新 $\theta$ 后，旧数据的分布 $p(\tau|\theta_{\text{old}})$ 就与新策略 $p(\tau|\theta)$ 不同了。这导致：
+\begin{itemize}
+    \item 数据只能用一次，样本效率低
+    \item 每次更新都需要重新采样
+\end{itemize}
+
+重要性采样（Importance Sampling, IS）允许我们复用旧数据。
+
+\subsection{重要性采样原理}
+
+\begin{definition}[重要性采样]
+用分布 $q(x)$ 的样本估计 $p(x)$ 下的期望：
+\begin{equation}
+    \E_{x \sim p}[f(x)] = \E_{x \sim q}\left[ \frac{p(x)}{q(x)} f(x) \right]
+\end{equation}
+其中 $\rho(x) = \frac{p(x)}{q(x)}$ 称为\textbf{重要性权重}（Importance Weight）。
+\end{definition}
+
+\begin{proof}
+\begin{equation}
+    \E_{x \sim q}\left[ \frac{p(x)}{q(x)} f(x) \right] = \int q(x) \cdot \frac{p(x)}{q(x)} f(x) dx = \int p(x) f(x) dx = \E_{x \sim p}[f(x)]
+\end{equation}
+\end{proof}
+
+\subsection{应用到 Policy Gradient}
+
+用旧策略 $\policy_{\text{old}}$ 的样本估计新策略 $\policy_\theta$ 下的期望：
+
+\begin{equation}
+    J(\theta) = \E_{\tau \sim \policy_{\text{old}}} \left[ \frac{p(\tau|\theta)}{p(\tau|\theta_{\text{old}})} R(\tau) \right]
+\end{equation}
+
+轨迹的重要性权重：
+\begin{align}
+    \frac{p(\tau|\theta)}{p(\tau|\theta_{\text{old}})} &= \frac{\cancel{p(s_0)} \prod_t \policy_\theta(a_t|s_t) \cancel{P(s_{t+1}|s_t,a_t)}}{\cancel{p(s_0)} \prod_t \policy_{\text{old}}(a_t|s_t) \cancel{P(s_{t+1}|s_t,a_t)}} \\
+    &= \prod_{t=0}^{T-1} \frac{\policy_\theta(a_t|s_t)}{\policy_{\text{old}}(a_t|s_t)}
+\end{align}
+
+环境动力学 $P$ 和初始分布 $p(s_0)$ 消掉了！这再次体现了 Policy Gradient 的 model-free 特性。
+
+对于单步 advantage 估计，重要性权重简化为：
+\begin{equation}
+    \rho_t(\theta) = \frac{\policy_\theta(a_t|s_t)}{\policy_{\text{old}}(a_t|s_t)}
+\end{equation}
+
+\begin{theorem}[Off-policy Policy Gradient]
+\begin{equation}
+    \nabla_\theta J(\theta) = \E_{(s,a) \sim \policy_{\text{old}}} \left[ \rho_t(\theta) \nabla_\theta \log \policy_\theta(a_t|s_t) \hat{\advantage}_t \right]
+\end{equation}
+\end{theorem}
+
+这使得可以用旧数据多次更新策略！
+
+\subsection{方差问题}
+
+重要性采样的问题：当 $\rho_t$ 偏离 1 太多时，方差会急剧增大。
+
+\begin{itemize}
+    \item 如果 $\policy_\theta$ 和 $\policy_{\text{old}}$ 差异大，$\rho_t$ 可能非常大或非常小
+    \item 大的 $\rho_t$ 导致梯度估计方差爆炸
+    \item 需要限制策略更新幅度，保持 $\rho_t \approx 1$
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.8]
+        \draw[->] (0,0) -- (6,0) node[right] {$\rho_t$};
+        \draw[->] (0,0) -- (0,3) node[above] {方差};
+
+        % Variance curve
+        \draw[thick, blue, domain=0.2:5, samples=50] plot (\x, {0.5 + 0.3*(\x-2)^2});
+
+        % Safe region
+        \fill[green!20] (1.5, 0) rectangle (2.5, 2.5);
+        \node[font=\scriptsize, green!60!black] at (2, 2.8) {安全区域};
+
+        % Labels
+        \node[below] at (2, 0) {$1$};
+        \draw[dashed] (2, 0) -- (2, 0.5);
+
+        \node[font=\scriptsize] at (4.5, 2) {$\rho$ 偏离 1 时};
+        \node[font=\scriptsize] at (4.5, 1.5) {方差急剧增大};
+    \end{tikzpicture}
+    \caption{重要性权重 $\rho_t$ 偏离 1 时，方差增大。需要限制策略更新幅度。}
+    \label{fig:is-variance}
+\end{figure}
+
+% ------------------------------------------
+\section{Trust Region 方法：TRPO 与 PPO}
+\label{sec:trust-region}
+
+\subsection{动机：限制策略更新幅度}
+
+重要性采样允许复用旧数据，但如果 $\policy_\theta$ 与 $\policy_{\text{old}}$ 差异太大，估计就不可靠。Trust Region 方法通过限制策略更新幅度来解决这个问题。
+
+\subsection{TRPO：KL 约束优化}
+
+TRPO（Trust Region Policy Optimization）通过 KL 散度约束限制策略更新：
+
+\begin{definition}[TRPO 优化问题]
+\begin{align}
+    \max_\theta \quad & L(\theta) = \E_{(s,a) \sim \policy_{\text{old}}} \left[ \rho_t(\theta) \hat{\advantage}_t \right] \\
+    \text{s.t.} \quad & \bar{D}_{\text{KL}}(\policy_{\text{old}} \| \policy_\theta) \leq \delta
+\end{align}
+其中 $\bar{D}_{\text{KL}}$ 是状态分布上的平均 KL 散度。
+\end{definition}
+
+TRPO 的特点：
+\begin{itemize}
+    \item 理论上保证单调改进（在约束满足时）
+    \item 需要计算 KL 散度的 Hessian（二阶优化，Conjugate Gradient）
+    \item 实现复杂，计算开销大
+\end{itemize}
+
+\subsection{PPO：简化的 Trust Region}
+
+PPO（Proximal Policy Optimization）通过更简单的方式近似 TRPO 的效果。
+
+\subsubsection{PPO-Clip}
+
+\begin{definition}[PPO-Clip 目标]
+\begin{equation}
+    L^{\text{CLIP}}(\theta) = \E \left[ \min \left( \rho_t \hat{\advantage}_t, \, \text{clip}(\rho_t, 1-\epsilon, 1+\epsilon) \hat{\advantage}_t \right) \right]
+    \label{eq:ppo-clip}
+\end{equation}
+其中 $\text{clip}(x, a, b) = \max(a, \min(x, b))$，$\epsilon$ 通常取 0.1 或 0.2。
+\end{definition}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.75]
+        % Advantage > 0
+        \begin{scope}[shift={(-5,0)}]
+            \node[font=\bfseries] at (2.5, 3) {$\hat{\advantage}_t > 0$（好动作）};
+            \draw[->] (0,0) -- (5,0) node[right, font=\scriptsize] {$\rho_t$};
+            \draw[->] (0,-0.5) -- (0,2.5) node[above, font=\scriptsize] {$L$};
+
+            % Unclipped
+            \draw[red, dashed, thick] (0,0) -- (4.5, 2.25);
+
+            % Clipped
+            \draw[blue, very thick] (0,0) -- (3,1.5) -- (4.5,1.5);
+
+            % Labels
+            \node[below, font=\tiny] at (1.5, 0) {$1{-}\epsilon$};
+            \node[below, font=\tiny] at (3, 0) {$1{+}\epsilon$};
+            \draw[dotted] (1.5,0) -- (1.5,0.75);
+            \draw[dotted] (3,0) -- (3,1.5);
+
+            \node[font=\tiny, blue] at (4.2, 2) {截断};
+            \node[font=\scriptsize] at (2.5, -1) {防止过度增加概率};
+        \end{scope}
+
+        % Advantage < 0
+        \begin{scope}[shift={(5,0)}]
+            \node[font=\bfseries] at (2.5, 3) {$\hat{\advantage}_t < 0$（坏动作）};
+            \draw[->] (0,0) -- (5,0) node[right, font=\scriptsize] {$\rho_t$};
+            \draw[->] (0,-2) -- (0,1) node[above, font=\scriptsize] {$L$};
+
+            % Unclipped
+            \draw[red, dashed, thick] (0,0) -- (4.5, -2.25);
+
+            % Clipped
+            \draw[blue, very thick] (0,-1.5) -- (1.5,-1.5) -- (4.5, 0);
+
+            % Labels
+            \node[below, font=\tiny] at (1.5, 0) {$1{-}\epsilon$};
+            \node[below, font=\tiny] at (3, 0) {$1{+}\epsilon$};
+            \draw[dotted] (1.5,0) -- (1.5,-1.5);
+            \draw[dotted] (3,0) -- (3,-0.75);
+
+            \node[font=\tiny, blue] at (0.8, -2) {截断};
+            \node[font=\scriptsize] at (2.5, -2.8) {防止过度减少概率};
+        \end{scope}
+    \end{tikzpicture}
+    \caption{PPO-Clip 机制。当 $\rho_t$ 偏离 $[1-\epsilon, 1+\epsilon]$ 时，目标被截断，防止策略变化过大。}
+    \label{fig:ppo-clip-full}
+\end{figure}
+
+\begin{theorem}[PPO-Clip 的直觉]
+\begin{itemize}
+    \item 当 $\hat{\advantage}_t > 0$（好动作）：
+    \begin{itemize}
+        \item 目标是增加 $\policy_\theta(a_t|s_t)$，即让 $\rho_t > 1$
+        \item 但当 $\rho_t > 1+\epsilon$ 时截断，防止过度增加
+    \end{itemize}
+    \item 当 $\hat{\advantage}_t < 0$（坏动作）：
+    \begin{itemize}
+        \item 目标是减少 $\policy_\theta(a_t|s_t)$，即让 $\rho_t < 1$
+        \item 但当 $\rho_t < 1-\epsilon$ 时截断，防止过度减少
+    \end{itemize}
+\end{itemize}
+\end{theorem}
+
+\subsubsection{PPO-KL（可选）}
+
+PPO 的另一个变体使用 KL 惩罚项：
+
+\begin{definition}[PPO-KL 目标]
+\begin{equation}
+    L^{\text{KL}}(\theta) = \E \left[ \rho_t \hat{\advantage}_t \right] - \beta \cdot \text{KL}(\policy_{\text{old}} \| \policy_\theta)
+\end{equation}
+其中 $\beta$ 是自适应调整的系数：
+\begin{itemize}
+    \item 如果 KL 太大，增大 $\beta$
+    \item 如果 KL 太小，减小 $\beta$
+\end{itemize}
+\end{definition}
+
+\subsection{Entropy Bonus}
+
+为了鼓励探索，PPO 通常还会加入 entropy bonus：
+
+\begin{equation}
+    L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\policy_\theta)
+\end{equation}
+
+其中 $H(\policy_\theta) = -\E[\log \policy_\theta(a|s)]$ 是策略的熵，$c_1$ 是权重系数（通常 0.01）。
+
+\begin{note}
+Entropy bonus 的作用：
+\begin{itemize}
+    \item 鼓励策略保持一定的随机性，避免过早收敛到确定性策略
+    \item 促进探索，防止陷入局部最优
+    \item 熵越大，策略越"均匀"，对各动作的概率分布越平坦
+\end{itemize}
+\end{note}
+
+\subsection{PPO 完整算法}
+
+\begin{algorithm}[H]
+\caption{Proximal Policy Optimization (PPO)}
+\label{alg:ppo}
+\KwInput{初始参数 $\theta_0$, $\phi_0$，clip 参数 $\epsilon$，每轮更新次数 $K$，GAE 参数 $\lambda$}
+\For{iteration $= 1, 2, \ldots$}{
+    \textbf{数据收集}：用当前策略 $\policy_{\theta}$ 收集 $N$ 条轨迹\;
+    计算 GAE advantage $\hat{\advantage}_t$（使用 $\hat{\Val}_\phi$）\;
+    计算 return $\hat{R}_t = \hat{\advantage}_t + \hat{\Val}_\phi(s_t)$（作为 Critic target）\;
+    记录 $\policy_{\text{old}} = \policy_{\theta}$（固定，用于计算 $\rho_t$）\;
+
+    \textbf{策略更新}：\For{$k = 1, \ldots, K$}{
+        对 mini-batch 数据计算：
+        \begin{itemize}
+            \item $\rho_t = \frac{\policy_\theta(a_t|s_t)}{\policy_{\text{old}}(a_t|s_t)}$
+            \item $L^{\text{CLIP}} = \E[\min(\rho_t \hat{\advantage}_t, \text{clip}(\rho_t, 1{-}\epsilon, 1{+}\epsilon) \hat{\advantage}_t)]$
+            \item $L^{\text{Value}} = \E[(\hat{\Val}_\phi(s_t) - \hat{R}_t)^2]$
+            \item $L^{\text{Entropy}} = -\E[\log \policy_\theta(a_t|s_t)]$
+        \end{itemize}
+        总目标：$L = L^{\text{CLIP}} - c_1 L^{\text{Value}} + c_2 L^{\text{Entropy}}$\;
+        梯度上升更新 $\theta$，梯度下降更新 $\phi$\;
+    }
+}
+\end{algorithm}
+
+\begin{keypoint}
+PPO 的成功原因：
+\begin{enumerate}
+    \item \textbf{简单高效}：只需一阶优化，不需要计算 Hessian
+    \item \textbf{样本效率}：可多次复用同一批数据（$K$ 次更新）
+    \item \textbf{稳定性}：clip 机制防止策略剧烈变化，避免"走太远"
+    \item \textbf{鲁棒性}：对超参数不敏感，适用于多种任务
+\end{enumerate}
+PPO 是目前最常用的 Policy Gradient 算法，也是 RLHF（第五章）中的标准选择。
+\end{keypoint}
+
+% ------------------------------------------
+\section{本章小结}
+\label{sec:policy-summary}
+
+\begin{keypoint}
+本章核心内容：
+
+\begin{enumerate}
+    \item \textbf{Policy Gradient 定理}
+    \begin{itemize}
+        \item 给出了目标函数梯度的解析形式：$\nabla_\theta J = \E[\sum_t \nabla \log \policy \cdot G_t]$
+        \item Log-Derivative Trick 是推导的关键
+        \item 环境动力学与 $\theta$ 无关，实现了 Model-Free
+    \end{itemize}
+
+    \item \textbf{方差降低技术}
+    \begin{itemize}
+        \item Baseline 技巧：减去 $b(s)$ 不改变期望但降低方差
+        \item 最优 baseline 是 $\Val^\policy(s)$
+        \item 使用 Advantage $\advantage = \Qval - \Val$ 替代 $G_t$
+    \end{itemize}
+
+    \item \textbf{Actor-Critic 架构}
+    \begin{itemize}
+        \item Actor（策略网络）+ Critic（价值网络）
+        \item Critic 提供 $\hat{\Val}(s)$ 来估计 advantage
+    \end{itemize}
+
+    \item \textbf{GAE}
+    \begin{itemize}
+        \item $\hat{\advantage}^{\text{GAE}} = \sum_l (\gamma\lambda)^l \delta_{t+l}$
+        \item $\lambda$ 控制偏差-方差权衡（类似 TD($\lambda$)）
+    \end{itemize}
+
+    \item \textbf{Trust Region 方法}
+    \begin{itemize}
+        \item 重要性采样允许复用旧数据，但需要限制策略变化
+        \item TRPO：KL 约束优化，实现复杂
+        \item PPO：clip 机制，简单高效，是实践中的首选
+    \end{itemize}
+\end{enumerate}
+\end{keypoint}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
+        arrow/.style={->, thick}
+    ]
+        % Timeline
+        \node[box] (reinforce) at (0, 0) {REINFORCE};
+        \node[box] (baseline) at (3.5, 0) {+ Baseline};
+        \node[box] (ac) at (7, 0) {Actor-Critic};
+        \node[box] (gae) at (10.5, 0) {+ GAE};
+        \node[box, fill=green!20] (ppo) at (10.5, -2) {PPO};
+
+        \draw[arrow] (reinforce) -- (baseline);
+        \draw[arrow] (baseline) -- (ac);
+        \draw[arrow] (ac) -- (gae);
+        \draw[arrow] (gae) -- (ppo);
+
+        % Annotations
+        \node[font=\tiny, below=0.1cm of reinforce] {无偏高方差};
+        \node[font=\tiny, below=0.1cm of baseline] {降低方差};
+        \node[font=\tiny, below=0.1cm of ac] {学习 Critic};
+        \node[font=\tiny, below=0.1cm of gae] {$\lambda$ 权衡};
+        \node[font=\tiny, below=0.1cm of ppo] {稳定高效};
+    \end{tikzpicture}
+    \caption{Policy Gradient 方法的演进：从 REINFORCE 到 PPO}
+    \label{fig:pg-evolution}
+\end{figure}
+
+\begin{note}
+Policy-Based vs. Value-Based 的选择：
+\begin{itemize}
+    \item \textbf{连续动作空间}：优先选择 Policy-Based（如 PPO、SAC）
+    \item \textbf{离散动作空间}：两者都可以，DQN 可能更样本高效
+    \item \textbf{需要随机策略}：使用 Policy-Based
+    \item \textbf{LLM 对齐}：PPO 是 RLHF 的标准选择（第五章详述）
+\end{itemize}
+\end{note}

@@ -1,0 +1,264 @@
+\section{线性注意力}
+\label{sec:linear-attention}
+
+稀疏注意力通过"只计算重要的token对"将$O(N^2)$降至$O(Nk)$，但它仍然保留了softmax的计算形式。本节介绍一条更激进的路径：\textbf{彻底改变注意力的数学形式}，使复杂度降至真正的$O(N)$。
+
+线性注意力的核心洞察是：softmax注意力之所以需要$O(N^2)$，是因为必须先算出完整的$N \times N$注意力矩阵再做归一化。如果我们用其他函数替代softmax，使得计算可以"重新排列"，就能避免显式构造这个矩阵。这种重排不是免费的——我们用数学等价性换取计算效率，代价是改变了注意力的语义。
+
+\subsection{核心思想}
+
+\subsubsection{从Softmax Attention到线性化}
+
+标准自注意力（单头）的计算为：
+\begin{equation}
+    \text{Attention}(Q, K, V) = \underbrace{\text{softmax}\left(\frac{QK^\top}{\sqrt{d}}\right)}_{n \times n} V
+\end{equation}
+其中需要显式构造$n \times n$的注意力矩阵，时间和空间复杂度均为$O(n^2)$。
+
+线性注意力的核心思想是：将softmax或$QK^\top$改写为可分解的形式，利用乘法结合律改变计算顺序：
+\begin{equation}
+    \text{Attention}(Q, K, V) \approx \phi(Q) \cdot \underbrace{(\phi(K)^\top V)}_{d \times d}
+    \label{eq:linear_attn_kernel}
+\end{equation}
+其中$\phi(\cdot)$是某种特征映射函数。关键在于：先计算$\phi(K)^\top V$（与长度$n$线性相关的$d \times d$矩阵），再左乘$\phi(Q)$，总复杂度降为$O(nd^2)$，当$d \ll n$时近似$O(n)$。
+
+\subsubsection{递推形式：Transformer即RNN}
+
+在自回归（causal）场景下，线性注意力可以写成类似RNN的递推式~\citep{katharopoulos2020linear}。设$q_t, k_t, v_t$分别为第$t$步的query、key、value向量，定义状态矩阵$S_t \in \R^{d \times d}$：
+\begin{align}
+    S_t &= S_{t-1} + v_t k_t^\top \\
+    o_t &= S_t \cdot q_t
+    \label{eq:linear_attn_rnn}
+\end{align}
+这揭示了一个深刻联系：\textbf{线性Attention本质上是一种RNN}，其隐状态$S_t$累积了历史信息。
+
+\begin{remark}[线性注意力的双模式]
+线性注意力支持两种等价的计算模式：
+\begin{itemize}
+    \item \textbf{并行模式}：训练时使用矩阵乘法，充分利用GPU并行性
+    \item \textbf{递推模式}：推理时使用RNN形式，实现$O(1)$的增量更新
+\end{itemize}
+这种双模式特性使线性注意力在训练和推理阶段都能获得最优效率。
+\end{remark}
+
+\subsection{经典线性注意力方法}
+
+\subsubsection{Linear Transformer~\citep{katharopoulos2020linear}}
+
+最早系统化提出``Transformer即RNN''的工作。核心思想是将softmax attention重写为核函数形式：
+\begin{equation}
+    \text{Attention}(Q, K, V) = \frac{\phi(Q) (\phi(K)^\top V)}{\phi(Q) (\phi(K)^\top \bm{1})}
+\end{equation}
+其中$\phi(x) = \text{elu}(x) + 1$保证非负性。实验表明在自回归任务上可获得高达4000倍的加速。
+
+\textbf{局限}：简单的特征映射难以精确近似softmax的行为，在复杂语言任务上存在性能差距。
+
+\subsubsection{Performer~\citep{choromanski2020performer}}
+
+提出FAVOR+（Fast Attention Via positive Orthogonal Random features）方法，用随机特征近似softmax核：
+\begin{equation}
+    \text{softmax}(q^\top k) \approx \phi(q)^\top \phi(k)
+\end{equation}
+其中$\phi$通过正交随机特征构造，具有无偏或近似无偏的理论保证。
+
+\textbf{优势}：与原始Transformer完全兼容，可作为drop-in replacement。\\
+\textbf{局限}：随机近似在实际任务中仍有精度损失。
+
+\subsubsection{cosFormer~\citep{qin2022cosformer}}
+
+不再硬近似softmax，而是基于softmax的两个关键性质设计线性替代：
+\begin{enumerate}
+    \item \textbf{非负性}：注意力权重应为非负
+    \item \textbf{分布集中性}：注意力应集中在相关位置
+\end{enumerate}
+
+cosFormer使用ReLU保证非负性，并引入基于余弦的位置再加权机制：
+\begin{equation}
+    \text{Attention}_{ij} = \text{ReLU}(q_i)^\top \text{ReLU}(k_j) \cdot \cos\left(\frac{\pi}{2} \cdot \frac{i - j}{n}\right)
+\end{equation}
+
+在Long-Range Arena等长序列benchmark上取得当时最优性能，是``好用的线性Attention''的代表。
+
+\subsection{带遗忘门的线性注意力}
+
+原始线性注意力的一个根本问题是：状态矩阵$S_t$只能累加，无法遗忘。随着序列增长，历史信息``挤在一起''，导致检索能力下降。
+
+\subsubsection{RetNet~\citep{sun2023retnet}}
+
+微软提出的Retentive Network引入指数衰减因子$\gamma \in (0, 1)$：
+\begin{align}
+    S_t &= \gamma S_{t-1} + v_t k_t^\top \\
+    o_t &= S_t \cdot q_t
+    \label{eq:retnet}
+\end{align}
+这相当于对历史信息施加指数衰减，强调近期token的重要性。
+
+\textbf{Multi-Scale Retention}：不同attention head使用不同的$\gamma$值，实现多尺度的记忆保持：
+\begin{itemize}
+    \item 小$\gamma$：关注近期信息（短程依赖）
+    \item 大$\gamma$：保留更长历史（长程依赖）
+\end{itemize}
+
+\textbf{三种计算模式}：
+\begin{enumerate}
+    \item \textbf{并行模式}：训练时的矩阵计算
+    \item \textbf{递推模式}：$O(1)$推理
+    \item \textbf{分块递推模式}：长序列的高效处理
+\end{enumerate}
+
+性能：7B模型在8k序列长度下，推理速度比Transformer快8.4倍，内存减少70\%。
+
+\subsubsection{Lightning Attention~\citep{minimax2025}}
+
+MiniMax提出的Lightning Attention是目前\textbf{首个规模化到商业级的线性注意力架构}。核心创新：
+
+\textbf{分块计算策略}：将注意力计算分为intra-block和inter-block两部分：
+\begin{itemize}
+    \item \textbf{Intra-block}：块内使用``左乘''形式，可并行计算
+    \item \textbf{Inter-block}：块间使用``右乘''形式，累积状态
+\end{itemize}
+这种分解避免了传统线性注意力中缓慢的cumsum操作。
+
+\textbf{混合架构}：每8层中，7层使用Lightning Attention，1层使用标准Softmax Attention，平衡效率与精度。
+
+\begin{table}[htbp]
+\centering
+\caption{MiniMax-01模型规格}
+\label{tab:minimax_spec}
+\begin{tabular}{lc}
+\toprule
+参数 & 值 \\
+\midrule
+总参数量 & 456B \\
+激活参数量（MoE） & 45.9B \\
+专家数量 & 32 \\
+训练上下文长度 & 1M tokens \\
+推理外推长度 & 4M tokens \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{DeltaNet：基于Delta Rule的线性注意力}
+
+\subsubsection{动机：解决记忆过载问题}
+
+原始线性注意力的核心缺陷是\textbf{记忆过载}（memory overload）：只能添加新的key-value关联，无法擦除已有信息。这导致随着序列增长，检索错误累积。
+
+\subsubsection{Delta Rule更新}
+
+DeltaNet~\citep{yang2024deltanet}引入``除旧迎新''的Delta Rule：
+\begin{equation}
+    S_t = S_{t-1} - \underbrace{(S_{t-1} \cdot k_t - v_t)}_{\text{delta}} \cdot k_t^\top
+    \label{eq:deltanet}
+\end{equation}
+
+直观理解：
+\begin{enumerate}
+    \item $S_{t-1} \cdot k_t$：用当前key检索记忆中的value
+    \item $S_{t-1} \cdot k_t - v_t$：计算检索值与真实值的差异（delta）
+    \item 根据delta修正记忆，实现``精准更新''
+\end{enumerate}
+
+\subsubsection{Gated DeltaNet~\citep{yang2025gateddeltan}}
+
+ICLR 2025工作进一步引入门控机制：
+\begin{equation}
+    S_t = \alpha_t \odot S_{t-1} + \beta_t \odot (v_t - S_{t-1} \cdot k_t) \cdot k_t^\top
+\end{equation}
+其中$\alpha_t$控制遗忘，$\beta_t$控制更新强度。
+
+\textbf{互补性}：门控实现快速记忆擦除，Delta Rule实现精准记忆更新，两者结合在多个benchmark上超越Mamba2和原始DeltaNet。
+
+\textbf{工业采用}：Gated DeltaNet已被Qwen3-Next采用作为线性注意力层。
+
+\subsection{与状态空间模型的联系}
+
+\subsubsection{Mamba与结构化状态空间对偶}
+
+Mamba~\citep{gu2023mamba}是另一条重要的高效序列建模路线，基于选择性状态空间模型（Selective SSM）。Mamba-2论文~\citep{dao2024mamba2}揭示了\textbf{结构化状态空间对偶}（Structured State Space Duality, SSD）：
+
+\begin{quote}
+    ``与标准自注意力相比，SSD只有两个区别：去掉softmax归一化，并应用一个独立的逐元素掩码矩阵。''
+\end{quote}
+
+这表明线性注意力和SSM可以视为同一框架的不同实例：
+\begin{itemize}
+    \item 线性注意力：通过特征映射分解attention矩阵
+    \item SSM：通过状态空间方程建模序列
+    \item 两者都有线性复杂度和递推形式
+\end{itemize}
+
+\subsubsection{混合架构}
+
+实践中，纯线性模型在某些任务上仍有差距，因此出现了混合架构：
+\begin{itemize}
+    \item \textbf{Jamba}（AI21）：Mamba + Attention
+    \item \textbf{MiniMax-01}：Lightning Attention + 稀疏Softmax Attention
+    \item \textbf{Qwen3-Next}：Gated DeltaNet + SwiGLU
+\end{itemize}
+
+\subsection{Test-Time Training视角}
+
+苏剑林在``线性注意力简史''~\citep{su2025linearhistory}中指出，现代线性注意力的核心思想可以统一到\textbf{Test-Time Training}（TTT）框架：
+
+\begin{quote}
+    ``将序列建模视为在线学习问题，用优化器构建RNN。不同的损失函数对应不同的RNN模型。''
+\end{quote}
+
+\begin{table}[htbp]
+\centering
+\caption{线性注意力方法的TTT视角}
+\label{tab:ttt_view}
+\begin{tabular}{lll}
+\toprule
+方法 & 更新规则 & 对应优化器 \\
+\midrule
+Linear Attention & $S_t = S_{t-1} + v_t k_t^\top$ & 累积梯度 \\
+RetNet & $S_t = \gamma S_{t-1} + v_t k_t^\top$ & 带衰减的累积 \\
+DeltaNet & $S_t = S_{t-1} - (S_{t-1}k_t - v_t)k_t^\top$ & Delta Rule \\
+Gated DeltaNet & 门控Delta Rule & 自适应学习率 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+这个视角为设计新型线性注意力提供了原则性指导：选择合适的``优化器''来更新记忆状态。
+
+\subsection{工业部署现状}
+
+\begin{table}[htbp]
+\centering
+\caption{线性注意力的工业应用}
+\label{tab:linear_attn_industry}
+\begin{tabular}{llll}
+\toprule
+公司/模型 & 架构类型 & 上下文长度 & 特点 \\
+\midrule
+MiniMax-01 & Lightning Attention + MoE & 1M-4M & 首个商业级线性Attention LLM \\
+MiniMax-M1 & Lightning Attention & 1M+80k生成 & 开源reasoning模型 \\
+Qwen3-Next & Gated DeltaNet & -- & 线性层 + 门控Attention \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{关键观察}：MiniMax是目前唯一将线性注意力规模化到商业级的厂商。其他厂商（如Kimi、DeepSeek）更倾向于稀疏注意力路线（见第\ref{sec:sparse-attention}节）。
+
+\subsection{线性注意力的局限与展望}
+
+\paragraph{当前局限}
+\begin{enumerate}
+    \item \textbf{精度差距}：在复杂推理任务上，纯线性注意力仍落后于Softmax Attention
+    \item \textbf{in-context learning能力}：线性模型的few-shot能力通常弱于Transformer
+    \item \textbf{长程精确检索}：passkey retrieval等任务上表现不稳定
+\end{enumerate}
+
+\paragraph{发展趋势}
+\begin{enumerate}
+    \item \textbf{混合架构}：结合线性层和稀疏Softmax层
+    \item \textbf{门控机制}：更精细的记忆管理（如Gated DeltaNet）
+    \item \textbf{知识蒸馏}：从Softmax模型蒸馏到线性模型（如LAWCAT）
+    \item \textbf{TTT原则}：基于优化器视角设计新架构
+\end{enumerate}
+
+\begin{remark}[历史评价]
+苏剑林的评价~\citep{su2025linearhistory}：``线性注意力已从单纯模仿Softmax Attention发展到`反哺'它——通过核技巧将DeltaNet改进应用于Softmax Attention。这表明该领域方兴未艾，仍有广阔探索空间。''
+\end{remark}

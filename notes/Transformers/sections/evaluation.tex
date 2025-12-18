@@ -1,0 +1,481 @@
+\section{评测与Benchmark}
+\label{sec:evaluation}
+
+大语言模型的评测是一个复杂且快速演进的领域。本节系统介绍主流评测基准，重点关注2024年以来顶级模型（DeepSeek-V3、LLaMA 3、Qwen 2.5、GPT-4o、Claude 3.5等）普遍采用的benchmark。
+
+\subsection{评测体系概述}
+
+\subsubsection{为什么需要多维度评测}
+
+单一benchmark无法全面反映模型能力：
+\begin{itemize}
+    \item \textbf{能力多样性}：知识、推理、代码、指令遵循等维度独立
+    \item \textbf{数据污染}：训练数据可能包含测试集，导致虚高
+    \item \textbf{评测饱和}：旧benchmark被刷榜，区分度下降
+\end{itemize}
+
+\subsubsection{现代评测框架}
+
+主流模型发布时通常报告以下类别的benchmark：
+
+\begin{table}[htbp]
+\centering
+\caption{评测维度与代表性Benchmark}
+\label{tab:eval_dimensions}
+\begin{tabular}{lll}
+\toprule
+维度 & 核心Benchmark & 备注 \\
+\midrule
+知识与理解 & MMLU, MMLU-Pro, C-Eval & 多学科知识 \\
+推理能力 & GPQA, ARC-C, BBH & 复杂推理 \\
+数学能力 & GSM8K, MATH-500, AIME & 从小学到竞赛 \\
+代码能力 & HumanEval, LiveCodeBench & 代码生成与执行 \\
+指令遵循 & IFEval, MT-Bench & 指令理解与执行 \\
+长上下文 & RULER, LongBench & 长文本处理 \\
+多语言 & MGSM, C-Eval & 非英语能力 \\
+安全对齐 & TruthfulQA, BBQ & 真实性与偏见 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{知识与理解}
+
+\subsubsection{MMLU (Massive Multitask Language Understanding)}
+
+MMLU是最广泛使用的知识评测基准，覆盖57个学科：
+\begin{itemize}
+    \item \textbf{规模}：约14,000道四选一题目
+    \item \textbf{学科}：STEM、人文、社科、其他
+    \item \textbf{难度}：从高中到研究生水平
+\end{itemize}
+
+\paragraph{评测方式}
+\begin{itemize}
+    \item Zero-shot或Few-shot（通常5-shot）
+    \item 计算模型对A/B/C/D选项的概率
+    \item 报告整体准确率和各学科准确率
+\end{itemize}
+
+\paragraph{当前水平}
+\begin{table}[htbp]
+\centering
+\caption{MMLU性能对比（5-shot）}
+\label{tab:mmlu_scores}
+\begin{tabular}{lcc}
+\toprule
+模型 & MMLU & 发布时间 \\
+\midrule
+GPT-4o & 88.7\% & 2024.05 \\
+Claude 3.5 Sonnet & 88.7\% & 2024.06 \\
+DeepSeek-V3 & 88.5\% & 2024.12 \\
+Qwen2.5-72B & 86.1\% & 2024.09 \\
+LLaMA 3.1-405B & 88.6\% & 2024.07 \\
+LLaMA 3.1-70B & 86.0\% & 2024.07 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{MMLU-Pro}
+
+MMLU的升级版，解决原版的问题：
+\begin{itemize}
+    \item \textbf{更多选项}：从4选1变为10选1，降低猜测收益
+    \item \textbf{更难题目}：过滤简单题，保留需要推理的题目
+    \item \textbf{减少噪声}：修正原MMLU中的错误标注
+\end{itemize}
+
+\paragraph{区分度更强}
+\begin{itemize}
+    \item MMLU上GPT-4与Claude差距约1\%
+    \item MMLU-Pro上差距扩大到5-10\%
+    \item 更能反映真实能力差异
+\end{itemize}
+
+\subsubsection{GPQA (Graduate-Level Google-Proof QA)}
+
+针对研究生水平的专业问题：
+\begin{itemize}
+    \item \textbf{来源}：物理、化学、生物领域的博士生出题
+    \item \textbf{特点}：问题设计为``Google-proof''，搜索引擎难以直接找到答案
+    \item \textbf{难度}：领域专家准确率约65\%，非专家约30\%
+\end{itemize}
+
+GPQA-Diamond是其中最难的子集，是区分顶级模型的关键benchmark。
+
+\begin{table}[htbp]
+\centering
+\caption{GPQA-Diamond性能对比}
+\label{tab:gpqa_scores}
+\begin{tabular}{lc}
+\toprule
+模型 & GPQA-Diamond \\
+\midrule
+DeepSeek-R1 & 71.5\% \\
+o1-preview & 73.3\% \\
+DeepSeek-V3 & 59.1\% \\
+Claude 3.5 Sonnet & 59.4\% \\
+GPT-4o & 53.6\% \\
+LLaMA 3.1-405B & 51.1\% \\
+Qwen2.5-72B & 49.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{推理能力}
+
+\subsubsection{BBH (BIG-Bench Hard)}
+
+BIG-Bench中最具挑战性的23个任务：
+\begin{itemize}
+    \item \textbf{任务类型}：逻辑推理、因果判断、算法执行等
+    \item \textbf{特点}：之前模型表现接近随机
+    \item \textbf{评测}：通常使用Chain-of-Thought prompting
+\end{itemize}
+
+\subsubsection{ARC (AI2 Reasoning Challenge)}
+
+科学推理问题：
+\begin{itemize}
+    \item \textbf{ARC-Easy}：简单科学问题
+    \item \textbf{ARC-Challenge}：需要多步推理的难题
+    \item \textbf{来源}：美国3-9年级科学考试
+\end{itemize}
+
+\subsubsection{HellaSwag}
+
+常识推理与句子补全：
+\begin{itemize}
+    \item 给定场景描述，选择最合理的后续
+    \item 测试模型的常识理解能力
+    \item 当前顶级模型准确率$>$95\%，区分度下降
+\end{itemize}
+
+\subsection{数学能力}
+
+\subsubsection{GSM8K}
+
+小学数学应用题：
+\begin{itemize}
+    \item \textbf{规模}：8,500道题目
+    \item \textbf{难度}：2-8步推理
+    \item \textbf{特点}：需要理解题意并进行多步计算
+\end{itemize}
+
+当前顶级模型准确率$>$95\%，已接近饱和。
+
+\subsubsection{MATH}
+
+竞赛级数学问题：
+\begin{itemize}
+    \item \textbf{来源}：AMC、AIME等数学竞赛
+    \item \textbf{难度分级}：Level 1-5，Level 5最难
+    \item \textbf{领域}：代数、几何、数论、概率等
+\end{itemize}
+
+\paragraph{MATH-500}
+从MATH数据集中精选的500道高难度题目，是当前主流评测标准。
+
+\begin{table}[htbp]
+\centering
+\caption{数学Benchmark性能对比}
+\label{tab:math_scores}
+\begin{tabular}{lccc}
+\toprule
+模型 & GSM8K & MATH-500 & AIME 2024 \\
+\midrule
+o1 & 96.4\% & 96.4\% & 74\% (44.6/60) \\
+DeepSeek-R1 & 97.3\% & 97.3\% & 79.8\% (47.9/60) \\
+DeepSeek-V3 & 91.1\% & 90.2\% & 39.2\% \\
+Claude 3.5 Sonnet & 96.4\% & 78.3\% & - \\
+GPT-4o & 95.8\% & 76.6\% & - \\
+Qwen2.5-72B & 95.8\% & 83.1\% & - \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{AIME (American Invitational Mathematics Examination)}
+
+美国数学邀请赛：
+\begin{itemize}
+    \item 15道填空题，每题答案为0-999的整数
+    \item 代表高中竞赛最高水平
+    \item 是区分推理模型（o1、R1）与普通模型的关键benchmark
+\end{itemize}
+
+\subsection{代码能力}
+
+\subsubsection{HumanEval}
+
+Python函数生成：
+\begin{itemize}
+    \item \textbf{规模}：164道题目
+    \item \textbf{形式}：给定函数签名和docstring，生成实现
+    \item \textbf{评测}：Pass@k（k次采样至少一次通过）
+\end{itemize}
+
+\paragraph{HumanEval+}
+增加更多测试用例，减少假阳性。
+
+\subsubsection{MBPP (Mostly Basic Python Problems)}
+
+更大规模的Python编程问题：
+\begin{itemize}
+    \item \textbf{规模}：974道题目
+    \item \textbf{难度}：相对简单，入门级编程
+    \item \textbf{用途}：与HumanEval互补
+\end{itemize}
+
+\subsubsection{LiveCodeBench}
+
+\textbf{2024年最重要的代码评测创新}，解决数据污染问题：
+\begin{itemize}
+    \item \textbf{持续更新}：从LeetCode、AtCoder、CodeForces持续收集新题
+    \item \textbf{时间标记}：每道题有发布日期，可验证是否在训练数据截止日期之后
+    \item \textbf{多维度}：代码生成、自我修复、测试输出预测
+\end{itemize}
+
+\paragraph{为什么LiveCodeBench重要}
+\begin{itemize}
+    \item HumanEval已被``刷榜''，很多模型在训练数据中见过
+    \item LiveCodeBench的新题确保公平评测
+    \item 是当前评估代码能力的金标准
+\end{itemize}
+
+\subsubsection{SWE-bench}
+
+软件工程真实任务：
+\begin{itemize}
+    \item \textbf{任务}：修复GitHub上真实的issue
+    \item \textbf{形式}：给定代码仓库和issue描述，生成patch
+    \item \textbf{难度}：需要理解大型代码库，非常具有挑战性
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\caption{代码Benchmark性能对比}
+\label{tab:code_scores}
+\begin{tabular}{lccc}
+\toprule
+模型 & HumanEval & LiveCodeBench & SWE-bench Verified \\
+\midrule
+Claude 3.5 Sonnet & 92.0\% & 41.4\% & 50.8\% \\
+DeepSeek-V3 & 82.6\% & 40.5\% & 42.0\% \\
+GPT-4o & 90.2\% & 34.2\% & 38.4\% \\
+o1-preview & 92.4\% & - & 41.3\% \\
+Qwen2.5-72B & 86.6\% & 32.8\% & - \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{指令遵循}
+
+\subsubsection{IFEval (Instruction Following Evaluation)}
+
+测试模型严格遵循指令的能力：
+\begin{itemize}
+    \item \textbf{规模}：500+条带约束的指令
+    \item \textbf{约束类型}：
+    \begin{itemize}
+        \item 长度约束：``写超过400字''
+        \item 格式约束：``用JSON格式输出''
+        \item 内容约束：``至少提到3次AI''
+        \item 结构约束：``分成5个段落''
+    \end{itemize}
+    \item \textbf{评测}：约束是否被满足（可程序验证）
+\end{itemize}
+
+\paragraph{两种指标}
+\begin{itemize}
+    \item \textbf{Prompt-level}：整个prompt的所有约束都满足
+    \item \textbf{Instruction-level}：单个约束的满足率
+\end{itemize}
+
+IFEval是Open LLM Leaderboard的核心benchmark之一。
+
+\subsubsection{MT-Bench}
+
+多轮对话评测：
+\begin{itemize}
+    \item \textbf{形式}：80个两轮对话
+    \item \textbf{评分}：GPT-4作为评判，1-10分
+    \item \textbf{类别}：写作、角色扮演、推理、数学等8类
+\end{itemize}
+
+\subsubsection{AlpacaEval}
+
+单轮指令跟随：
+\begin{itemize}
+    \item 与GPT-4的输出进行比较
+    \item 报告Win Rate（胜率）
+    \item AlpacaEval 2.0使用更严格的评判标准
+\end{itemize}
+
+\subsubsection{Arena-Hard}
+
+基于Chatbot Arena的困难子集：
+\begin{itemize}
+    \item 从真实用户对话中筛选的500道困难问题
+    \item GPT-4-Turbo作为评判
+    \item 与Chatbot Arena排名高度相关
+\end{itemize}
+
+\subsection{长上下文评测}
+
+\subsubsection{RULER}
+
+长上下文能力的系统评测：
+\begin{itemize}
+    \item \textbf{任务类型}：
+    \begin{itemize}
+        \item Needle-in-a-Haystack：在长文本中找到特定信息
+        \item Multi-hop QA：需要整合多处信息
+        \item Aggregation：统计或汇总信息
+    \end{itemize}
+    \item \textbf{长度范围}：4K到128K+
+    \item \textbf{评测}：不同长度下的准确率衰减曲线
+\end{itemize}
+
+\subsubsection{LongBench}
+
+多任务长文本评测：
+\begin{itemize}
+    \item 6大类21个任务
+    \item 平均长度约15K tokens
+    \item 涵盖单文档/多文档QA、摘要、代码补全等
+\end{itemize}
+
+\subsubsection{Needle-in-a-Haystack}
+
+最简单但直观的长上下文测试：
+\begin{itemize}
+    \item 在长文本的随机位置插入一个``针''（关键信息）
+    \item 测试模型能否准确检索
+    \item 生成位置-长度的热力图
+\end{itemize}
+
+\subsection{多语言评测}
+
+\subsubsection{C-Eval / CMMLU}
+
+中文知识评测：
+\begin{itemize}
+    \item \textbf{C-Eval}：52个学科，覆盖中国教育体系
+    \item \textbf{CMMLU}：中文版MMLU
+    \item 是评估中文能力的核心benchmark
+\end{itemize}
+
+\subsubsection{MGSM (Multilingual GSM)}
+
+多语言数学推理：
+\begin{itemize}
+    \item GSM8K翻译成10种语言
+    \item 测试非英语数学推理能力
+    \item 揭示模型的语言偏差
+\end{itemize}
+
+\subsection{安全与对齐}
+
+\subsubsection{TruthfulQA}
+
+测试模型是否会生成虚假但常见的错误信息：
+\begin{itemize}
+    \item 817个问题，涵盖常见误解
+    \item 人类因为偏见经常答错的问题
+    \item 测试模型是否学习了人类的错误信念
+\end{itemize}
+
+\subsubsection{SimpleQA}
+
+事实准确性评测（OpenAI 2024发布）：
+\begin{itemize}
+    \item 简单的事实性问题
+    \item 测试模型是否会``幻觉''错误信息
+    \item 评估拒绝回答（``我不知道''）的能力
+\end{itemize}
+
+\subsection{综合评测平台}
+
+\subsubsection{Open LLM Leaderboard}
+
+Hugging Face维护的开放评测平台：
+\begin{itemize}
+    \item \textbf{当前版本（v2）包含}：
+    \begin{itemize}
+        \item IFEval（指令遵循）
+        \item BBH（复杂推理）
+        \item MATH Level 5（高难度数学）
+        \item GPQA（研究生水平QA）
+        \item MuSR（多步推理）
+        \item MMLU-Pro（知识理解）
+    \end{itemize}
+    \item 任何人可以提交模型评测
+    \item 透明、可复现
+\end{itemize}
+
+\subsubsection{Chatbot Arena}
+
+基于真实用户投票的评测：
+\begin{itemize}
+    \item 用户盲评两个模型的回复
+    \item 使用ELO排名系统
+    \item 被认为是最能反映真实用户偏好的评测
+    \item 但难以控制变量，不够``科学''
+\end{itemize}
+
+\subsubsection{LiveBench}
+
+抗污染的动态评测：
+\begin{itemize}
+    \item 每月更新题目
+    \item 严格的时间控制防止数据污染
+    \item 涵盖数学、代码、推理、语言等多个维度
+\end{itemize}
+
+\subsection{评测最佳实践}
+
+\subsubsection{避免数据污染}
+
+\begin{itemize}
+    \item \textbf{使用新benchmark}：LiveCodeBench、LiveBench等持续更新
+    \item \textbf{时间切分}：确保评测数据晚于训练数据截止日期
+    \item \textbf{多源验证}：同一能力用多个benchmark交叉验证
+\end{itemize}
+
+\subsubsection{评测配置标准化}
+
+\begin{itemize}
+    \item 明确报告Few-shot数量
+    \item 统一prompt模板
+    \item 使用相同的解码参数（temperature、top\_p等）
+\end{itemize}
+
+\subsubsection{选择合适的Benchmark}
+
+\begin{table}[htbp]
+\centering
+\caption{评测场景与推荐Benchmark}
+\label{tab:eval_recommendations}
+\begin{tabular}{ll}
+\toprule
+评测目标 & 推荐Benchmark \\
+\midrule
+通用能力快速评估 & MMLU-Pro, GPQA-Diamond \\
+数学推理 & MATH-500, AIME \\
+代码生成 & LiveCodeBench, SWE-bench \\
+指令遵循 & IFEval \\
+长上下文 & RULER, Needle-in-Haystack \\
+中文能力 & C-Eval, CMMLU \\
+真实用户偏好 & Chatbot Arena, Arena-Hard \\
+安全性 & TruthfulQA, SimpleQA \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{remark}[评测的局限性]
+\begin{itemize}
+    \item \textbf{Benchmark ≠ 真实能力}：高分不代表实际应用效果好
+    \item \textbf{优化目标错位}：过度优化benchmark可能损害通用能力
+    \item \textbf{评测演进}：benchmark会饱和，需要持续更新
+    \item \textbf{人类评估}：某些能力（创意、共情）难以自动评测
+\end{itemize}
+\end{remark}

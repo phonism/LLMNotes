@@ -1,0 +1,402 @@
+\section{分词器（Tokenizer）}
+\label{sec:tokenizer}
+
+分词器是大语言模型的入口，负责将原始文本转换为模型可处理的token序列。分词策略的选择直接影响模型的词表大小、训练效率和多语言能力。
+
+\subsection{为什么需要分词}
+
+神经网络无法直接处理文本，需要将文本转换为数值表示：
+\begin{equation}
+    \text{``Hello world''} \xrightarrow{\text{Tokenizer}} [15496, 995] \xrightarrow{\text{Embedding}} \R^{2 \times d}
+\end{equation}
+
+分词粒度的选择面临\textbf{词表大小}与\textbf{序列长度}的权衡：
+
+\begin{table}[htbp]
+\centering
+\caption{不同分词粒度的对比}
+\label{tab:tokenization_granularity}
+\begin{tabular}{lccc}
+\toprule
+粒度 & 词表大小 & 序列长度 & 问题 \\
+\midrule
+字符级 & $\sim$256 & 很长 & 序列过长，难以建模长距离依赖 \\
+词级 & $\sim$100K+ & 短 & OOV问题，词表过大 \\
+子词级 & $\sim$32K-128K & 适中 & 平衡，主流选择 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{子词分词算法}
+
+\subsubsection{Byte Pair Encoding (BPE)}
+
+BPE~\citep{sennrich2016bpe}是最广泛使用的子词分词算法，源自数据压缩领域。
+
+\paragraph{训练算法}
+\begin{enumerate}
+    \item 初始化词表为所有字符（或字节）
+    \item 统计相邻token对的频率
+    \item 将最高频的token对合并为新token，加入词表
+    \item 重复步骤2-3，直到达到目标词表大小
+\end{enumerate}
+
+\begin{example}[BPE训练过程]
+假设语料为：``low lower lowest''
+\begin{enumerate}
+    \item 初始：\texttt{l, o, w, e, r, s, t, \_}（\_表示词边界）
+    \item 最高频对 \texttt{(l, o)} $\to$ 合并为 \texttt{lo}
+    \item 最高频对 \texttt{(lo, w)} $\to$ 合并为 \texttt{low}
+    \item 最高频对 \texttt{(low, e)} $\to$ 合并为 \texttt{lowe}
+    \item ...
+\end{enumerate}
+最终词表包含常见子词如 \texttt{low}, \texttt{er}, \texttt{est} 等。
+\end{example}
+
+\paragraph{分词算法}
+给定训练好的合并规则，按优先级依次应用：
+\begin{lstlisting}
+def bpe_tokenize(text, merges):
+    tokens = list(text)  # 初始为字符
+    for (a, b) in merges:  # 按训练顺序
+        i = 0
+        while i < len(tokens) - 1:
+            if tokens[i] == a and tokens[i+1] == b:
+                tokens = tokens[:i] + [a+b] + tokens[i+2:]
+            else:
+                i += 1
+    return tokens
+\end{lstlisting}
+
+\subsubsection{Byte-level BPE}
+
+GPT-2~\citep{radford2019language}引入的改进，直接在字节级别操作：
+\begin{itemize}
+    \item 基础词表为256个字节，无需预分词
+    \item 可以表示任何UTF-8文本，无OOV问题
+    \item 避免了不同语言的特殊处理
+\end{itemize}
+
+\begin{lstlisting}
+# GPT-2的字节到Unicode映射
+def bytes_to_unicode():
+    # 将256个字节映射到可打印Unicode字符
+    # 避免空白字符等控制字符的问题
+    bs = list(range(33, 127)) + list(range(161, 173)) + list(range(174, 256))
+    cs = bs[:]
+    n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b)
+            cs.append(256 + n)
+            n += 1
+    return dict(zip(bs, [chr(c) for c in cs]))
+\end{lstlisting}
+
+\subsubsection{WordPiece}
+
+WordPiece由Google提出，用于BERT~\citep{devlin2019bert}。与BPE的主要区别在于合并策略：
+
+\begin{itemize}
+    \item \textbf{BPE}：选择频率最高的token对
+    \item \textbf{WordPiece}：选择使语言模型似然提升最大的token对
+\end{itemize}
+
+WordPiece的合并分数：
+\begin{equation}
+    \text{score}(a, b) = \frac{\text{freq}(ab)}{\text{freq}(a) \times \text{freq}(b)}
+\end{equation}
+
+WordPiece使用 \texttt{\#\#} 标记非词首子词：
+\begin{verbatim}
+"tokenization" -> ["token", "##ization"]
+\end{verbatim}
+
+\subsubsection{Unigram Language Model}
+
+Unigram~\citep{kudo2018sentencepiece}采用相反的策略——从大词表开始，逐步删减：
+
+\begin{enumerate}
+    \item 初始化一个较大的候选词表
+    \item 用EM算法估计每个token的概率
+    \item 计算移除每个token对似然的影响
+    \item 移除影响最小的token
+    \item 重复直到达到目标词表大小
+\end{enumerate}
+
+Unigram的优势：
+\begin{itemize}
+    \item 同一文本可能有多种分词方式，支持采样
+    \item 可用于数据增强（Subword Regularization）
+\end{itemize}
+
+\subsection{SentencePiece}
+
+SentencePiece~\citep{kudo2018sentencepiece}是Google开源的分词工具，特点：
+
+\begin{itemize}
+    \item \textbf{语言无关}：将空格视为普通字符（用\_表示），无需预分词
+    \item \textbf{支持多种算法}：BPE和Unigram
+    \item \textbf{可逆}：分词结果可以无损还原原文
+    \item \textbf{高效}：C++实现，训练和推理都很快
+\end{itemize}
+
+\begin{lstlisting}
+import sentencepiece as spm
+
+# 训练
+spm.SentencePieceTrainer.train(
+    input='corpus.txt',
+    model_prefix='tokenizer',
+    vocab_size=32000,
+    model_type='bpe',  # 或 'unigram'
+    character_coverage=0.9995,
+)
+
+# 使用
+sp = spm.SentencePieceProcessor(model_file='tokenizer.model')
+tokens = sp.encode('Hello world', out_type=str)
+# ['▁Hello', '▁world']  (▁表示空格)
+\end{lstlisting}
+
+\subsection{Tiktoken}
+
+Tiktoken是OpenAI开源的快速BPE实现，用于GPT-3.5/4：
+
+\begin{itemize}
+    \item \textbf{Rust实现}：比Python实现快3-6倍
+    \item \textbf{正则预分词}：用正则表达式预先切分，提高效率
+    \item \textbf{特殊token处理}：支持\texttt{<|endoftext|>}等特殊标记
+\end{itemize}
+
+\begin{lstlisting}
+import tiktoken
+
+# GPT-4使用cl100k_base编码
+enc = tiktoken.get_encoding("cl100k_base")
+tokens = enc.encode("Hello world")  # [9906, 1917]
+text = enc.decode(tokens)  # "Hello world"
+
+# 查看词表大小
+print(enc.n_vocab)  # 100277
+\end{lstlisting}
+
+\paragraph{预分词正则}
+Tiktoken使用复杂的正则表达式预切分文本：
+\begin{lstlisting}
+# cl100k_base的预分词正则（简化）
+pat = r"""'s|'t|'re|'ve|'m|'ll|'d|
+    [\p{L}]+|[\p{N}]{1,3}|
+    [^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+\end{lstlisting}
+
+这确保了常见模式（如缩写、数字）被合理切分。
+
+\subsection{词表大小的选择}
+
+词表大小是重要的设计决策：
+
+\begin{table}[htbp]
+\centering
+\caption{主流模型的词表配置}
+\label{tab:vocab_sizes}
+\begin{tabular}{lcc}
+\toprule
+模型 & 词表大小 & 分词器 \\
+\midrule
+GPT-2 & 50,257 & Byte-level BPE \\
+GPT-3/3.5 & 50,257 & Byte-level BPE \\
+GPT-4 & 100,277 & Byte-level BPE (cl100k) \\
+BERT & 30,522 & WordPiece \\
+LLaMA & 32,000 & SentencePiece BPE \\
+LLaMA 2 & 32,000 & SentencePiece BPE \\
+LLaMA 3 & 128,256 & Tiktoken BPE \\
+Qwen & 151,936 & Byte-level BPE \\
+DeepSeek & 102,400 & Byte-level BPE \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{词表大小的影响}
+\begin{itemize}
+    \item \textbf{更大词表}：
+    \begin{itemize}
+        \item 更短的序列长度（同样文本用更少token）
+        \item 更大的Embedding层参数（$V \times d$）
+        \item 更好的多语言支持
+    \end{itemize}
+    \item \textbf{更小词表}：
+    \begin{itemize}
+        \item 更长的序列（需要更多token表示）
+        \item 更小的模型参数
+        \item 稀有词可能被过度切分
+    \end{itemize}
+\end{itemize}
+
+\paragraph{经验法则}
+\begin{itemize}
+    \item 英文为主：32K-50K通常足够
+    \item 多语言：100K+可以更好覆盖非英语语言
+    \item LLaMA 3将词表从32K扩展到128K，中文token效率提升约3倍
+\end{itemize}
+
+\subsection{特殊Token}
+
+特殊token用于标记序列结构和控制生成：
+
+\begin{table}[htbp]
+\centering
+\caption{常见特殊Token}
+\label{tab:special_tokens}
+\begin{tabular}{lll}
+\toprule
+Token & 含义 & 用途 \\
+\midrule
+\texttt{<|endoftext|>} & 文本结束 & 分隔文档，标记生成结束 \\
+\texttt{<|im\_start|>} & 消息开始 & ChatML格式的消息边界 \\
+\texttt{<|im\_end|>} & 消息结束 & ChatML格式的消息边界 \\
+\texttt{[PAD]} & 填充 & 批处理时对齐序列长度 \\
+\texttt{[CLS]} & 分类 & BERT的序列表示 \\
+\texttt{[SEP]} & 分隔 & BERT的句子分隔 \\
+\texttt{[MASK]} & 掩码 & BERT的MLM任务 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{ChatML格式}
+现代Chat模型使用结构化格式区分角色：
+\begin{verbatim}
+<|im_start|>system
+You are a helpful assistant.
+<|im_end|>
+<|im_start|>user
+Hello!
+<|im_end|>
+<|im_start|>assistant
+Hi there!
+<|im_end|>
+\end{verbatim}
+
+\subsection{多语言分词：一个被低估的公平性问题}
+
+分词器的设计深刻影响着不同语言用户的使用体验。这不仅是技术问题，更是公平性问题。
+
+\subsubsection{Token效率差异的根源}
+
+不同语言的token效率差异显著：
+
+\begin{table}[htbp]
+\centering
+\caption{不同语言的Token效率（GPT-4，相同语义内容）}
+\label{tab:token_efficiency}
+\begin{tabular}{lcc}
+\toprule
+语言 & Token数 & 相对英语 \\
+\midrule
+英语 & 100 & 1.0$\times$ \\
+西班牙语 & 120 & 1.2$\times$ \\
+中文 & 150 & 1.5$\times$ \\
+日语 & 180 & 1.8$\times$ \\
+缅甸语 & 400 & 4.0$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{语言学解释}
+效率差异源于\textbf{书写系统}与\textbf{训练数据}的双重因素：
+
+\begin{enumerate}
+    \item \textbf{字母文字 vs 表意文字}：英语26个字母组合成词，BPE容易学到常见子词（如 \texttt{-tion}, \texttt{-ing}）。中文每个字是独立语素，约需3500个常用字覆盖99.9\%文本，但BPE难以学到跨字的有意义组合。
+
+    \item \textbf{训练数据偏斜}：BPE按频率合并token对。当训练语料中英文占90\%时，英文子词被充分合并（\texttt{the}, \texttt{and}成为单token），而中文词汇因频率低而保持拆分状态。
+
+    \item \textbf{UTF-8编码开销}：英文字符占1字节，中文字符占3字节。在Byte-level BPE中，一个中文字至少需要3个基础token才能表示，除非被合并。
+\end{enumerate}
+
+\paragraph{定量分析}
+设语言$L$在训练语料中的占比为$p_L$，其token效率大致满足：
+\begin{equation}
+    \text{效率}_L \propto p_L^{\alpha}, \quad \alpha \approx 0.3\text{--}0.5
+\end{equation}
+这解释了为什么缅甸语（训练数据中几乎没有）效率是英语的1/4——缅甸文字几乎没有被合并，每个字符都被拆成多个字节token。
+
+\subsubsection{实际影响}
+
+对非英语用户而言：
+\begin{itemize}
+    \item \textbf{成本}：相同语义内容消耗1.5-4倍token，API费用相应增加
+    \item \textbf{上下文}：有效上下文窗口缩短（128K tokens对中文用户相当于英文用户的85K）
+    \item \textbf{延迟}：生成相同内容需要更多解码步骤
+    \item \textbf{质量}：过度切分破坏词汇边界，可能影响语义理解
+\end{itemize}
+
+\subsubsection{改进策略}
+
+\paragraph{扩大词表}
+LLaMA 3将词表从32K扩展到128K，新增大量非英语token。效果：中文token效率提升约3倍。代价：Embedding层参数增加4倍（从32K$\times d$到128K$\times d$）。
+
+\paragraph{平衡训练语料}
+在分词器训练时对语言进行上采样，使低资源语言获得更多合并机会。但这会牺牲高资源语言的效率——存在帕累托权衡。
+
+\paragraph{语言感知分词}
+对特定语言使用专门的预分词规则。例如，中文按字切分后再BPE，避免跨字合并产生无意义token。日语可以利用形态分析工具（如MeCab）进行预切分。
+
+\begin{remark}[公平性视角]
+分词效率差异本质上是训练资源分配的结果。当商业模型按token计费时，这种差异直接转化为经济不平等——使用小语种的用户为相同服务付出更高代价。这是AI公平性讨论中容易被忽视的技术细节。
+\end{remark}
+
+\subsection{分词器的实现细节}
+
+\subsubsection{Tokenizer的组成}
+
+一个完整的分词器包含：
+\begin{enumerate}
+    \item \textbf{Normalizer}：文本标准化（Unicode归一化、大小写等）
+    \item \textbf{Pre-tokenizer}：预分词（按空格、标点切分）
+    \item \textbf{Model}：核心分词算法（BPE/WordPiece/Unigram）
+    \item \textbf{Post-processor}：后处理（添加特殊token）
+    \item \textbf{Decoder}：将token ID还原为文本
+\end{enumerate}
+
+\subsubsection{HuggingFace Tokenizers}
+
+HuggingFace的\texttt{tokenizers}库提供高效实现：
+\begin{lstlisting}
+from tokenizers import Tokenizer, models, trainers, pre_tokenizers
+
+# 创建BPE分词器
+tokenizer = Tokenizer(models.BPE())
+tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel()
+
+# 训练
+trainer = trainers.BpeTrainer(vocab_size=32000, special_tokens=["<|endoftext|>"])
+tokenizer.train(files=["corpus.txt"], trainer=trainer)
+
+# 使用
+output = tokenizer.encode("Hello world")
+print(output.tokens)  # ['Hello', 'Ġworld']
+\end{lstlisting}
+
+\subsection{分词的计算开销}
+
+分词通常不是瓶颈，但在某些场景需要注意：
+
+\begin{itemize}
+    \item \textbf{在线推理}：分词延迟约0.1-1ms，通常可忽略
+    \item \textbf{大规模预处理}：TB级语料分词可能需要数小时
+    \item \textbf{优化方法}：
+    \begin{itemize}
+        \item 使用Rust/C++实现（如Tiktoken）
+        \item 并行处理
+        \item 预分词缓存
+    \end{itemize}
+\end{itemize}
+
+\begin{remark}[分词器选择建议]
+\begin{itemize}
+    \item \textbf{从头训练LLM}：使用SentencePiece或HuggingFace Tokenizers训练专用分词器
+    \item \textbf{微调现有模型}：使用原模型的分词器，保持一致性
+    \item \textbf{多语言场景}：选择词表较大（100K+）的分词器
+    \item \textbf{特殊领域}（代码、数学）：考虑在分词器训练时包含领域数据
+\end{itemize}
+\end{remark}

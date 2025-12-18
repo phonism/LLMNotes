@@ -1,0 +1,454 @@
+% ============================================
+% 16. 推理大模型
+% ============================================
+\section{推理大模型}
+\label{sec:reasoning}
+
+前一章讨论的推理优化技术（KV Cache、投机解码等）都致力于同一个目标：\textbf{让模型更快地回答}。但2024年的一系列突破揭示了另一个维度：有时候，\textbf{让模型更慢地回答}反而能获得更好的结果。
+
+这不是技术的倒退，而是对"推理"本身的重新理解。传统LLM的自回归生成是一种"快思考"——每个token的生成几乎不假思索。而人类解决复杂问题时，往往需要"慢思考"：反复尝试、回溯检查、探索多条路径。推理大模型（o1、R1等）将这种慢思考机制引入LLM，用推理时的额外计算换取答案质量的提升。
+
+\subsection{从快思考到慢思考}
+
+\subsubsection{传统LLM的局限}
+
+传统大语言模型采用自回归生成方式，给定输入后直接预测下一个token，这种"System 1"式的快速响应在许多任务上表现出色，但在需要复杂推理的任务上存在明显局限：
+
+\begin{itemize}
+    \item \textbf{推理深度受限}：每个token的生成只依赖前面的上下文，缺乏"回头检查"的能力
+    \item \textbf{错误累积}：推理链中的早期错误会传播到后续步骤
+    \item \textbf{缺乏规划}：无法预先规划解题路径，只能"边走边看"
+\end{itemize}
+
+\subsubsection{测试时计算（Test-Time Compute）}
+
+推理大模型的核心思想是\textbf{测试时计算扩展}（Test-Time Compute Scaling）：在推理阶段投入更多计算资源，换取更好的输出质量。
+
+\textbf{Snell等人（2024）} \cite{snell2024scaling}的关键发现：
+\begin{itemize}
+    \item 测试时计算的扩展可以比扩展模型参数更有效
+    \item 使用"计算最优"策略，测试时计算效率可提升4倍以上
+    \item 在FLOPs匹配的评估中，小模型+测试时计算可超越14倍大的模型
+\end{itemize}
+
+测试时计算的主要方式：
+\begin{enumerate}
+    \item \textbf{搜索}：生成多个候选答案，使用验证器选择最佳
+    \item \textbf{思考}：让模型"思考"更长时间，生成详细的推理过程
+    \item \textbf{迭代}：多轮自我修正和优化
+\end{enumerate}
+
+\subsection{链式思考与自一致性}
+
+\subsubsection{链式思考（Chain-of-Thought）}
+
+链式思考（CoT）提示是推理大模型的基础技术，通过引导模型生成中间推理步骤来提升复杂任务的表现。
+
+\textbf{基本形式}：
+\begin{verbatim}
+Q: Roger有5个网球，他又买了2罐网球，每罐3个。
+   他现在有多少网球？
+A: Roger一开始有5个球。2罐网球共有2*3=6个球。
+   5+6=11。答案是11。
+\end{verbatim}
+
+\textbf{Zero-shot CoT}：仅需添加"Let's think step by step"即可激发模型的推理能力。
+
+\subsubsection{自一致性（Self-Consistency）}
+
+自一致性 \cite{wang2023selfconsistency}是对链式思考的重要改进，核心思想是：
+\begin{itemize}
+    \item 对同一问题生成多条推理路径
+    \item 通过多数投票选择最一致的答案
+    \item 利用"殊途同归"的直觉——正确答案应该可以通过多种方式得出
+\end{itemize}
+
+\textbf{效果提升}：
+\begin{itemize}
+    \item GSM8K：+17.9\%
+    \item SVAMP：+11.0\%
+    \item AQuA：+12.2\%
+    \item StrategyQA：+6.4\%
+\end{itemize}
+
+\textbf{改进方法}：
+\begin{itemize}
+    \item \textbf{CISC}（Confidence-Informed SC）：基于置信度加权投票，减少40\%以上的采样需求
+    \item \textbf{RASC}（Reasoning-Aware SC）：动态调整采样数量
+    \item \textbf{LSC}（Latent SC）：基于语义一致性选择，适用于长文本回答
+\end{itemize}
+
+\subsection{奖励模型与验证器}
+
+\subsubsection{结果奖励模型（ORM）}
+
+结果奖励模型（Outcome Reward Model）只对最终答案给出奖励信号：
+
+\begin{equation}
+    r_\text{ORM}(x, y) = \begin{cases} 1 & \text{if } y \text{ is correct} \\ 0 & \text{otherwise} \end{cases}
+\end{equation}
+
+\textbf{优点}：标注成本低，只需判断最终答案对错
+
+\textbf{缺点}：
+\begin{itemize}
+    \item 信用分配困难：无法区分哪一步出错
+    \item 反馈延迟：只有完成整个推理后才能获得奖励
+\end{itemize}
+
+\subsubsection{过程奖励模型（PRM）}
+
+过程奖励模型（Process Reward Model）对推理的每一步给出奖励信号 \cite{lightman2023lets}：
+
+\begin{equation}
+    r_\text{PRM}(x, y_{1:t}) = \text{score}(y_t | x, y_{1:t-1})
+\end{equation}
+
+其中$y_t$是第$t$步推理，score通常为\{-1, 0, +1\}表示\{错误, 中性, 正确\}。
+
+\textbf{OpenAI的实验结果}：
+使用pre-RLHF GPT-4作为基础模型，PRM在MATH测试集上达到78.2\%准确率，显著优于ORM。
+
+\textbf{PRM vs ORM对比}：
+
+\begin{table}[htbp]
+\centering
+\caption{过程奖励模型与结果奖励模型对比}
+\begin{tabular}{lcc}
+\toprule
+\textbf{特性} & \textbf{ORM} & \textbf{PRM} \\
+\midrule
+反馈粒度 & 整体结果 & 每步过程 \\
+标注成本 & 低 & 高 \\
+信用分配 & 困难 & 精确 \\
+奖励黑客风险 & 低 & 较高 \\
+搜索效率 & 较低 & 更高 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{隐式PRM}：
+最近研究发现，可以通过训练ORM然后将其作为PRM使用，获得"免费"的过程奖励，无需昂贵的步骤级标注。
+
+\subsubsection{过程优势验证器（PAV）}
+
+PAV（Process Advantage Verifier）\cite{setlur2024rewarding}结合了过程监督和优势估计：
+\begin{itemize}
+    \item 相比ORM，搜索准确率提升8\%以上
+    \item 计算效率提升1.5-5倍
+    \item 在线RL中样本效率提升5-6倍
+\end{itemize}
+
+\subsection{搜索与规划}
+
+\subsubsection{Best-of-N采样}
+
+最简单的搜索策略是生成N个候选答案，使用验证器选择最佳：
+
+\begin{equation}
+    y^* = \arg\max_{y \in \{y_1, ..., y_N\}} r(x, y)
+\end{equation}
+
+OpenAI o1在AIME 2024上的表现：
+\begin{itemize}
+    \item 单次采样（pass@1）：74\%
+    \item 64次采样+共识（consensus@64）：83\%
+\end{itemize}
+
+\subsubsection{蒙特卡洛树搜索（MCTS）}
+
+MCTS将推理过程建模为树搜索问题，每个节点是一个推理状态，边是推理步骤。
+
+\textbf{基本流程}：
+\begin{enumerate}
+    \item \textbf{选择}（Selection）：使用UCB公式选择有潜力的节点
+    \item \textbf{扩展}（Expansion）：生成新的推理步骤
+    \item \textbf{模拟}（Simulation）：完成推理并获得结果
+    \item \textbf{回传}（Backpropagation）：更新路径上所有节点的价值
+\end{enumerate}
+
+\textbf{UCB公式}：
+\begin{equation}
+    \text{UCB}(s, a) = Q(s, a) + c \sqrt{\frac{\ln N(s)}{N(s, a)}}
+\end{equation}
+
+\textbf{MCT Self-Refine (MCTSr)}：
+结合LLM自我改进与MCTS，在奥林匹克级数学问题上取得优异表现。
+
+\textbf{SC-MCTS*}：
+使用对比解码设计可解释的奖励模型，结合推测解码加速，平均每节点速度提升51.9\%。在Blocksworld数据集上超越o1-mini 17.4\%。
+
+\subsection{OpenAI o1}
+
+\subsubsection{核心设计}
+
+OpenAI o1（2024年9月发布）是首个大规模商用的推理大模型，其核心创新在于将链式思考内化为模型能力。
+
+\textbf{关键特点}：
+\begin{itemize}
+    \item \textbf{推理token}（Reasoning Tokens）：模型在回答前生成内部推理过程
+    \item \textbf{隐藏思考}：推理token对用户不可见（但会计费）
+    \item \textbf{强化学习训练}：通过大规模RL学习"如何思考"
+\end{itemize}
+
+\textbf{OpenAI官方描述}：
+\begin{quote}
+"Similar to how a human may think for a long time before responding to a difficult question, o1 uses a chain of thought when attempting to solve a problem. Through reinforcement learning, o1 learns to hone its chain of thought and refine the strategies it uses."
+\end{quote}
+
+\subsubsection{性能表现}
+
+\begin{table}[htbp]
+\centering
+\caption{o1在主要benchmark上的表现}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Benchmark} & \textbf{GPT-4o} & \textbf{o1-preview} & \textbf{o1} \\
+\midrule
+AIME 2024 & 12\% & 44\% & 74\% \\
+Codeforces Rating & 808 & 1673 & 1891 \\
+GPQA Diamond & 50.6\% & 73.3\% & 78.0\% \\
+MATH-500 & 60.3\% & 85.5\% & 94.8\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{扩展规律}
+
+o1展示了两个维度的扩展规律：
+\begin{enumerate}
+    \item \textbf{训练时计算}：更多RL训练带来更强的推理能力
+    \item \textbf{测试时计算}：更长的思考时间带来更好的答案质量
+\end{enumerate}
+
+这打开了一条新的扩展路径：不仅可以通过增加参数和训练数据来提升性能，还可以通过增加推理时的计算来提升。
+
+\subsection{DeepSeek-R1}
+
+\subsubsection{纯RL训练的突破}
+
+DeepSeek-R1 \cite{deepseek2025r1}（2025年1月）是首个证明\textbf{纯强化学习可以激发推理能力}的开源模型。
+
+\textbf{DeepSeek-R1-Zero}的关键发现：
+\begin{itemize}
+    \item 无需SFT，仅通过RL即可获得强大推理能力
+    \item 涌现出自我反思、验证、动态策略调整等高级推理模式
+    \item AIME 2024：从15.6\%提升到71.0\%（pass@1），多数投票达86.7\%
+\end{itemize}
+
+\subsubsection{GRPO算法}
+
+DeepSeek使用Group Relative Policy Optimization（GRPO）进行强化学习训练：
+
+\textbf{核心思想}：
+\begin{itemize}
+    \item 省去传统RLHF中与策略模型同等规模的Critic模型
+    \item 使用组内相对分数作为基线估计
+    \item 大幅降低训练成本
+\end{itemize}
+
+\textbf{GRPO优化目标}：
+\begin{equation}
+    \mathcal{L}_\text{GRPO} = -\mathbb{E}_{x, \{y_i\}}\left[\sum_i \frac{r(x, y_i) - \bar{r}}{\sigma_r} \log \pi_\theta(y_i|x)\right]
+\end{equation}
+
+其中$\bar{r}$是组内平均奖励，$\sigma_r$是组内奖励标准差。
+
+\subsubsection{完整训练流程}
+
+DeepSeek-R1的训练包含四个阶段：
+
+\begin{enumerate}
+    \item \textbf{冷启动数据}：少量高质量推理数据，解决R1-Zero的可读性问题
+    \item \textbf{推理RL}：大规模RL训练，发现更好的推理模式
+    \item \textbf{拒绝采样SFT}：收集RL模型的优质输出进行SFT
+    \item \textbf{偏好RL}：与人类偏好对齐
+\end{enumerate}
+
+\subsubsection{涌现能力}
+
+R1-Zero在训练过程中涌现出多种高级推理行为：
+\begin{itemize}
+    \item \textbf{自我反思}："Wait, let me reconsider..."
+    \item \textbf{验证}：检查中间步骤的正确性
+    \item \textbf{回溯}：发现错误后退回重试
+    \item \textbf{策略切换}：一种方法不行时尝试另一种
+\end{itemize}
+
+\subsection{开源推理模型}
+
+\subsubsection{QwQ（Qwen with Questions）}
+
+QwQ \cite{qwen2024qwq}是阿里巴巴Qwen团队发布的开源推理模型（2024年11月）。
+
+\textbf{设计理念}：
+\begin{quote}
+"QwQ approaches every problem with genuine wonder and doubt. It knows that it knows nothing, and that's precisely what drives its curiosity."
+\end{quote}
+
+\textbf{技术特点}：
+\begin{itemize}
+    \item 32B参数，32K上下文长度
+    \item 使用规则化强化学习嵌入推理能力
+    \item 推理时生成长思考链
+\end{itemize}
+
+\textbf{性能表现}：
+\begin{itemize}
+    \item GPQA：65.2\%（研究生级科学推理）
+    \item AIME 2024：50.0\%
+    \item MATH-500：90.6\%
+    \item LiveCodeBench：50.0\%
+\end{itemize}
+
+\textbf{已知局限}：
+\begin{itemize}
+    \item 可能混合语言或意外切换语言
+    \item 可能陷入循环推理，产生过长输出
+\end{itemize}
+
+\subsubsection{Marco-o1}
+
+阿里巴巴的另一个推理模型Marco-o1使用MCTS算法生成合成训练数据，结合CoT样本进行训练。
+
+\subsection{知识蒸馏}
+
+\subsubsection{推理能力的迁移}
+
+DeepSeek开创性地证明了推理能力可以通过蒸馏迁移到小模型。
+
+\textbf{蒸馏方法}：
+\begin{itemize}
+    \item 使用DeepSeek-R1生成800K推理样本
+    \item 在小模型上进行SFT（无需额外RL）
+    \item 小模型获得类似的推理能力
+\end{itemize}
+
+\subsubsection{蒸馏模型系列}
+
+\begin{table}[htbp]
+\centering
+\caption{DeepSeek-R1蒸馏模型性能}
+\begin{tabular}{lccc}
+\toprule
+\textbf{模型} & \textbf{基座} & \textbf{AIME 2024} & \textbf{MATH-500} \\
+\midrule
+R1-Distill-Qwen-1.5B & Qwen2.5-1.5B & 28.9\% & 83.9\% \\
+R1-Distill-Qwen-7B & Qwen2.5-7B & 55.5\% & 92.8\% \\
+R1-Distill-Qwen-14B & Qwen2.5-14B & 69.7\% & 93.9\% \\
+R1-Distill-Qwen-32B & Qwen2.5-32B & 72.6\% & 94.3\% \\
+R1-Distill-Llama-8B & Llama3.1-8B & 50.4\% & 89.1\% \\
+R1-Distill-Llama-70B & Llama3.3-70B & 70.0\% & 94.5\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{关键发现}：
+\begin{itemize}
+    \item R1-Distill-Qwen-32B超越o1-mini
+    \item 蒸馏效果优于同规模模型直接RL训练
+    \item 蒸馏是获得推理能力的高效途径
+\end{itemize}
+
+\subsection{技术对比与分析}
+
+\subsubsection{主要推理模型对比}
+
+\begin{table}[htbp]
+\centering
+\caption{主流推理大模型对比}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{模型} & \textbf{参数} & \textbf{开源} & \textbf{训练方法} & \textbf{AIME} & \textbf{MATH} & \textbf{发布} \\
+\midrule
+GPT-4o & - & \ding{55} & SFT & 12\% & 60.3\% & 2024.05 \\
+o1-preview & - & \ding{55} & RL & 44\% & 85.5\% & 2024.09 \\
+o1 & - & \ding{55} & RL & 74\% & 94.8\% & 2024.12 \\
+\midrule
+QwQ-32B & 32B & \ding{51} & RL & 50\% & 90.6\% & 2024.11 \\
+DeepSeek-R1 & 671B & \ding{51} & RL & 79.8\% & 97.3\% & 2025.01 \\
+R1-Distill-32B & 32B & \ding{51} & 蒸馏 & 72.6\% & 94.3\% & 2025.01 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsubsection{训练范式对比}
+
+\begin{itemize}
+    \item \textbf{o1}：大规模RL + 隐藏推理token + 闭源
+    \item \textbf{DeepSeek-R1}：GRPO + 多阶段训练 + 完全开源
+    \item \textbf{QwQ}：规则化RL + 开源权重
+    \item \textbf{蒸馏模型}：SFT on推理数据 + 开源
+\end{itemize}
+
+\subsection{应用与局限}
+
+\subsubsection{适用场景}
+
+推理大模型特别适合：
+\begin{itemize}
+    \item \textbf{数学问题}：竞赛数学、定理证明
+    \item \textbf{代码生成}：复杂算法、调试
+    \item \textbf{科学推理}：物理、化学问题
+    \item \textbf{逻辑推理}：规划、约束满足
+\end{itemize}
+
+\subsubsection{当前局限}
+
+\begin{itemize}
+    \item \textbf{延迟高}：思考时间长，不适合实时交互
+    \item \textbf{成本高}：推理token消耗大量计算资源
+    \item \textbf{过度思考}：简单问题也可能产生冗长推理
+    \item \textbf{循环推理}：可能陷入无意义的思考循环
+    \item \textbf{语言混杂}：思考过程中可能混合多种语言
+\end{itemize}
+
+\subsubsection{开放问题}
+
+\begin{itemize}
+    \item \textbf{最优思考长度}：如何确定何时停止思考？
+    \item \textbf{思考可解释性}：隐藏的推理过程是否可信？
+    \item \textbf{通用推理}：当前主要在数学/代码领域，如何扩展到更多领域？
+    \item \textbf{效率优化}：如何在保持推理质量的同时降低计算成本？
+\end{itemize}
+
+\subsection{未来方向}
+
+\subsubsection{计算最优策略}
+
+根据任务难度动态调整测试时计算：
+\begin{itemize}
+    \item 简单问题：快速响应
+    \item 困难问题：深度思考
+    \item 预测难度并自动选择策略
+\end{itemize}
+
+\subsubsection{多模态推理}
+
+将推理能力扩展到多模态：
+\begin{itemize}
+    \item 视觉推理：图像中的逻辑关系
+    \item 视频理解：时序推理
+    \item 具身智能：物理世界的规划
+\end{itemize}
+
+\subsubsection{推理与Agent}
+
+推理大模型为AI Agent提供了更强的规划能力：
+\begin{itemize}
+    \item 任务分解与规划
+    \item 工具使用决策
+    \item 长期目标追踪
+\end{itemize}
+
+\subsubsection{效率提升}
+
+\begin{itemize}
+    \item \textbf{推测解码}：加速推理token生成
+    \item \textbf{早停策略}：检测到答案收敛时提前停止
+    \item \textbf{轻量化}：蒸馏更小的推理模型
+    \item \textbf{稀疏激活}：仅激活与推理相关的参数
+\end{itemize}
+

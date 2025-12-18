@@ -1,0 +1,535 @@
+\section{位置编码}
+\label{sec:position_encoding}
+
+不同于RNN、CNN等模型，Transformer的自注意力机制本身是\textbf{置换不变的}（permutation invariant）——纯粹的Attention模块无法捕捉输入顺序，即无法区分不同位置的Token。为此，位置编码的引入是必不可少的。
+
+位置编码大体有两种思路：
+\begin{enumerate}
+    \item \textbf{绝对位置编码}：将位置信息融入到输入中，即 $\bm{x}'_k = \bm{x}_k + \bm{p}_k$ 或 $\bm{x}'_k = \bm{x}_k \odot \bm{p}_k$
+    \item \textbf{相对位置编码}：微调Attention结构，使其能分辨不同位置的Token
+\end{enumerate}
+
+\begin{table}[htbp]
+\centering
+\caption{位置编码方法分类与对比}
+\label{tab:pos_encoding_comparison}
+\begin{tabular}{llccl}
+\toprule
+类型 & 方法 & 作用位置 & 外推性 & 代表模型 \\
+\midrule
+\multirow{3}{*}{绝对} & Sinusoidal & Embedding & 差 & Transformer \\
+ & Learned & Embedding & 差 & BERT, GPT \\
+ & FLOATER & Embedding & 中 & — \\
+\midrule
+\multirow{4}{*}{相对} & 经典式 & Attention & 中 & NEZHA \\
+ & T5 Bias & Attention score & 好 & T5 \\
+ & ALiBi & Attention score & 好 & BLOOM, MPT \\
+ & \textbf{RoPE} & Q/K向量 & 好 & LLaMA, Qwen \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{绝对位置编码}
+
+绝对位置编码的一般形式是在输入的第 $k$ 个向量 $\bm{x}_k$ 中加入位置向量 $\bm{p}_k$，其中 $\bm{p}_k$ 只依赖于位置编号 $k$。
+
+\subsubsection{训练式（Learned）}
+
+最朴素的方案是将位置编码作为可训练参数。例如最大长度512、编码维度768，则初始化一个 $512 \times 768$ 的矩阵，随训练更新。BERT、GPT等模型采用此方案。
+
+\paragraph{优点} 简单直接，让模型自己学习位置表示。
+
+\paragraph{缺点} 缺乏外推性——如果预训练最大长度为512，则无法处理更长的序列。虽然可以将超长位置随机初始化后继续微调，但效果有限。
+
+\subsubsection{三角函数式（Sinusoidal）}
+
+原始Transformer~\citep{vaswani2017attention}采用正弦余弦函数生成位置编码：
+\begin{align}
+    p_{k,2i} &= \sin\left(k / 10000^{2i/d}\right) \\
+    p_{k,2i+1} &= \cos\left(k / 10000^{2i/d}\right)
+\end{align}
+其中 $p_{k,2i}, p_{k,2i+1}$ 分别是位置 $k$ 的编码向量的第 $2i, 2i+1$ 个分量。
+
+\paragraph{设计直觉}
+不同维度对应不同频率的周期函数：低维变化快（捕捉局部位置），高维变化慢（捕捉全局位置）。由三角恒等式 $\sin(\alpha+\beta) = \sin\alpha\cos\beta + \cos\alpha\sin\beta$，位置 $\alpha+\beta$ 的向量可表示为位置 $\alpha$ 和 $\beta$ 的向量组合，这提供了表达相对位置信息的可能性。
+
+\paragraph{局限性}
+尽管有显式的生成规律，但实践中Sinusoidal编码的外推能力仍然有限，现代LLM已很少直接使用。
+
+\subsubsection{递归式（FLOATER）}
+
+ICML 2020的论文提出用微分方程建模位置编码：
+\begin{equation}
+    \frac{d\bm{p}_t}{dt} = h(\bm{p}_t, t)
+\end{equation}
+其中 $h$ 可以用神经网络建模。这种方法称为FLOATER，理论上具有较好的外推性（可以证明Sinusoidal是其特解），但牺牲了并行性。
+
+\subsubsection{相乘式}
+
+除了 $\bm{x}_k + \bm{p}_k$ 的加法融合，也可以考虑 $\bm{x}_k \odot \bm{p}_k$ 的逐位相乘。有实验表明相乘方式可能取得更好的效果，但目前主流模型仍以相加为主。
+
+\subsection{相对位置编码}
+
+相对位置编码不完整建模每个输入的位置信息，而是在计算Attention时考虑当前位置与被attend位置的\textbf{相对距离}。由于自然语言更依赖相对位置，这类方法通常表现优秀。
+
+\subsubsection{经典式}
+
+Google的论文《Self-Attention with Relative Position Representations》首次提出相对位置编码。考虑带绝对位置编码的Attention：
+\begin{equation}
+    q_i k_j^\top = (x_i + p_i)W_Q W_K^\top (x_j + p_j)^\top
+\end{equation}
+
+展开后将 $p_j W_K$ 替换为二元位置向量 $R^K_{i-j}$（只依赖相对距离），并进行截断：
+\begin{equation}
+    R^K_{i-j} = p^K[\text{clip}(i-j, p_{\min}, p_{\max})]
+\end{equation}
+
+这样只需有限个位置编码就可以表达任意长度的相对位置。华为的NEZHA模型采用了这种编码。
+
+\subsubsection{Transformer-XL / XLNet式}
+
+Transformer-XL对 $q_i k_j^\top$ 完全展开：
+\begin{equation}
+    q_i k_j^\top = x_i W_Q W_K^\top x_j^\top + x_i W_Q W_K^\top p_j^\top + p_i W_Q W_K^\top x_j^\top + p_i W_Q W_K^\top p_j^\top
+\end{equation}
+
+将 $p_j$ 替换为相对位置向量 $R_{i-j}$（使用Sinusoidal生成），$p_i$ 替换为可训练向量 $u, v$：
+\begin{equation}
+    x_i W_Q W_K^\top x_j^\top + x_i W_Q W_{K,R}^\top R_{i-j}^\top + u W_K^\top x_j^\top + v W_{K,R}^\top R_{i-j}^\top
+\end{equation}
+
+\subsubsection{T5式}
+
+T5进一步简化，认为"输入-位置"交互项应该解耦，直接删除中间两项：
+\begin{equation}
+    x_i W_Q W_K^\top x_j^\top + \beta_{i,j}
+\end{equation}
+
+其中 $\beta_{i,j}$ 是只依赖于 $(i,j)$ 的可训练偏置。T5的特色是对相对位置进行\textbf{分桶}处理：邻近位置（0$\sim$7）精细区分，远距离位置共用编码，距离越远共用范围越大。
+
+\subsubsection{DeBERTa式}
+
+DeBERTa保留"输入-位置"和"位置-输入"项，去掉"位置-位置"项：
+\begin{equation}
+    q_i k_j^\top = x_i W_Q W_K^\top x_j^\top + x_i W_Q W_K^\top R_{i,j}^\top + R_{j,i} W_Q W_K^\top x_j^\top
+\end{equation}
+
+DeBERTa还提出了混合使用相对位置（前11层）和绝对位置（后2层）的策略，在SuperGLUE上取得了优异成绩。
+
+\subsection{旋转位置编码（RoPE）}
+
+\citet{su2021roformer}提出的RoPE是目前最主流的位置编码方法，被LLaMA、Mistral、Qwen等模型广泛采用。RoPE的核心思想是\textbf{融合绝对位置与相对位置}：通过在q、k上施加绝对位置的旋转操作，使得内积自然地只依赖于相对位置。
+
+\begin{remark}[RoPE的理论起源]
+RoPE的设计灵感来自复数的性质：两个复数的内积 $\langle q e^{im\theta}, k e^{in\theta} \rangle = \text{Re}[q \bar{k} e^{i(m-n)\theta}]$ 只依赖相对位置 $m-n$。这一洞察使得我们可以用绝对位置的操作（乘以 $e^{im\theta}$）达到相对位置的效果。
+\end{remark}
+
+\subsubsection{问题设定}
+
+我们希望通过下述运算给 $\bm{q}, \bm{k}$ 添加绝对位置信息：
+\begin{equation}
+    \tilde{\bm{q}}_m = f(\bm{q}, m), \quad \tilde{\bm{k}}_n = f(\bm{k}, n)
+\end{equation}
+
+由于Attention的核心是内积，我们希望内积结果带有\textbf{相对位置信息}，即存在恒等关系：
+\begin{equation}
+    \langle f(\bm{q}, m), f(\bm{k}, n) \rangle = g(\bm{q}, \bm{k}, m-n)
+    \label{eq:rope_goal}
+\end{equation}
+
+初始条件设为 $f(\bm{q}, 0) = \bm{q}$，$f(\bm{k}, 0) = \bm{k}$。
+
+\subsubsection{二维情况的求解}
+
+借助复数来求解。在复数中有 $\langle \bm{q}, \bm{k} \rangle = \text{Re}[\bm{q} \bar{\bm{k}}]$，所以：
+\begin{equation}
+    \text{Re}[f(\bm{q}, m) \overline{f(\bm{k}, n)}] = g(\bm{q}, \bm{k}, m-n)
+\end{equation}
+
+假设存在复数 $g(\bm{q}, \bm{k}, m-n)$ 使得 $f(\bm{q}, m) \overline{f(\bm{k}, n)} = g(\bm{q}, \bm{k}, m-n)$。用复数的指数形式：
+\begin{align}
+    f(\bm{q}, m) &= R_f(\bm{q}, m) e^{i\Theta_f(\bm{q}, m)} \\
+    f(\bm{k}, n) &= R_f(\bm{k}, n) e^{i\Theta_f(\bm{k}, n)}
+\end{align}
+
+代入后得到方程组：
+\begin{align}
+    R_f(\bm{q}, m) R_f(\bm{k}, n) &= R_g(\bm{q}, \bm{k}, m-n) \\
+    \Theta_f(\bm{q}, m) - \Theta_f(\bm{k}, n) &= \Theta_g(\bm{q}, \bm{k}, m-n)
+\end{align}
+
+\paragraph{求解模长} 代入 $m = n$：
+\begin{equation}
+    R_f(\bm{q}, m) R_f(\bm{k}, m) = R_g(\bm{q}, \bm{k}, 0) = R_f(\bm{q}, 0) R_f(\bm{k}, 0) = \|\bm{q}\| \|\bm{k}\|
+\end{equation}
+最简单的解是 $R_f(\bm{q}, m) = \|\bm{q}\|$，$R_f(\bm{k}, m) = \|\bm{k}\|$，即\textbf{模长不依赖于位置}。
+
+\paragraph{求解幅角} 同样代入 $m = n$：
+\begin{equation}
+    \Theta_f(\bm{q}, m) - \Theta_f(\bm{k}, m) = \Theta_g(\bm{q}, \bm{k}, 0) = \Theta(\bm{q}) - \Theta(\bm{k})
+\end{equation}
+这说明 $\Theta_f(\bm{q}, m) - \Theta(\bm{q})$ 只与 $m$ 相关，记为 $\varphi(m)$。再代入 $n = m - 1$，可得 $\{\varphi(m)\}$ 是等差数列，即 $\varphi(m) = m\theta$。
+
+\paragraph{最终解} 综上，二维情况下的RoPE为：
+\begin{equation}
+    \boxed{f(\bm{q}, m) = \|\bm{q}\| e^{i(\Theta(\bm{q}) + m\theta)} = \bm{q} e^{im\theta}}
+\end{equation}
+
+这正是向量乘以旋转因子 $e^{im\theta}$，对应\textbf{旋转角度 $m\theta$}。
+
+\subsubsection{矩阵形式与高维扩展}
+
+二维旋转的矩阵形式：
+\begin{equation}
+    f(\bm{q}, m) = \begin{pmatrix} \cos m\theta & -\sin m\theta \\ \sin m\theta & \cos m\theta \end{pmatrix} \begin{pmatrix} q_0 \\ q_1 \end{pmatrix}
+\end{equation}
+
+由于内积满足线性叠加性，$d$ 维向量可分成 $d/2$ 对，每对独立旋转：
+\begin{equation}
+    f(\bm{q}, m) = \begin{pmatrix} R_{\theta_0}(m) & & \\ & R_{\theta_1}(m) & \\ & & \ddots \end{pmatrix} \bm{q}
+\end{equation}
+
+关键性质：给位置 $m$ 的 $\bm{q}$ 乘 $R_m$，位置 $n$ 的 $\bm{k}$ 乘 $R_n$，则：
+\begin{equation}
+    (R_m \bm{q})^\top (R_n \bm{k}) = \bm{q}^\top R_m^\top R_n \bm{k} = \bm{q}^\top R_{n-m} \bm{k}
+\end{equation}
+内积自动包含相对位置信息。此外，$R_m$ 是正交矩阵，\textbf{不改变向量模长}，保持模型稳定性。
+
+\subsubsection{旋转矩阵形式}
+
+完整的RoPE公式为：
+\begin{equation}
+    \text{RoPE}(\bm{x}, m) = \underbrace{\begin{pmatrix}
+    \cos m\theta_1 & -\sin m\theta_1 & & & \\
+    \sin m\theta_1 & \cos m\theta_1 & & & \\
+    & & \cos m\theta_2 & -\sin m\theta_2 & \\
+    & & \sin m\theta_2 & \cos m\theta_2 & \\
+    & & & & \ddots
+    \end{pmatrix}}_{R_\Theta(m)} \bm{x}
+    \label{eq:rope_matrix}
+\end{equation}
+
+\paragraph{频率参数}
+频率 $\theta_i$ 采用指数递减的形式：
+\begin{equation}
+    \theta_i = \text{base}^{-2(i-1)/d}, \quad i = 1, 2, \ldots, d/2
+    \label{eq:rope_theta}
+\end{equation}
+其中 $\text{base} = 10000$ 是原始设置。不同 $\theta_i$ 对应不同的"波长"，小 $i$ 对应高频（短波长，捕捉局部位置），大 $i$ 对应低频（长波长，捕捉全局位置）。
+
+\subsubsection{Base选择原则}
+
+\citet{men2024base}从理论上分析了RoPE的base值与上下文长度的关系，揭示了\textbf{base存在下界}这一重要性质（参见苏剑林的解读~\citep{su2024base}）。
+
+\paragraph{语义聚合性质}
+设 $\bm{q}$ 是query向量，$\bm{k}^* = \bm{q} + \bm{\epsilon}$ 是语义相似的key（$\bm{\epsilon}$ 为小扰动），$\bm{k}$ 是随机key。定义\textbf{语义区分度}为模型区分相似token和随机token的能力：
+\begin{equation}
+    B_{m,\theta} = \frac{1}{2\sigma^2}\left(\E[\bm{q}^\top R_{m,\theta} \bm{k}^*] - \E[\bm{q}^\top R_{m,\theta} \bm{k}]\right) = \sum_{i=1}^{d/2} \cos(m\theta_i)
+    \label{eq:semantic_discrimination}
+\end{equation}
+
+\paragraph{Long-term Decay}
+随着相对距离 $m$ 增大，$B_{m,\theta}$ 逐渐减小（注意力衰减），且当base过小时会变为负值——此时模型反而给随机token更高的注意力，丧失语义理解能力。
+
+\paragraph{Base下界}
+为保证所有上下文位置的语义区分度非负，base必须满足：
+\begin{equation}
+    b^* = \inf\left\{b \mid B_{m,\theta} \geq 0, \forall m \in \{0, 1, \ldots, L-1\}\right\}
+\end{equation}
+
+数值求解得到不同上下文长度对应的base下界：
+
+\begin{table}[htbp]
+\centering
+\caption{RoPE Base下界与上下文长度的关系}
+\label{tab:base_lower_bound}
+\begin{tabular}{lcccccc}
+\toprule
+Context Length $L$ & 4K & 8K & 32K & 128K & 1M \\
+\midrule
+Base下界 $b^*$ & $4.5 \times 10^4$ & $8.4 \times 10^4$ & $6.4 \times 10^5$ & $3.4 \times 10^6$ & $6.5 \times 10^7$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+渐近分析表明 $b^* \approx O(L)$，即base应随上下文长度\textbf{线性增长}。
+
+\paragraph{实际模型的Base选择}
+\begin{itemize}
+    \item \textbf{LLaMA 3}：训练长度8192，但base选择了500000，远超下界（$8.4 \times 10^4$），可能是为更长上下文预留
+    \item \textbf{Mixtral}：base = 1000000，支持128K上下文
+\end{itemize}
+
+\paragraph{与Position Interpolation的联系}
+语义聚合视角也解释了PI的原理：同一个base下，$B_{m,\theta}$ 的非负区间是固定的。PI通过缩小位置间隔（$0, 1/s, 2/s, \ldots$）使更多位置落入非负区间，而非增大base。两种方法殊途同归。
+
+\begin{remark}[OOD理论的不足]
+早期基于Out-of-Distribution（OOD）的分析认为base越小越好（使位置遍历整个圆）。但语义聚合视角揭示了base存在下界——过小的base会导致模型虽然保持低困惑度，却丧失长距离信息检索能力，形成"表面长上下文能力"。
+\end{remark}
+
+\subsubsection{远程衰减性质}
+
+RoPE具有一个重要的理论性质：\textbf{随着相对距离增大，内积会逐渐衰减}。这与自然语言的局部性假设相吻合——距离越近的token通常关联越强。
+
+设 $\bm{q}, \bm{k}$ 是随机向量，RoPE编码后的内积期望为：
+\begin{equation}
+    \E[\langle f(\bm{q}, m), f(\bm{k}, n) \rangle] \propto \sum_{i=1}^{d/2} \cos((m-n)\theta_i)
+\end{equation}
+
+当 $m = n$ 时（同一位置），内积最大；随着 $|m-n|$ 增大，各维度的余弦项相位错开，求和结果减小。这种衰减是\textbf{非单调}的（因为余弦函数），但长程平均效果是衰减的。
+
+\paragraph{与Sinusoidal编码的对比}
+Sinusoidal编码虽然在设计时也考虑了相对位置表达，但它只是将位置信息\textbf{加入}到向量中，相对位置需要模型自己学习。而RoPE通过旋转操作，\textbf{在数学上保证}内积只依赖于相对位置，无需学习。
+
+\subsubsection{几何直觉}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.5]
+    % 坐标轴
+    \draw[->] (-1.5,0) -- (1.8,0) node[right] {$x_1$};
+    \draw[->] (0,-1.5) -- (0,1.8) node[above] {$x_2$};
+
+    % 原始向量
+    \draw[->, thick, blue] (0,0) -- (1.2,0.4) node[right] {$\bm{q}$};
+
+    % 旋转后的向量
+    \draw[->, thick, red] (0,0) -- (0.8,1.0) node[above right] {$f(\bm{q}, m)$};
+
+    % 旋转角度
+    \draw[dashed] (0.6,0.2) arc (18:51:0.6);
+    \node at (0.75,0.55) {$m\theta$};
+
+    % 单位圆（部分）
+    \draw[gray, dashed] (0,0) circle (1.26);
+\end{tikzpicture}
+\caption{RoPE的几何直觉：位置编码 = 向量旋转。位置 $m$ 处的向量被旋转 $m\theta$ 角度。}
+\label{fig:rope_intuition}
+\end{figure}
+
+RoPE的核心直觉可以总结为：
+
+\begin{quote}
+\textit{"根据位置旋转query和key向量，让点积自然地揭示它们的相对距离。"}
+\end{quote}
+
+\begin{itemize}
+    \item \textbf{相同位置偏移保持角度不变}：如果 $\bm{q}$ 和 $\bm{k}$ 同时偏移相同的位置（绝对位置改变，相对位置不变），两者会被旋转相同的角度，它们之间的夹角不变，点积也不变
+    \item \textbf{距离衰减}：相对位置越远，累积旋转角度越大，高频维度的点积贡献会因相位错开而减小，形成自然的距离衰减
+\end{itemize}
+
+\subsubsection{高效实现}
+
+直接使用旋转矩阵需要 $O(d^2)$ 计算。但注意到旋转矩阵是\textbf{分块对角}的，每个2×2块独立作用，可以展开为逐元素运算。
+
+对于二维情况：
+\begin{equation}
+    \begin{pmatrix} \cos m\theta & -\sin m\theta \\ \sin m\theta & \cos m\theta \end{pmatrix} \begin{pmatrix} q_0 \\ q_1 \end{pmatrix} = \begin{pmatrix} q_0 \cos m\theta - q_1 \sin m\theta \\ q_0 \sin m\theta + q_1 \cos m\theta \end{pmatrix}
+\end{equation}
+
+推广到 $d$ 维，可以写成向量形式：
+\begin{equation}
+    \text{RoPE}(\bm{x}, m) = \bm{x} \odot \cos(m\bm{\theta}) + \text{rotate\_half}(\bm{x}) \odot \sin(m\bm{\theta})
+    \label{eq:rope_efficient}
+\end{equation}
+其中 $\bm{\theta} = (\theta_1, \theta_1, \theta_2, \theta_2, \ldots)$ 是频率向量（每个频率重复两次），$\odot$ 表示逐元素乘法。这种实现的复杂度为 $O(d)$。
+
+\begin{remark}[实现风格]
+存在两种实现风格，区别在于如何定义 $\text{rotate\_half}$ 操作：
+\begin{itemize}
+    \item \textbf{GPT-NeoX风格}：将向量分成前后两半
+    \begin{equation*}
+        \text{rotate\_half}([x_0, \ldots, x_{d/2-1}, x_{d/2}, \ldots, x_{d-1}]) = [-x_{d/2}, \ldots, -x_{d-1}, x_0, \ldots, x_{d/2-1}]
+    \end{equation*}
+    \item \textbf{GPT-J风格}：相邻两个维度配对（interleaved）
+    \begin{equation*}
+        \text{rotate\_half}([x_0, x_1, x_2, x_3, \ldots]) = [-x_1, x_0, -x_3, x_2, \ldots]
+    \end{equation*}
+\end{itemize}
+LLaMA官方实现采用GPT-J风格，但Hugging Face Transformers库默认采用GPT-NeoX风格。两者数学上等价（只是维度排列不同），但加载预训练权重时需要注意兼容性。
+\end{remark}
+
+\subsection{RoPE的应用}
+
+\subsubsection{Dense模型}
+
+RoPE已成为主流Dense模型的标准配置：
+
+\begin{table}[htbp]
+\centering
+\caption{RoPE在Dense模型中的应用}
+\label{tab:rope_dense}
+\begin{tabular}{lccc}
+\toprule
+Model & Base & Max Position & Context Length \\
+\midrule
+LLaMA & 10000 & 2048 & 2K \\
+LLaMA 2 & 10000 & 4096 & 4K \\
+Mistral-7B & 10000 & 32768 & 32K \\
+Qwen-7B & 10000 & 8192 & 8K \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{MoE模型}
+
+MoE模型同样采用RoPE，但通常配置更大的base值以支持更长上下文：
+
+\begin{table}[htbp]
+\centering
+\caption{RoPE在MoE模型中的应用}
+\label{tab:rope_moe}
+\begin{tabular}{lcccc}
+\toprule
+Model & Base & Max Position & Experts & Notes \\
+\midrule
+Mixtral-8x7B & 1000000 & 131072 & 8 & Sliding window attention \\
+Mixtral-8x22B & 1000000 & 65536 & 8 & — \\
+DeepSeek-MoE & 10000 & 4096 & 64 & Fine-grained experts \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{MoE的特殊考虑}
+MoE模型中不同expert可能专门处理不同位置模式或模态。LLaMA 4引入了\textbf{iRoPE}（interleaved RoPE）架构：部分层使用RoPE，部分层不使用位置编码，依靠因果attention mask和学习到的模式推断位置。这种混合方法使LLaMA 4 Scout能够支持高达1000万token的上下文窗口（仅在256K token上训练）。
+
+\subsection{长度外推方法}
+
+RoPE的一个关键问题是\textbf{长度外推}（length extrapolation）：如何让模型处理超出训练长度的序列？
+
+\subsubsection{Position Interpolation (PI)}
+
+最简单的方法是缩放位置索引~\citep{chen2023extending}：
+\begin{equation}
+    m' = \frac{m}{s}, \quad s = \frac{L'}{L}
+\end{equation}
+其中 $L$ 是训练长度，$L'$ 是目标长度。
+
+\paragraph{直觉}
+将长序列"压缩"到原始位置范围内。例如，要将4K模型扩展到16K，令 $s=4$，则位置16000被映射到位置4000。
+
+\paragraph{问题}
+均匀缩放会破坏高频信息，因为高频维度对位置变化敏感。
+
+\subsubsection{NTK-aware Interpolation}
+
+基于Neural Tangent Kernel理论，调整base而非均匀缩放~\citep{bloc97}：
+\begin{equation}
+    \text{base}' = \text{base} \cdot s^{d/(d-2)}
+\end{equation}
+
+\paragraph{直觉}
+将插值压力分散到不同维度：高频维度（编码局部位置）少插值，低频维度（编码全局位置）多插值。
+
+\subsubsection{NTK-by-parts}
+
+进一步改进，对不同维度采用不同的插值策略：
+\begin{equation}
+    \theta'_i = \begin{cases}
+    \theta_i & \text{if } \lambda_i > \beta \cdot L \text{ (高频，不插值)} \\
+    \theta_i / s & \text{if } \lambda_i < \alpha \cdot L \text{ (低频，完全插值)} \\
+    \text{interpolate} & \text{otherwise (中间，渐进插值)}
+    \end{cases}
+\end{equation}
+其中 $\lambda_i = 2\pi / \theta_i$ 是波长。对LLaMA模型，$\alpha = 1$，$\beta = 32$ 效果最优。
+
+\subsubsection{YaRN}
+
+YaRN（Yet another RoPE extensioN）~\citep{peng2023yarn}结合NTK-by-parts和\textbf{注意力温度缩放}：
+
+\begin{equation}
+    \text{Attention}'_{ij} = \frac{\bm{q}_i^\top \bm{k}_j}{\sqrt{d} \cdot t}
+\end{equation}
+
+温度系数 $t$ 根据扩展比例 $s$ 设定：
+\begin{equation}
+    \sqrt{1/t} = 0.1 \cdot \ln(s) + 1
+\end{equation}
+
+\paragraph{效果}
+YaRN只需约400步微调即可将LLaMA 2从4K扩展到64K，相比PI减少10倍数据和2.5倍训练步数。
+
+\begin{table}[htbp]
+\centering
+\caption{长度外推方法对比}
+\label{tab:extrapolation_comparison}
+\begin{tabular}{lccc}
+\toprule
+Method & Extrapolation & Finetuning & Notes \\
+\midrule
+PI & 2$\times$ & Required & 均匀缩放 \\
+NTK-aware & 32$\times$ & Optional & 无需微调时效果好 \\
+NTK-by-parts & 16$\times$ & Required & 分维度处理 \\
+YaRN & 16$\times$ & Minimal & 结合温度缩放 \\
+Dynamic & 64$\times$ & None & 推理时动态调整 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Dynamic Scaling}
+
+动态缩放在推理时根据当前序列长度自适应调整插值因子：
+\begin{equation}
+    s = \max\left(1, \frac{\text{current\_length}}{L}\right)
+\end{equation}
+
+\paragraph{优势}
+\begin{itemize}
+    \item 无需微调
+    \item 短序列保持原始性能
+    \item 长序列自动启用插值
+\end{itemize}
+
+\subsection{RoPE vs ALiBi}
+
+ALiBi~\citep{press2021alibi}是另一种流行的相对位置编码方法，直接在attention score上添加距离惩罚：
+\begin{equation}
+    \text{Attention}_{ij} = \frac{\bm{q}_i^\top \bm{k}_j}{\sqrt{d}} - m \cdot |i - j|
+\end{equation}
+其中 $m$ 是每个head的斜率参数。
+
+\begin{table}[htbp]
+\centering
+\caption{RoPE与ALiBi的详细对比}
+\label{tab:rope_vs_alibi}
+\begin{tabular}{lcc}
+\toprule
+Feature & RoPE & ALiBi \\
+\midrule
+编码位置 & Q/K向量 & Attention score \\
+参数量 & 0 & 0 \\
+外推能力 & 中等（需扩展方法） & 好 \\
+训练速度 & 基准 & 更快 \\
+KV Cache友好 & 是（旋转一次写入） & 是 \\
+采用模型 & LLaMA, Mistral, Qwen & BLOOM, MPT \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{选择建议}
+\begin{itemize}
+    \item 如果需要极长上下文且不想微调，ALiBi可能更合适
+    \item 如果使用主流开源模型生态（LLaMA系），RoPE是默认选择
+    \item RoPE配合YaRN等扩展方法可以达到与ALiBi相当的外推能力
+\end{itemize}
+
+\subsection{最新进展}
+
+\paragraph{Resonance RoPE (2024)}
+针对OOD（Out-of-Distribution）位置的特征插值问题进行优化，进一步提升长度外推能力。
+
+\paragraph{iRoPE (LLaMA 4)}
+混合使用RoPE层和无位置编码层，配合推理时注意力温度缩放，实现从256K训练长度到10M上下文窗口的极端外推。
+
+\paragraph{2D/3D RoPE}
+将RoPE扩展到二维（图像）和三维（视频）位置编码，应用于Vision Transformer和多模态模型。
+
+\begin{remark}[为什么RoPE成为主流]
+RoPE成功的关键因素：
+\begin{enumerate}
+    \item \textbf{零参数}：不增加模型参数
+    \item \textbf{流式友好}：KV Cache只需旋转一次
+    \item \textbf{可扩展}：配合PI/YaRN等方法可处理超长上下文
+    \item \textbf{生态支持}：LLaMA系模型的标准配置
+\end{enumerate}
+\end{remark}

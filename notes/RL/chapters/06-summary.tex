@@ -1,0 +1,889 @@
+% ==========================================
+% 第六章：总结与展望
+% ==========================================
+
+\chapter{总结与展望}
+\label{chap:summary}
+
+% ------------------------------------------
+% 开篇问题
+% ------------------------------------------
+
+\begin{quote}
+\textit{``学习了这么多算法，如何在实际问题中选择合适的方法？各种方法之间有什么内在联系？强化学习的未来在哪里？''}
+\end{quote}
+
+本章是全书的总结与升华。前五章分别介绍了 RL 的基础概念、Value-Based 方法、Policy-Based 方法、Model-Based 方法与多智能体学习，以及 LLM 时代的 RL 应用。这些内容看似独立，实则存在深刻的内在联系。本章将：
+\begin{enumerate}
+    \item 构建 RL 算法的完整知识体系，揭示各方法之间的关联
+    \item 提供算法选择的决策指南，帮助读者应对实际问题
+    \item 给出核心公式的速查手册，便于快速回顾
+    \item 展望强化学习的未来发展方向
+\end{enumerate}
+
+% ------------------------------------------
+\section{知识体系回顾}
+\label{sec:knowledge-system}
+
+\subsection{从问题到解法：RL 的思维框架}
+
+强化学习的核心任务是\textbf{寻找最优策略}。让我们回顾这一目标是如何通过不同路径实现的：
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=1.2cm,
+        box/.style={draw, rounded corners, fill=blue!10, minimum width=3cm, minimum height=0.8cm, align=center, font=\small},
+        goal/.style={draw, rounded corners, fill=red!20, minimum width=3cm, minimum height=0.8cm, align=center, font=\small\bfseries},
+        method/.style={draw, rounded corners, fill=green!15, minimum width=2.8cm, minimum height=0.7cm, align=center, font=\footnotesize},
+        arr/.style={->, thick, >=stealth},
+        label/.style={font=\scriptsize, text=gray}
+    ]
+    % 目标
+    \node[goal] (goal) at (0, 0) {目标：$\policy^* = \argmax_\policy J(\policy)$};
+
+    % 三条路径
+    \node[box] (value) at (-5, -1.8) {学习价值函数\\$\Val^*, \Qval^*$};
+    \node[box] (policy) at (0, -1.8) {直接优化策略\\$\nabla_\theta J(\theta)$};
+    \node[box] (model) at (5, -1.8) {学习环境模型\\$\hat{P}, \hat{r}$};
+
+    % 连接
+    \draw[arr] (goal) -- (value) node[midway, above left, label] {隐式提取};
+    \draw[arr] (goal) -- (policy) node[midway, left, label] {直接优化};
+    \draw[arr] (goal) -- (model) node[midway, above right, label] {规划求解};
+
+    % 方法 - 增加间距避免重叠
+    \node[method, minimum width=2.5cm] (vb) at (-5.5, -3.5) {Value-Based\\DQN, Q-Learning};
+    \node[method, minimum width=2.5cm] (pb) at (-1.8, -3.5) {Policy-Based\\REINFORCE, TRPO};
+    \node[method, minimum width=2.5cm] (ac) at (1.8, -3.5) {Actor-Critic\\PPO, SAC, A2C};
+    \node[method, minimum width=2.5cm] (mb) at (5.5, -3.5) {Model-Based\\Dyna, MCTS};
+
+    \draw[arr] (value) -- (vb);
+    \draw[arr] (policy) -- (pb);
+    \draw[arr] (policy) -- (ac);
+    \draw[arr] (model) -- (mb);
+
+    % 策略提取
+    \node[font=\scriptsize, text=gray] at (-5.5, -4.4) {$\policy^*(s) = \argmax_a \Qval^*(s,a)$};
+    \node[font=\scriptsize, text=gray] at (0, -4.4) {$\policy_\theta(a|s)$ 参数化};
+    \node[font=\scriptsize, text=gray] at (5.5, -4.4) {模拟 + 规划};
+
+    % 混合关系
+    \draw[dashed, gray, <->] (vb) -- (ac) node[midway, below, font=\scriptsize, yshift=-3pt] {Critic};
+    \draw[dashed, gray, <->] (pb) -- (ac) node[midway, below, font=\scriptsize, yshift=-10pt] {Actor};
+    \end{tikzpicture}
+    \caption{RL 算法的三条主要路径及其关联}
+    \label{fig:rl-three-paths}
+\end{figure}
+
+\begin{keypoint}
+三条路径的核心思想：
+\begin{enumerate}
+    \item \textbf{Value-Based}：``如果我知道每个状态-动作对的价值，选择最优动作就是 $\argmax$''
+    \item \textbf{Policy-Based}：``直接参数化策略，沿梯度方向改进''
+    \item \textbf{Model-Based}：``如果我有环境模型，可以通过模拟和规划找到最优策略''
+\end{enumerate}
+Actor-Critic 是 Value-Based 和 Policy-Based 的融合，用 Critic（价值网络）指导 Actor（策略网络）的更新。
+\end{keypoint}
+
+\subsection{核心概念关系图}
+
+全书涉及的核心概念可以组织为如下的关系网络：
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        concept/.style={draw, circle, fill=blue!15, minimum size=1.2cm, align=center, font=\footnotesize},
+        main/.style={draw, circle, fill=red!20, minimum size=1.5cm, align=center, font=\small\bfseries},
+        derived/.style={draw, circle, fill=green!15, minimum size=1cm, align=center, font=\scriptsize},
+        arr/.style={->, thick, >=stealth},
+        eq/.style={<->, dashed, gray}
+    ]
+    % 中心：MDP
+    \node[main] (mdp) at (0, 0) {MDP};
+
+    % 第一圈：核心组件
+    \node[concept] (state) at (-3, 1.5) {State\\$s \in \statespace$};
+    \node[concept] (action) at (3, 1.5) {Action\\$a \in \actionspace$};
+    \node[concept] (reward) at (-3, -1.5) {Reward\\$r(s,a)$};
+    \node[concept] (trans) at (3, -1.5) {Transition\\$P(s'|s,a)$};
+
+    \draw[arr] (mdp) -- (state);
+    \draw[arr] (mdp) -- (action);
+    \draw[arr] (mdp) -- (reward);
+    \draw[arr] (mdp) -- (trans);
+
+    % 第二圈：价值函数
+    \node[derived] (V) at (-5.5, 0) {$\Val^\policy(s)$};
+    \node[derived] (Q) at (5.5, 0) {$\Qval^\policy(s,a)$};
+    \node[derived] (A) at (0, -3.5) {$\advantage^\policy(s,a)$};
+
+    \draw[arr] (state) -- (V) node[midway, above, font=\scriptsize] {期望回报};
+    \draw[arr] (action) -- (Q);
+    \draw[eq] (V) -- (Q) node[midway, above, font=\scriptsize] {$\Val = \E_a[\Qval]$};
+    \draw[arr] (V) -- (A);
+    \draw[arr] (Q) -- (A) node[midway, right, font=\scriptsize] {$\advantage = \Qval - \Val$};
+
+    % 策略
+    \node[concept] (policy) at (0, 3) {Policy\\$\policy(a|s)$};
+    \draw[arr] (state) -- (policy);
+    \draw[arr] (action) -- (policy);
+
+    % 轨迹
+    \node[derived] (traj) at (-5.5, 3) {Trajectory\\$\trajectory$};
+    \draw[arr] (policy) -- (traj);
+    \draw[arr] (trans) to[bend right=30] (traj);
+
+    % 目标
+    \node[derived] (J) at (5.5, 3) {$J(\policy)$\\目标函数};
+    \draw[arr] (policy) -- (J);
+    \draw[arr] (reward) to[bend left=30] (J);
+    \end{tikzpicture}
+    \caption{RL 核心概念关系网络}
+    \label{fig:concept-network}
+\end{figure}
+
+% ------------------------------------------
+\section{RL 算法全景图}
+\label{sec:rl-algorithm-overview}
+
+\subsection{多维度算法分类}
+
+RL 算法可以从多个维度进行分类，每个维度反映了不同的设计选择：
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}p{2.5cm}p{5cm}p{5cm}@{}}
+        \toprule
+        \textbf{分类维度} & \textbf{类别 A} & \textbf{类别 B} \\
+        \midrule
+        \textbf{环境模型} &
+        \textbf{Model-Free}：不使用模型，直接从交互学习 &
+        \textbf{Model-Based}：学习或利用环境模型规划 \\
+        \addlinespace
+        \textbf{学习目标} &
+        \textbf{Value-Based}：学习 $\Val^*$ 或 $\Qval^*$，隐式导出策略 &
+        \textbf{Policy-Based}：直接优化参数化策略 $\policy_\theta$ \\
+        \addlinespace
+        \textbf{数据来源} &
+        \textbf{On-policy}：只用当前策略产生的数据 &
+        \textbf{Off-policy}：可用任意策略产生的数据 \\
+        \addlinespace
+        \textbf{动作空间} &
+        \textbf{离散}：有限动作集合，可枚举 &
+        \textbf{连续}：无限动作空间，需参数化 \\
+        \addlinespace
+        \textbf{更新频率} &
+        \textbf{Episode-based}：完成完整轨迹后更新 &
+        \textbf{Step-based}：每步或每批次更新 \\
+        \bottomrule
+    \end{tabular}
+    \caption{RL 算法的多维度分类}
+    \label{tab:rl-dimensions}
+\end{table}
+
+\subsection{算法分类树}
+
+综合以上维度，RL 算法形成如下的分类体系：
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[scale=0.75,
+        every node/.style={font=\small},
+        root/.style={draw, rounded corners, fill=blue!25, font=\bfseries, minimum width=2cm, minimum height=0.7cm},
+        l1/.style={draw, rounded corners, fill=blue!15, minimum width=2.2cm, minimum height=0.6cm},
+        l2/.style={draw, rounded corners, fill=orange!20, font=\footnotesize, minimum width=1.6cm, minimum height=0.5cm},
+        l3/.style={draw, rounded corners, fill=green!15, font=\scriptsize, minimum width=1.3cm, minimum height=0.4cm},
+        ex/.style={font=\tiny, text=gray!80, align=center},
+        arr/.style={->, thick, >=stealth}
+    ]
+    % Root
+    \node[root] (root) at (0, 0) {RL 算法};
+
+    % Level 1: Model-Free vs Model-Based
+    \node[l1] (mf) at (-5.5, -1.3) {Model-Free};
+    \node[l1] (mb) at (5.5, -1.3) {Model-Based};
+
+    % Level 2 - Model-Free - 增加间距
+    \node[l2] (vb) at (-9, -2.8) {Value-Based};
+    \node[l2] (pb) at (-5.5, -2.8) {Policy-Based};
+    \node[l2] (ac) at (-2, -2.8) {Actor-Critic};
+
+    % Level 2 - Model-Based
+    \node[l2] (lm) at (3.5, -2.8) {Learn Model};
+    \node[l2] (gm) at (7.5, -2.8) {Given Model};
+
+    % Level 3 - Value-Based
+    \node[l3] (ql) at (-10, -4.2) {Q-Learning};
+    \node[l3] (dqn) at (-8, -4.2) {DQN};
+
+    % Level 3 - Policy-Based
+    \node[l3] (rf) at (-6.5, -4.2) {REINFORCE};
+    \node[l3] (trpo) at (-4.5, -4.2) {TRPO};
+
+    % Level 3 - Actor-Critic - 增加间距
+    \node[l3] (a2c) at (-3, -4.2) {A2C};
+    \node[l3] (ppo) at (-1.3, -4.2) {PPO};
+    \node[l3] (sac) at (0.4, -4.2) {SAC};
+
+    % Level 3 - Learn Model
+    \node[l3] (dyna) at (2.5, -4.2) {Dyna};
+    \node[l3] (mbpo) at (4.5, -4.2) {MBPO};
+
+    % Level 3 - Given Model
+    \node[l3] (mcts) at (6.5, -4.2) {MCTS};
+    \node[l3] (az) at (8.5, -4.2) {AlphaZero};
+
+    % Arrows Level 0-1
+    \draw[arr] (root) -- (mf);
+    \draw[arr] (root) -- (mb);
+
+    % Arrows Level 1-2
+    \draw[arr] (mf) -- (vb);
+    \draw[arr] (mf) -- (pb);
+    \draw[arr] (mf) -- (ac);
+    \draw[arr] (mb) -- (lm);
+    \draw[arr] (mb) -- (gm);
+
+    % Arrows Level 2-3
+    \draw[arr] (vb) -- (ql);
+    \draw[arr] (vb) -- (dqn);
+    \draw[arr] (pb) -- (rf);
+    \draw[arr] (pb) -- (trpo);
+    \draw[arr] (ac) -- (a2c);
+    \draw[arr] (ac) -- (ppo);
+    \draw[arr] (ac) -- (sac);
+    \draw[arr] (lm) -- (dyna);
+    \draw[arr] (lm) -- (mbpo);
+    \draw[arr] (gm) -- (mcts);
+    \draw[arr] (gm) -- (az);
+    \end{tikzpicture}
+    \caption{RL 算法分类树（含代表性算法）}
+    \label{fig:rl-taxonomy}
+\end{figure}
+
+\subsection{算法特性对比}
+
+下表从多个关键维度对比主要算法的特性：
+
+\begin{table}[H]
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}lccccccc@{}}
+        \toprule
+        \textbf{算法} & \textbf{类型} & \textbf{On/Off} & \textbf{离散} & \textbf{连续} & \textbf{样本效率} & \textbf{稳定性} & \textbf{复杂度} \\
+        \midrule
+        Q-Learning & Value & Off & \checkmark & $\times$ & 中 & 高 & 低 \\
+        DQN & Value & Off & \checkmark & $\times$ & 中 & 中 & 中 \\
+        REINFORCE & Policy & On & \checkmark & \checkmark & 低 & 低 & 低 \\
+        A2C & AC & On & \checkmark & \checkmark & 低 & 中 & 中 \\
+        PPO & AC & On & \checkmark & \checkmark & 低 & 高 & 中 \\
+        SAC & AC & Off & $\times$ & \checkmark & 高 & 高 & 中 \\
+        TD3 & AC & Off & $\times$ & \checkmark & 高 & 高 & 中 \\
+        Dyna & MB & 混合 & \checkmark & \checkmark & 高 & 中 & 高 \\
+        MCTS & MB & -- & \checkmark & $\times$ & -- & 高 & 高 \\
+        AlphaZero & MB+AC & -- & \checkmark & $\times$ & -- & 高 & 极高 \\
+        \midrule
+        \multicolumn{8}{l}{\textit{LLM 对齐方法}} \\
+        \midrule
+        RLHF/PPO & AC & On & $\times$ & \checkmark & 低 & 高 & 极高 \\
+        DPO & -- & Off & $\times$ & \checkmark & 高 & 高 & 低 \\
+        GRPO & Policy & On & $\times$ & \checkmark & 中 & 高 & 中 \\
+        \bottomrule
+    \end{tabular}
+    \caption{主要 RL 算法特性对比（AC = Actor-Critic, MB = Model-Based）}
+    \label{tab:algorithm-comparison}
+\end{table}
+
+\begin{note}
+关于``样本效率''的理解：
+\begin{itemize}
+    \item \textbf{Off-policy} 方法通常比 On-policy 更高效，因为可以重用历史数据
+    \item \textbf{Model-Based} 方法可以通过模拟生成数据，大幅提升效率
+    \item \textbf{LLM 场景}中，生成一个 response 的成本极高，所以 DPO 的``高效率''（离线训练）非常有价值
+\end{itemize}
+\end{note}
+
+\subsection{算法选择决策树}
+
+面对实际问题，可以按照以下决策流程选择合适的算法：
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=0.8cm,
+        decision/.style={draw, diamond, fill=yellow!20, aspect=2, align=center, font=\footnotesize, inner sep=1pt},
+        result/.style={draw, rounded corners, fill=green!20, align=center, font=\footnotesize, minimum width=2cm},
+        arr/.style={->, thick, >=stealth},
+        yes/.style={font=\scriptsize, text=green!60!black},
+        no/.style={font=\scriptsize, text=red!60!black}
+    ]
+    % 第一层：是否有模型
+    \node[decision] (q1) at (0, 0) {环境模型\\已知？};
+
+    % 有模型
+    \node[decision] (q1y) at (4, 0) {需要实时\\决策？};
+    \node[result] (r1) at (6.5, 1) {MCTS\\AlphaZero};
+    \node[result] (r2) at (6.5, -1) {Value/Policy\\Iteration};
+
+    \draw[arr] (q1) -- node[yes, above] {是} (q1y);
+    \draw[arr] (q1y) -- node[yes, above] {是} (r1);
+    \draw[arr] (q1y) -- node[no, below] {否} (r2);
+
+    % 无模型
+    \node[decision] (q2) at (0, -2.5) {动作空间\\类型？};
+    \draw[arr] (q1) -- node[no, left] {否} (q2);
+
+    % 离散
+    \node[decision] (q3d) at (-3.5, -2.5) {状态空间\\大小？};
+    \node[result] (r3) at (-5.5, -1.5) {Q-Learning\\表格法};
+    \node[result] (r4) at (-5.5, -3.5) {DQN};
+
+    \draw[arr] (q2) -- node[no, above] {离散} (q3d);
+    \draw[arr] (q3d) -- node[yes, above left] {小} (r3);
+    \draw[arr] (q3d) -- node[no, below left] {大} (r4);
+
+    % 连续
+    \node[decision] (q3c) at (3.5, -2.5) {样本效率\\要求？};
+    \draw[arr] (q2) -- node[yes, above] {连续} (q3c);
+
+    \node[result] (r5) at (2, -4) {PPO\\稳定优先};
+    \node[result] (r6) at (5, -4) {SAC/TD3\\效率优先};
+
+    \draw[arr] (q3c) -- node[no, below left] {低} (r5);
+    \draw[arr] (q3c) -- node[yes, below right] {高} (r6);
+
+    % LLM 特殊路径
+    \node[decision] (q4) at (0, -5.5) {LLM 对齐\\场景？};
+    \draw[arr] (q2) -- node[no, left, pos=0.7] {LLM} (q4);
+
+    \node[decision] (q5) at (0, -7.5) {有偏好\\数据？};
+    \draw[arr] (q4) -- node[yes, left] {是} (q5);
+
+    \node[result] (r7) at (-2.5, -8.5) {DPO\\简单高效};
+    \node[result] (r8) at (2.5, -8.5) {RLHF/GRPO\\探索能力};
+
+    \draw[arr] (q5) -- node[yes, below left] {充足} (r7);
+    \draw[arr] (q5) -- node[no, below right] {需探索} (r8);
+    \end{tikzpicture}
+    \caption{算法选择决策树}
+    \label{fig:algorithm-decision-tree}
+\end{figure}
+
+\begin{keypoint}
+算法选择的核心考量：
+\begin{enumerate}
+    \item \textbf{环境模型}：有模型用规划，无模型用学习
+    \item \textbf{动作空间}：离散用 DQN 系列，连续用 Actor-Critic 系列
+    \item \textbf{样本效率}：低要求用 On-policy（PPO），高要求用 Off-policy（SAC）
+    \item \textbf{LLM 场景}：有充足偏好数据用 DPO，需要探索用 GRPO
+\end{enumerate}
+\end{keypoint}
+
+% ------------------------------------------
+\section{核心公式速查}
+\label{sec:formula-reference}
+
+本节汇总全书的核心公式，便于快速查阅。
+
+\subsection{Value-Based 核心公式}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}p{3.5cm}p{9cm}@{}}
+        \toprule
+        \textbf{公式名称} & \textbf{表达式} \\
+        \midrule
+        状态价值函数 &
+        $\Val^\policy(s) = \E_\policy\left[\sum_{t=0}^{\infty} \discount^t r_t \mid s_0 = s\right]$ \\
+        \addlinespace
+        动作价值函数 &
+        $\Qval^\policy(s,a) = \E_\policy\left[\sum_{t=0}^{\infty} \discount^t r_t \mid s_0 = s, a_0 = a\right]$ \\
+        \addlinespace
+        Bellman Expectation (V) &
+        $\Val^\policy(s) = \sum_a \policy(a|s) \left[r(s,a) + \discount \sum_{s'} P(s'|s,a) \Val^\policy(s')\right]$ \\
+        \addlinespace
+        Bellman Expectation (Q) &
+        $\Qval^\policy(s,a) = r(s,a) + \discount \sum_{s'} P(s'|s,a) \sum_{a'} \policy(a'|s') \Qval^\policy(s',a')$ \\
+        \addlinespace
+        Bellman Optimality (V) &
+        $\Val^*(s) = \max_a \left[r(s,a) + \discount \sum_{s'} P(s'|s,a) \Val^*(s')\right]$ \\
+        \addlinespace
+        Bellman Optimality (Q) &
+        $\Qval^*(s,a) = r(s,a) + \discount \sum_{s'} P(s'|s,a) \max_{a'} \Qval^*(s',a')$ \\
+        \addlinespace
+        TD 误差 &
+        $\delta_t = r_t + \discount \Val(s_{t+1}) - \Val(s_t)$ \\
+        \addlinespace
+        Q-Learning 更新 &
+        $\Qval(s,a) \leftarrow \Qval(s,a) + \alpha \left[r + \discount \max_{a'} \Qval(s',a') - \Qval(s,a)\right]$ \\
+        \addlinespace
+        DQN Loss &
+        $\mathcal{L}(\theta) = \E_{(s,a,r,s') \sim \mathcal{D}}\left[\left(r + \discount \max_{a'} \Qval_{\theta^-}(s',a') - \Qval_\theta(s,a)\right)^2\right]$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Value-Based 方法核心公式}
+    \label{tab:value-formulas}
+\end{table}
+
+\subsection{Policy-Based 核心公式}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}p{3.5cm}p{9cm}@{}}
+        \toprule
+        \textbf{公式名称} & \textbf{表达式} \\
+        \midrule
+        目标函数 &
+        $J(\theta) = \E_{\trajectory \sim \policy_\theta}[R(\trajectory)] = \E_{\trajectory \sim \policy_\theta}\left[\sum_{t=0}^{T} \discount^t r_t\right]$ \\
+        \addlinespace
+        Policy Gradient 定理 &
+        $\nabla_\theta J(\theta) = \E_{\policy_\theta}\left[\sum_{t=0}^{T} \nabla_\theta \log \policy_\theta(a_t|s_t) \cdot \Psi_t\right]$ \\
+        \addlinespace
+        REINFORCE ($\Psi_t$) &
+        $\Psi_t = \sum_{t'=t}^{T} \discount^{t'-t} r_{t'}$ （Reward-to-go） \\
+        \addlinespace
+        带 Baseline &
+        $\Psi_t = \sum_{t'=t}^{T} \discount^{t'-t} r_{t'} - b(s_t)$，常取 $b(s_t) = \Val(s_t)$ \\
+        \addlinespace
+        Advantage Function &
+        $\advantage^\policy(s,a) = \Qval^\policy(s,a) - \Val^\policy(s)$ \\
+        \addlinespace
+        GAE($\lambda$) &
+        $\hat{\advantage}_t^{\text{GAE}} = \sum_{l=0}^{\infty} (\discount\lambda)^l \delta_{t+l}$ \\
+        \addlinespace
+        重要性采样比 &
+        $\rho_t = \frac{\policy_\theta(a_t|s_t)}{\policy_{\theta_{\text{old}}}(a_t|s_t)}$ \\
+        \addlinespace
+        PPO-Clip 目标 &
+        $L^{\text{CLIP}}(\theta) = \E_t\left[\min\left(\rho_t \hat{\advantage}_t, \text{clip}(\rho_t, 1-\epsilon, 1+\epsilon) \hat{\advantage}_t\right)\right]$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Policy-Based 方法核心公式}
+    \label{tab:policy-formulas}
+\end{table}
+
+\subsection{LLM-RL 核心公式}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}p{3.5cm}p{9cm}@{}}
+        \toprule
+        \textbf{公式名称} & \textbf{表达式} \\
+        \midrule
+        RLHF 目标 &
+        $\max_\policy \E_{x \sim \mathcal{D}, y \sim \policy(\cdot|x)}\left[r_\phi(x, y)\right] - \beta \cdot D_{\text{KL}}(\policy \| \policy_{\text{ref}})$ \\
+        \addlinespace
+        Bradley-Terry 模型 &
+        $P(y_w \succ y_l | x) = \sigma(r(x, y_w) - r(x, y_l))$ \\
+        \addlinespace
+        Reward Model Loss &
+        $\mathcal{L}_{\text{RM}} = -\E_{(x, y_w, y_l)}\left[\log \sigma(r_\phi(x, y_w) - r_\phi(x, y_l))\right]$ \\
+        \addlinespace
+        RLHF 最优策略 &
+        $\policy^*(y|x) = \frac{1}{Z(x)} \policy_{\text{ref}}(y|x) \exp\left(\frac{r(x,y)}{\beta}\right)$ \\
+        \addlinespace
+        DPO Loss &
+        $\mathcal{L}_{\text{DPO}} = -\E\left[\log \sigma\left(\beta \log \frac{\policy_\theta(y_w|x)}{\policy_{\text{ref}}(y_w|x)} - \beta \log \frac{\policy_\theta(y_l|x)}{\policy_{\text{ref}}(y_l|x)}\right)\right]$ \\
+        \addlinespace
+        GRPO Advantage &
+        $\hat{\advantage}_i = \frac{R_i - \bar{R}}{\text{Std}(R)}$，其中 $\bar{R} = \frac{1}{G}\sum_{j=1}^G R_j$ \\
+        \addlinespace
+        KL 估计器 (k3) &
+        $\hat{D}_{\text{KL}}^{(k3)} = \frac{\pi_{\text{ref}}(y|x)}{\pi_\theta(y|x)} - \log \frac{\pi_{\text{ref}}(y|x)}{\pi_\theta(y|x)} - 1$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{LLM-RL 核心公式}
+    \label{tab:llm-formulas}
+\end{table}
+
+\subsection{Model-Based 核心公式}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}p{3.5cm}p{9cm}@{}}
+        \toprule
+        \textbf{公式名称} & \textbf{表达式} \\
+        \midrule
+        World Model &
+        $\hat{P}(s'|s,a), \hat{r}(s,a)$：学习的转移和奖励函数 \\
+        \addlinespace
+        UCB 公式 &
+        $\text{UCB}(s,a) = \Qval(s,a) + c \sqrt{\frac{\ln N(s)}{N(s,a)}}$ \\
+        \addlinespace
+        PUCT (AlphaZero) &
+        $\text{PUCT}(s,a) = \Qval(s,a) + c \cdot P(s,a) \cdot \frac{\sqrt{N(s)}}{1 + N(s,a)}$ \\
+        \addlinespace
+        Nash 均衡 &
+        $\policy_i^* = \argmax_{\policy_i} J_i(\policy_i, \policy_{-i}^*)$，$\forall i$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Model-Based 与 MARL 核心公式}
+    \label{tab:mb-formulas}
+\end{table}
+
+% ------------------------------------------
+\section{LLM 时代的 RL 演进}
+\label{sec:llm-rl-evolution}
+
+\subsection{从传统 RL 到 LLM-RL}
+
+LLM 对齐场景与传统 RL 的关键差异：
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{维度} & \textbf{传统 RL} & \textbf{LLM-RL} \\
+        \midrule
+        State & 游戏画面、机器人传感器 & Prompt + 已生成 tokens \\
+        Action & 离散动作（上下左右）或连续控制 & 词表中的 token（$|\mathcal{V}| \sim 10^5$）\\
+        Episode 长度 & 通常 $< 10^3$ 步 & 可达 $10^4$ tokens（Long CoT）\\
+        Reward & 稠密（每步分数）或稀疏（终局胜负）& 极稀疏（仅最终答案）\\
+        环境 & 模拟器（可重置） & 无模拟器，生成即交互 \\
+        Policy 规模 & $10^6 \sim 10^8$ 参数 & $10^9 \sim 10^{12}$ 参数 \\
+        \bottomrule
+    \end{tabular}
+    \caption{传统 RL 与 LLM-RL 对比}
+    \label{tab:traditional-vs-llm-rl}
+\end{table}
+
+\subsection{RLHF → DPO → GRPO 发展脉络}
+
+LLM 对齐领域的方法演进体现了``简化 + 高效''的趋势：
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=0.3cm,
+        method/.style={draw, rounded corners, fill=blue!15, minimum width=2.2cm, minimum height=0.9cm, align=center, font=\small},
+        arr/.style={->, thick, >=stealth, blue!60},
+        timeline/.style={draw, thick, gray}
+    ]
+    % 时间线
+    \draw[timeline] (-6, 0) -- (8, 0);
+    \foreach \x/\y in {-4/2020, -1/2022, 2/2023, 5/2024, 7.5/2025} {
+        \draw[thick, gray] (\x, -0.1) -- (\x, 0.1);
+        \node[font=\scriptsize, gray] at (\x, -0.4) {\y};
+    }
+
+    % 方法节点 - 调整位置与时间线对齐
+    \node[method, fill=red!15] (rlhf) at (-4, 1.3) {RLHF\\(InstructGPT)};
+    \node[method, fill=orange!15] (dpo) at (-0.5, 1.3) {DPO};
+    \node[method, fill=green!15] (grpo) at (3, 1.3) {GRPO\\(DeepSeek-R1)};
+    \node[method, fill=purple!15] (long) at (6.5, 1.3) {GSPO/CISPO\\(Kimi k1.5)};
+
+    % 连接时间线
+    \draw[dashed, gray] (-4, 0.1) -- (rlhf);
+    \draw[dashed, gray] (-0.5, 0.1) -- (dpo);
+    \draw[dashed, gray] (3, 0.1) -- (grpo);
+    \draw[dashed, gray] (6.5, 0.1) -- (long);
+
+    % 演进箭头 - 标签上移避免遮挡
+    \draw[arr] (rlhf) -- (dpo) node[midway, above, font=\scriptsize, yshift=3pt] {去掉 RM};
+    \draw[arr] (dpo) -- (grpo) node[midway, above, font=\scriptsize, yshift=3pt] {恢复探索};
+    \draw[arr] (grpo) -- (long) node[midway, above, font=\scriptsize, yshift=3pt] {Long CoT};
+    \end{tikzpicture}
+    \caption{LLM-RL 方法演进时间线}
+    \label{fig:llm-rl-timeline}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{方法} & \textbf{需要 RM} & \textbf{需要 Critic} & \textbf{在线探索} & \textbf{Long CoT} \\
+        \midrule
+        RLHF (PPO) & \checkmark & \checkmark & \checkmark & 困难 \\
+        DPO & $\times$ & $\times$ & $\times$ & 不适用 \\
+        GRPO & $\times$ & $\times$ & \checkmark & 困难 \\
+        GSPO/CISPO & $\times$ & $\times$ & \checkmark & \checkmark \\
+        \bottomrule
+    \end{tabular}
+    \caption{LLM-RL 方法特性对比}
+    \label{tab:llm-rl-comparison}
+\end{table}
+
+\subsection{Long CoT RL 的挑战与解决方案}
+
+长链推理（Long Chain-of-Thought）的 RL 训练面临三大核心挑战：
+
+\begin{enumerate}
+    \item \textbf{方差爆炸}：Token 级 IS 权重累积，$\prod_{t=1}^{T} \rho_t$ 指数增长
+    \item \textbf{稀疏奖励}：只有最终答案有反馈，中间步骤无信号
+    \item \textbf{信用分配}：长序列中哪一步推理是关键？
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        problem/.style={draw, rounded corners, fill=red!15, minimum width=3cm, minimum height=0.8cm, align=center, font=\small},
+        solution/.style={draw, rounded corners, fill=green!15, minimum width=3cm, minimum height=0.8cm, align=center, font=\small},
+        arr/.style={->, thick, >=stealth}
+    ]
+    % 问题
+    \node[problem] (p1) at (0, 2) {方差爆炸};
+    \node[problem] (p2) at (0, 0) {稀疏奖励};
+    \node[problem] (p3) at (0, -2) {信用分配};
+
+    % 解决方案
+    \node[solution] (s1) at (6, 2) {序列级 IS（GSPO/CISPO）};
+    \node[solution] (s2) at (6, 0) {PRM 过程奖励};
+    \node[solution] (s3) at (6, -2) {MCTS + RL};
+
+    % 连接
+    \draw[arr] (p1) -- (s1) node[midway, above, font=\scriptsize] {长度归一化};
+    \draw[arr] (p2) -- (s2) node[midway, above, font=\scriptsize] {dense signal};
+    \draw[arr] (p3) -- (s3) node[midway, above, font=\scriptsize] {搜索 + 学习};
+    \end{tikzpicture}
+    \caption{Long CoT RL 的挑战与解决方案}
+    \label{fig:long-cot-challenges}
+\end{figure}
+
+% ------------------------------------------
+\section{开放问题与未来方向}
+\label{sec:future}
+
+\subsection{理论前沿}
+
+尽管 RL 领域已取得巨大进展，仍有许多基础理论问题有待解决：
+
+\begin{enumerate}
+    \item \textbf{Token-level vs Sequence-level 目标}
+    \begin{itemize}
+        \item 两种目标函数的理论关系？
+        \item 何时应该用 token-level，何时用 sequence-level？
+        \item 能否统一两种视角？
+    \end{itemize}
+
+    \item \textbf{KL 正则的最优系数}
+    \begin{itemize}
+        \item $\beta$ 应该如何随训练动态调整？
+        \item KL 正则与 reward 之间的帕累托前沿？
+        \item 过大/过小的 $\beta$ 分别导致什么问题？
+    \end{itemize}
+
+    \item \textbf{长序列 RL 的收敛性}
+    \begin{itemize}
+        \item IS 权重的方差如何精确刻画？
+        \item 序列级 clipping 的理论保证？
+        \item 最优的轨迹长度与更新频率？
+    \end{itemize}
+
+    \item \textbf{探索与利用的平衡}
+    \begin{itemize}
+        \item 在 LLM 场景如何高效探索？
+        \item 如何避免 mode collapse？
+    \end{itemize}
+\end{enumerate}
+
+\subsection{实践挑战}
+
+从实践角度，以下问题仍需解决：
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{@{}p{3cm}p{5cm}p{4.5cm}@{}}
+        \toprule
+        \textbf{挑战} & \textbf{问题描述} & \textbf{可能方向} \\
+        \midrule
+        Reward Hacking &
+        模型学会``欺骗''奖励函数，而非真正提升能力 &
+        对抗训练、多 RM 集成、宪法 AI \\
+        \addlinespace
+        多目标对齐 &
+        同时优化 helpfulness、harmlessness、honesty 可能冲突 &
+        帕累托优化、条件生成 \\
+        \addlinespace
+        计算效率 &
+        大规模 RL 训练需要极高计算资源 &
+        高效采样、模型蒸馏、LoRA \\
+        \addlinespace
+        数据质量 &
+        人类偏好标注成本高且有噪声 &
+        主动学习、AI 辅助标注 \\
+        \addlinespace
+        可解释性 &
+        RL 训练后模型行为难以解释 &
+        可解释 reward、过程监督 \\
+        \bottomrule
+    \end{tabular}
+    \caption{LLM-RL 实践挑战与可能方向}
+    \label{tab:practical-challenges}
+\end{table}
+
+\subsection{新兴方向}
+
+以下是当前最活跃的研究前沿：
+
+\begin{enumerate}
+    \item \textbf{Agentic RL}
+    \begin{itemize}
+        \item LLM 作为 agent 与真实环境（网页、代码执行器、API）交互
+        \item 挑战：环境反馈稀疏、状态空间巨大、安全约束
+        \item 代表工作：WebAgent、SWE-agent
+    \end{itemize}
+
+    \item \textbf{多模态 RL}
+    \begin{itemize}
+        \item 视觉-语言模型（VLM）的对齐
+        \item 机器人控制中的多模态感知-决策
+        \item 代表工作：RT-2、PaLM-E
+    \end{itemize}
+
+    \item \textbf{Reasoning RL}
+    \begin{itemize}
+        \item 用 RL 提升模型的推理能力（数学、代码、逻辑）
+        \item Self-play 生成推理数据
+        \item 代表工作：DeepSeek-R1、OpenAI o1
+    \end{itemize}
+
+    \item \textbf{World Models for LLM}
+    \begin{itemize}
+        \item LLM 是否可以作为 World Model？
+        \item 基于 LLM 的规划与推理
+        \item 代表工作：LWM、Genie
+    \end{itemize}
+
+    \item \textbf{Constitutional AI}
+    \begin{itemize}
+        \item 用 AI 自我监督替代人类标注
+        \item 基于原则的 reward 设计
+        \item 代表工作：Anthropic Constitutional AI
+    \end{itemize}
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        center/.style={draw, circle, fill=blue!20, minimum size=2cm, align=center, font=\small\bfseries},
+        topic/.style={draw, rounded corners, fill=green!15, minimum width=2.2cm, minimum height=0.7cm, align=center, font=\footnotesize},
+        arr/.style={<->, thick, gray}
+    ]
+    % 中心
+    \node[center] (rl) at (0, 0) {RL\\未来};
+
+    % 周围话题
+    \node[topic] (agent) at (0, 3) {Agentic RL};
+    \node[topic] (mm) at (2.8, 1.8) {多模态 RL};
+    \node[topic] (reason) at (3.2, -0.8) {Reasoning RL};
+    \node[topic] (wm) at (1.5, -2.8) {World Models};
+    \node[topic] (ca) at (-1.5, -2.8) {Constitutional AI};
+    \node[topic] (safe) at (-3.2, -0.8) {Safe RL};
+    \node[topic] (eff) at (-2.8, 1.8) {高效 RL};
+
+    % 连接
+    \draw[arr] (rl) -- (agent);
+    \draw[arr] (rl) -- (mm);
+    \draw[arr] (rl) -- (reason);
+    \draw[arr] (rl) -- (wm);
+    \draw[arr] (rl) -- (ca);
+    \draw[arr] (rl) -- (safe);
+    \draw[arr] (rl) -- (eff);
+
+    % 交叉联系
+    \draw[dashed, gray, thin] (agent) -- (mm);
+    \draw[dashed, gray, thin] (reason) -- (wm);
+    \draw[dashed, gray, thin] (ca) -- (safe);
+    \end{tikzpicture}
+    \caption{RL 未来研究方向}
+    \label{fig:future-directions}
+\end{figure}
+
+% ------------------------------------------
+\section{学习路径建议}
+\label{sec:learning-path}
+
+针对不同背景的读者，建议以下学习路径：
+
+\subsection{入门路径}
+
+\begin{enumerate}
+    \item \textbf{第 1 章}：理解 MDP、轨迹、价值函数的基本概念
+    \item \textbf{第 2 章}：掌握 Bellman 方程、Q-Learning 的基本思想
+    \item \textbf{第 3 章 (前半)}：理解 Policy Gradient 的直觉
+    \item 实践：用 DQN 玩 Atari 游戏，用 PPO 解决 CartPole
+\end{enumerate}
+
+\subsection{进阶路径}
+
+\begin{enumerate}
+    \item \textbf{第 2 章 (深入)}：完整推导 Bellman 方程，理解 DQN 的各种技巧
+    \item \textbf{第 3 章 (完整)}：Policy Gradient 定理完整推导，GAE，PPO
+    \item \textbf{第 4 章}：Model-Based RL，MCTS，AlphaZero
+    \item 实践：实现 PPO 训练连续控制任务，复现 AlphaZero 简化版
+\end{enumerate}
+
+\subsection{前沿路径}
+
+\begin{enumerate}
+    \item \textbf{第 5 章}：RLHF、DPO、GRPO 的完整推导
+    \item \textbf{第 6 章}：理解当前开放问题和研究方向
+    \item 阅读最新论文：DeepSeek-R1、Kimi k1.5、OpenAI o1 技术报告
+    \item 实践：用 DPO/GRPO 微调开源 LLM
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        level/.style={draw, rounded corners, minimum width=3cm, minimum height=0.8cm, align=center, font=\small},
+        arr/.style={->, thick, >=stealth}
+    ]
+    \node[level, fill=green!20] (l1) at (0, 0) {入门\\基础概念 + 经典算法};
+    \node[level, fill=yellow!20] (l2) at (0, -1.8) {进阶\\完整推导 + 高级方法};
+    \node[level, fill=red!20] (l3) at (0, -3.6) {前沿\\LLM-RL + 最新研究};
+
+    \draw[arr] (l1) -- (l2);
+    \draw[arr] (l2) -- (l3);
+
+    % 章节对应
+    \node[font=\footnotesize, text=gray] at (3.5, 0) {第 1-2 章 + 实践};
+    \node[font=\footnotesize, text=gray] at (3.5, -1.8) {第 2-4 章完整 + 实践};
+    \node[font=\footnotesize, text=gray] at (3.5, -3.6) {第 5-6 章 + 论文};
+    \end{tikzpicture}
+    \caption{学习路径建议}
+    \label{fig:learning-path}
+\end{figure}
+
+% ------------------------------------------
+\section{本章小结}
+
+\begin{keypoint}
+全书总结：
+\begin{enumerate}
+    \item \textbf{第 1 章}介绍了 RL 的基本概念：MDP 五元组、Markov 性质、轨迹与回报、价值函数 $\Val$/$\Qval$、优势函数 $\advantage$、RL 目标
+
+    \item \textbf{第 2 章}深入 Value-Based 方法：Bellman 方程完整推导（Expectation + Optimality）、动态规划、MC vs TD、Q-Learning、DQN 及其技巧（Experience Replay、Target Network）
+
+    \item \textbf{第 3 章}系统讲述 Policy-Based 方法：Policy Gradient 定理完整推导、REINFORCE、Baseline 技巧、Actor-Critic、GAE、重要性采样、PPO-Clip
+
+    \item \textbf{第 4 章}介绍 Model-Based RL 与多智能体学习：World Model、Dyna 架构、MCTS 四步流程、UCB 公式、AlphaGo/Zero、Nash 均衡、Self-Play
+
+    \item \textbf{第 5 章}聚焦 LLM 对齐：RLHF 三阶段、Bradley-Terry 模型、DPO 完整推导、GRPO、KL 估计器（k1/k2/k3）、PRM、Long CoT RL（GSPO/CISPO）
+
+    \item \textbf{第 6 章}总结全书：算法分类与选择、核心公式速查、LLM-RL 演进、未来方向
+\end{enumerate}
+\end{keypoint}
+
+\begin{important}
+核心思想回顾：
+\begin{itemize}
+    \item \textbf{RL 的本质}是在不完全信息下通过试错学习最优决策
+    \item \textbf{Value-Based} 通过学习价值函数间接得到策略
+    \item \textbf{Policy-Based} 直接优化参数化策略
+    \item \textbf{Actor-Critic} 融合两者优势
+    \item \textbf{Model-Based} 利用环境模型进行规划
+    \item \textbf{LLM-RL} 将 RL 应用于语言模型对齐，发展出 RLHF、DPO、GRPO 等方法
+\end{itemize}
+
+强化学习是一个快速发展的领域，新的算法和应用不断涌现。从 AlphaGo 到 ChatGPT，RL 已成为构建智能系统的核心技术。希望本书能为读者提供坚实的理论基础和实践指引，在这一激动人心的领域中继续探索。
+\end{important}
+

@@ -1,0 +1,494 @@
+\section{模型量化}
+\label{sec:quantization}
+
+模型量化是将神经网络中的浮点数表示转换为低精度表示的技术，是大语言模型高效部署的核心技术之一。本节从基础理论到LLM专用方法，系统介绍量化技术。
+
+\subsection{量化基础}
+
+\subsubsection{为什么需要量化}
+
+现代LLM的参数规模带来严峻的部署挑战：
+\begin{itemize}
+    \item \textbf{内存需求}：70B参数模型以FP16存储需要140GB显存
+    \item \textbf{带宽瓶颈}：推理时主要受限于内存带宽而非计算
+    \item \textbf{能耗成本}：数据移动消耗的能量远超计算本身
+\end{itemize}
+
+量化通过降低数值精度来解决这些问题：
+\begin{table}[htbp]
+\centering
+\caption{不同精度的存储与计算特性}
+\label{tab:precision_comparison}
+\begin{tabular}{lccc}
+\toprule
+精度 & 位宽 & 相对内存 & 典型用途 \\
+\midrule
+FP32 & 32 & 1$\times$ & 训练梯度累积 \\
+FP16/BF16 & 16 & 0.5$\times$ & 标准训练与推理 \\
+FP8 & 8 & 0.25$\times$ & 高效训练（Hopper+） \\
+INT8 & 8 & 0.25$\times$ & 量化推理 \\
+INT4 & 4 & 0.125$\times$ & 激进量化推理 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{量化的数学定义}
+
+\textbf{均匀量化}（Uniform Quantization）是最常用的量化方式。给定浮点数$x$，量化过程为：
+\begin{equation}
+    Q(x) = \text{clamp}\left( \left\lfloor \frac{x}{s} \right\rceil + z, 0, 2^b - 1 \right)
+\end{equation}
+其中$s$是缩放因子（scale），$z$是零点（zero-point），$b$是目标位宽，$\lfloor \cdot \rceil$表示四舍五入。
+
+\textbf{反量化}（Dequantization）恢复近似值：
+\begin{equation}
+    \hat{x} = s \cdot (Q(x) - z)
+\end{equation}
+
+\paragraph{对称量化 vs 非对称量化}
+
+\textbf{对称量化}：$z = 0$，量化范围关于零点对称：
+\begin{equation}
+    s = \frac{\max(|x|)}{2^{b-1} - 1}
+\end{equation}
+
+\textbf{非对称量化}：允许$z \neq 0$，更好地适应非对称分布：
+\begin{align}
+    s &= \frac{\max(x) - \min(x)}{2^b - 1} \\
+    z &= \left\lfloor -\frac{\min(x)}{s} \right\rceil
+\end{align}
+
+对称量化实现更简单（无需存储$z$），但非对称量化对偏斜分布更有效。
+
+\subsubsection{量化粒度}
+
+量化参数$s, z$的计算粒度影响精度与开销的权衡：
+
+\begin{itemize}
+    \item \textbf{Per-Tensor}：整个张量共享一组$(s, z)$，开销最小但精度损失大
+    \item \textbf{Per-Channel}：每个输出通道独立量化，常用于权重
+    \item \textbf{Per-Token}：每个token独立量化，常用于激活值
+    \item \textbf{Per-Group}：将通道分组，每组独立量化，精度与开销的折中
+\end{itemize}
+
+\begin{example}[Group Quantization]
+对于权重矩阵$W \in \R^{m \times n}$，设group size为$g$，则需要存储$\lceil n/g \rceil$组量化参数。常见设置$g = 128$，在INT4量化时有效位宽约为$4 + 32/128 = 4.25$位。
+\end{example}
+
+\subsection{训练后量化（PTQ）}
+
+训练后量化（Post-Training Quantization）在模型训练完成后进行，无需重新训练，是LLM量化的主流方法。
+
+\subsubsection{基本PTQ流程}
+
+\begin{enumerate}
+    \item \textbf{校准}（Calibration）：使用少量代表性数据（通常几百到几千样本）统计激活值分布
+    \item \textbf{确定量化参数}：根据统计信息计算$s, z$
+    \item \textbf{量化权重}：将浮点权重转换为低精度表示
+    \item \textbf{（可选）校正}：通过额外优化减少量化误差
+\end{enumerate}
+
+\subsubsection{校准策略}
+
+\paragraph{MinMax校准}
+最简单的方法，使用观测到的最大最小值：
+\begin{equation}
+    s = \frac{\max(x) - \min(x)}{2^b - 1}
+\end{equation}
+问题：对离群值敏感。
+
+\paragraph{百分位校准}
+使用第$p$和$100-p$百分位数代替最大最小值，$p$通常取0.1-1\%。
+
+\paragraph{MSE校准}
+最小化量化误差：
+\begin{equation}
+    s^* = \arg\min_s \mathbb{E}\left[ (x - \hat{x})^2 \right]
+\end{equation}
+
+\paragraph{KL散度校准}
+最小化原始分布与量化分布的KL散度，由TensorRT采用。
+
+\subsubsection{权重量化 vs 激活量化}
+
+\textbf{权重量化}（W-only）：
+\begin{itemize}
+    \item 权重在推理前确定，可以离线计算量化参数
+    \item 分布通常接近高斯，易于量化
+    \item 常见配置：W8A16、W4A16
+\end{itemize}
+
+\textbf{激活量化}：
+\begin{itemize}
+    \item 激活值依赖输入，需要动态量化或校准
+    \item LLM中存在大量\textbf{离群值}（outliers），极大增加量化难度
+    \item 常见配置：W8A8、W4A8
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.9]
+    \draw[->] (0, 0) -- (8, 0) node[right] {值};
+    \draw[->] (0, 0) -- (0, 3) node[above] {频率};
+    
+    \draw[blue, thick, domain=1:6, smooth] plot (\x, {2.5*exp(-0.5*(\x-3.5)^2/0.8)});
+    \node[blue] at (3.5, 3) {权重分布};
+    
+    \draw[red, thick] (0.3, 0.2) -- (0.5, 0.3) -- (1, 0.5) -- (2, 1.5) -- (3, 2) -- (4, 1.8) -- (5, 0.8) -- (6, 0.3) -- (7, 0.1) -- (7.5, 0.08);
+    \draw[red, thick, dashed] (7.5, 0.08) -- (7.8, 0.15);
+    \node[red] at (6.5, 1.5) {激活分布};
+    \node[red] at (7.8, 0.5) {离群值};
+\end{tikzpicture}
+\caption{权重与激活值的典型分布对比}
+\label{fig:weight_activation_dist}
+\end{figure}
+
+\subsection{量化感知训练（QAT）}
+
+量化感知训练（Quantization-Aware Training）在训练过程中模拟量化效果，让模型学会适应低精度表示。
+
+\subsubsection{直通估计器（STE）}
+
+量化操作$Q(x)$是阶梯函数，梯度几乎处处为零。\textbf{直通估计器}（Straight-Through Estimator）绕过这一问题：
+\begin{equation}
+    \frac{\partial \mathcal{L}}{\partial x} = \frac{\partial \mathcal{L}}{\partial Q(x)}
+\end{equation}
+即前向传播使用量化值，反向传播直接传递梯度。
+
+\subsubsection{伪量化}
+
+QAT的核心是在前向传播中插入\textbf{伪量化}（Fake Quantization）操作：
+\begin{equation}
+    \hat{x} = s \cdot \left( \text{clamp}\left( \left\lfloor \frac{x}{s} \right\rceil, q_{min}, q_{max} \right) \right)
+\end{equation}
+伪量化保持浮点计算，但模拟量化的离散化效果。
+
+\subsubsection{QAT vs PTQ}
+
+\begin{table}[htbp]
+\centering
+\caption{QAT与PTQ对比}
+\label{tab:qat_vs_ptq}
+\begin{tabular}{lcc}
+\toprule
+特性 & PTQ & QAT \\
+\midrule
+计算成本 & 低（分钟级） & 高（需重新训练） \\
+数据需求 & 少量校准数据 & 完整训练数据 \\
+精度损失 & 较大（尤其低位宽） & 较小 \\
+适用场景 & 快速部署、8位量化 & 极低位宽、精度敏感 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+对于LLM，QAT的计算成本通常不可接受，因此PTQ是主流选择。
+
+\subsection{LLM量化的挑战与方法}
+
+\subsubsection{激活值离群值问题}
+
+LLM的一个关键特性是激活值中存在\textbf{离群值}（outliers）：极少数通道包含数值远大于其他通道的激活值。这些离群值：
+\begin{itemize}
+    \item 出现在特定通道，跨token一致
+    \item 数值可达正常值的100倍以上
+    \item 移除这些通道会导致模型性能崩溃
+\end{itemize}
+
+标准量化方法被迫扩大量化范围以覆盖离群值，导致正常值的量化精度严重下降。
+
+\subsubsection{SmoothQuant}
+
+SmoothQuant~\citep{xiao2023smoothquant}是解决激活离群值问题的突破性方法，实现了LLM的W8A8量化。
+
+\paragraph{核心思想}
+将量化难度从激活``迁移''到权重。观察到离群值出现在固定通道，可以通过per-channel缩放来平滑激活：
+\begin{equation}
+    Y = (X \cdot \text{diag}(s)^{-1}) \cdot (\text{diag}(s) \cdot W) = \hat{X} \hat{W}
+\end{equation}
+其中$s$是迁移因子。$\hat{X}$的分布更均匀，更易量化；$\hat{W}$吸收了部分难度，但权重本身分布良好，影响有限。
+
+\paragraph{迁移因子选择}
+\begin{equation}
+    s_j = \frac{\max(|X_j|)^\alpha}{\max(|W_j|)^{1-\alpha}}
+\end{equation}
+其中$\alpha \in [0, 1]$控制迁移程度。$\alpha = 0.5$对大多数模型效果良好。
+
+\paragraph{性能}
+SmoothQuant在OPT-175B上实现了INT8量化，精度损失小于0.5\%，推理速度提升1.5倍。
+
+\subsubsection{GPTQ}
+
+GPTQ~\citep{frantar2022gptq}是基于二阶信息的权重量化方法，可将LLM压缩至4位精度。
+
+\paragraph{问题形式化}
+逐层优化，最小化量化后的输出误差：
+\begin{equation}
+    \arg\min_{\hat{W}} \| WX - \hat{W}X \|_2^2
+\end{equation}
+
+\paragraph{基于Hessian的优化}
+利用Optimal Brain Quantization (OBQ)的思想，但做了关键优化使其适用于LLM规模：
+\begin{enumerate}
+    \item 以固定顺序（而非贪心顺序）量化权重列
+    \item 批量处理多列，使用高效的矩阵运算
+    \item 利用Cholesky分解高效更新Hessian逆
+\end{enumerate}
+
+\paragraph{性能}
+\begin{itemize}
+    \item 175B参数模型可在单GPU上4小时内完成量化
+    \item 3-4位量化精度损失极小（困惑度增加$<0.5$）
+    \item 广泛应用于开源LLM的量化分发
+\end{itemize}
+
+\subsubsection{AWQ}
+
+AWQ（Activation-aware Weight Quantization）~\citep{lin2024awq}基于一个关键观察：不同权重通道的重要性差异巨大。
+
+\paragraph{核心观察}
+对于矩阵乘法$Y = XW$，如果激活值$X$的某些通道数值较大，则对应权重通道的量化误差影响更大。
+
+\paragraph{方法}
+不均匀地保护重要权重通道：
+\begin{equation}
+    s_j = \sqrt{\frac{\max(|X_j|)}{1 + \epsilon}}
+\end{equation}
+通过per-channel缩放$W_j' = W_j \cdot s_j$放大重要通道，量化后再除以$s_j$恢复。
+
+\paragraph{性能}
+在4位量化下，AWQ的困惑度通常优于GPTQ，且支持更高效的实时推理。
+
+\subsubsection{GGUF/GGML}
+
+GGUF（GPT-Generated Unified Format）是llama.cpp项目定义的模型存储格式，广泛用于本地LLM部署。
+
+\paragraph{特点}
+\begin{itemize}
+    \item 支持多种量化格式：Q4\_0, Q4\_K\_M, Q5\_K\_M, Q8\_0等
+    \item ``K''表示使用k-quant方法，对重要层使用更高精度
+    \item 针对CPU推理优化，支持Apple Metal、CUDA等后端
+\end{itemize}
+
+\paragraph{常用配置}
+\begin{table}[htbp]
+\centering
+\caption{GGUF量化格式对比}
+\label{tab:gguf_formats}
+\begin{tabular}{lcc}
+\toprule
+格式 & 有效位宽 & 精度损失 \\
+\midrule
+Q8\_0 & 8.5 bits & 极小 \\
+Q5\_K\_M & 5.5 bits & 小 \\
+Q4\_K\_M & 4.8 bits & 中等 \\
+Q4\_0 & 4.5 bits & 较大 \\
+Q2\_K & 3.4 bits & 大 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{FP8量化}
+
+FP8是一种8位浮点格式，相比INT8保留了动态范围，成为现代GPU训练和推理的重要选择。
+
+\subsubsection{FP8格式}
+
+两种主要格式：
+\begin{itemize}
+    \item \textbf{E4M3}：4位指数、3位尾数，动态范围更大，适合前向传播
+    \item \textbf{E5M2}：5位指数、2位尾数，精度更高，适合梯度
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\caption{FP8格式对比}
+\label{tab:fp8_formats}
+\begin{tabular}{lccc}
+\toprule
+格式 & 动态范围 & 最大值 & 最小正数 \\
+\midrule
+E4M3 & $2^{15}$ & 448 & $2^{-9}$ \\
+E5M2 & $2^{31}$ & 57344 & $2^{-16}$ \\
+FP16 & $2^{31}$ & 65504 & $2^{-24}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{FP8训练}
+
+NVIDIA Hopper和Blackwell架构原生支持FP8 Tensor Core。DeepSeek-V3~\citep{deepseek2024v3}展示了FP8训练的工业应用：
+
+\paragraph{混合精度策略}
+\begin{itemize}
+    \item 权重和激活以FP8存储和计算
+    \item 累加器使用FP32保持精度
+    \item 主权重副本保持FP32/BF16用于优化器更新
+\end{itemize}
+
+\paragraph{Block-wise量化}
+将张量分块独立量化，每块$128 \times 128$元素共享一个缩放因子，平衡精度与开销。
+
+\paragraph{性能收益}
+\begin{itemize}
+    \item 内存带宽需求减半
+    \item H100上FP8吞吐量是FP16的2倍
+    \item DeepSeek-V3训练仅需2.788M H800 GPU小时
+\end{itemize}
+
+\subsubsection{FP8推理}
+
+FlashAttention-3支持FP8注意力计算：
+\begin{itemize}
+    \item 使用Block Quantization减少量化误差
+    \item Incoherent Processing（基于Hadamard变换）进一步提升精度
+    \item 接近1.2 PFLOPS的吞吐量
+\end{itemize}
+
+\subsection{极低位宽量化}
+
+\subsubsection{INT4/W4A16}
+
+4位权重量化是目前实用的最低位宽：
+\begin{itemize}
+    \item 模型大小减少4倍
+    \item 推理速度提升2-4倍（受限于内存带宽）
+    \item 精度损失可控（困惑度增加通常$<1$）
+\end{itemize}
+
+\paragraph{关键技术}
+\begin{itemize}
+    \item Group quantization（组大小128）减少误差
+    \item 对敏感层（如第一层、最后一层）使用更高精度
+    \item GPTQ/AWQ的二阶优化
+\end{itemize}
+
+\subsubsection{BitNet与1.58-bit量化}
+
+BitNet 1.58~\citep{ma2024era}提出了极端量化：权重仅取$\{-1, 0, +1\}$三个值。
+
+\paragraph{量化函数}
+\begin{equation}
+    W_q = \text{RoundClip}\left( \frac{W}{\gamma}, -1, 1 \right)
+\end{equation}
+其中$\gamma = \frac{1}{nm}\sum_{ij}|W_{ij}|$是平均绝对值。
+
+\paragraph{计算优势}
+矩阵乘法退化为加减运算，无需乘法器：
+\begin{equation}
+    Y = X \cdot W_q = \sum_j X_j \cdot W_{qj} = \sum_{j: W_{qj}=1} X_j - \sum_{j: W_{qj}=-1} X_j
+\end{equation}
+
+\paragraph{当前状态}
+\begin{itemize}
+    \item 需要从头训练，不适用于已有模型
+    \item 在同等模型容量下，精度接近FP16模型
+    \item 能效提升71倍（BitNet b1.58 2B4T模型）
+    \item 尚未在超大规模模型上验证
+\end{itemize}
+
+\subsection{KV Cache量化}
+
+长上下文推理的内存瓶颈主要来自KV Cache而非模型权重。KV Cache量化成为长上下文场景的关键技术。
+
+\subsubsection{KV Cache的内存需求}
+
+对于序列长度$L$、batch大小$B$、层数$N_L$、注意力头数$N_H$、头维度$d$：
+\begin{equation}
+    \text{KV Cache大小} = 2 \times B \times L \times N_L \times N_H \times d \times \text{sizeof(dtype)}
+\end{equation}
+
+以LLaMA-70B（80层、64头、128维）为例：
+\begin{itemize}
+    \item 100K上下文、batch=1、FP16：约40GB
+    \item 同等设置使用INT4：约10GB
+\end{itemize}
+
+\subsubsection{KIVI方法}
+
+KIVI~\citep{liu2024kivi}是KV Cache量化的代表性工作：
+
+\paragraph{非对称量化}
+Key和Value有不同的分布特性，分别使用per-channel和per-token量化：
+\begin{itemize}
+    \item Key：per-channel量化（通道间差异大）
+    \item Value：per-token量化（token间差异大）
+\end{itemize}
+
+\paragraph{2-bit量化}
+KIVI可将KV Cache压缩至2-bit，内存减少8倍，困惑度增加极小（$<0.1$）。
+
+\subsubsection{实践建议}
+
+\begin{itemize}
+    \item 中等上下文（$<$32K）：4-bit KV Cache足够
+    \item 长上下文（32K-128K）：考虑2-bit量化
+    \item 超长上下文（$>$128K）：结合KV Cache压缩（如H2O、StreamingLLM）
+\end{itemize}
+
+\subsection{量化的系统支持}
+
+\subsubsection{硬件支持}
+
+不同硬件对量化精度的支持差异显著：
+
+\begin{table}[htbp]
+\centering
+\caption{GPU架构的量化支持}
+\label{tab:hw_quant_support}
+\begin{tabular}{lccc}
+\toprule
+架构 & INT8 & FP8 & INT4 \\
+\midrule
+Ampere (A100) & Tensor Core & 无 & 软件模拟 \\
+Hopper (H100) & Tensor Core & E4M3/E5M2 & 软件模拟 \\
+Blackwell (B200) & Tensor Core & 增强 & FP4原生 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{推理框架}
+
+主流推理框架的量化支持：
+\begin{itemize}
+    \item \textbf{vLLM}：支持GPTQ、AWQ、FP8、SqueezeLLM
+    \item \textbf{TensorRT-LLM}：INT8/INT4 weight-only、FP8、SmoothQuant
+    \item \textbf{llama.cpp}：GGUF格式，支持Q2-Q8多种精度
+    \item \textbf{ExLlama}：专注于4-bit量化的高效实现
+\end{itemize}
+
+\subsection{量化最佳实践}
+
+\paragraph{精度选择}
+\begin{itemize}
+    \item 内存充足：FP16/BF16，无精度损失
+    \item 一般部署：INT8或FP8，精度损失极小
+    \item 边缘设备：INT4（GPTQ/AWQ），精度损失可接受
+    \item 极限压缩：2-3 bit，需仔细评估任务影响
+\end{itemize}
+
+\paragraph{量化方法选择}
+\begin{itemize}
+    \item 快速部署：直接使用预量化模型（HuggingFace上大量可用）
+    \item 自定义量化：AWQ通常是最佳起点
+    \item 极致压缩：GPTQ可达到更低位宽
+    \item 激活量化需求：SmoothQuant处理离群值
+\end{itemize}
+
+\paragraph{评估指标}
+\begin{itemize}
+    \item \textbf{困惑度}：最基础的质量指标
+    \item \textbf{下游任务}：MMLU、GSM8K等benchmark
+    \item \textbf{推理速度}：tokens/s
+    \item \textbf{内存占用}：峰值显存需求
+\end{itemize}
+
+\begin{remark}[量化的trade-off]
+量化不是免费的午餐。在选择量化策略时需权衡：
+\begin{itemize}
+    \item 精度 vs 效率：位宽越低，压缩率越高，但精度损失也越大
+    \item 量化时间 vs 推理性能：复杂量化方法（如GPTQ）需要更长校准时间
+    \item 通用性 vs 专用性：针对特定任务微调的模型可能需要重新量化
+\end{itemize}
+当前4-bit量化（GPTQ/AWQ）是精度与效率的良好平衡点，8-bit量化（INT8/FP8）则几乎无精度损失。
+\end{remark}
+

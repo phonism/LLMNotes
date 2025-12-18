@@ -1,0 +1,330 @@
+\section{Transformer计算分析}
+\label{sec:transformer_math}
+
+本节从计算角度系统分析Transformer架构，涵盖FLOPs计算、参数量统计、内存占用，以及推理优化。理解这些数学关系对于模型设计、训练规划和部署优化至关重要。
+
+% ============================================
+% 符号定义
+% ============================================
+\subsection{符号定义}
+
+表~\ref{tab:notation}列出了本节使用的符号。图~\ref{fig:transformer_diagram}展示了Transformer单层的完整计算流程。
+
+\begin{table}[htbp]
+\centering
+\caption{Transformer计算分析符号表}
+\label{tab:notation}
+\begin{tabular}{cl}
+\toprule
+符号 & 含义 \\
+\midrule
+$B$ & Batch size \\
+$T$ & 序列长度（Sequence length） \\
+$D$ & 模型维度（Hidden dimension） \\
+$F$ & FFN中间维度（通常 $F = 4D$ 或 $\frac{8}{3}D$） \\
+$L$ & Transformer层数 \\
+$N$ & Query head数量 \\
+$K$ & KV head数量（MHA: $K=N$，GQA: $K<N$，MQA: $K=1$） \\
+$H$ & 每个head的维度（通常 $H = D/N$） \\
+$V$ & 词表大小（Vocabulary size） \\
+$P$ & 模型总参数量 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{figures/transformer-diagram.png}
+\caption{Transformer层的计算流程与张量维度。上：Attention模块；下：MLP模块（SwiGLU）。}
+\label{fig:transformer_diagram}
+\end{figure}
+
+% ============================================
+% 基础运算
+% ============================================
+\subsection{基础运算}
+
+矩阵运算是Transformer的计算基础。设矩阵维度为 $m, n, k$：
+
+\begin{table}[htbp]
+\centering
+\caption{基本矩阵运算的FLOPs与数据传输}
+\label{tab:basic_ops}
+\begin{tabular}{lccc}
+\toprule
+运算 & 表达式 & FLOPs & 数据量 \\
+\midrule
+向量点积 & $\bm{x} \cdot \bm{y}$, $\bm{x}, \bm{y} \in \R^k$ & $2k$ & $2k$ \\
+矩阵-向量乘 & $A\bm{x}$, $A \in \R^{m \times k}$ & $2mk$ & $mk + k$ \\
+矩阵-矩阵乘 & $AB$, $A \in \R^{m \times k}, B \in \R^{k \times n}$ & $2mkn$ & $mk + kn$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{前向与反向传播}
+对于线性层 $Y = XW$（$X \in \R^{m \times k}$，$W \in \R^{k \times n}$）：
+\begin{itemize}
+    \item 前向：$Y = XW$，FLOPs $= 2mkn$
+    \item 反向：$\frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} W^\top$（$2mkn$）+ $\frac{\partial L}{\partial W} = X^\top \frac{\partial L}{\partial Y}$（$2mkn$）
+    \item 总计：$6mkn$ FLOPs
+\end{itemize}
+
+这导出了训练FLOPs的核心公式：
+\begin{equation}
+    \boxed{\text{Training FLOPs} \approx 6 \times P \times T_{\text{tokens}}}
+    \label{eq:6nd}
+\end{equation}
+其中 $P$ 是参数量，$T_{\text{tokens}}$ 是训练token总数。
+
+% ============================================
+% 单层分析
+% ============================================
+\subsection{单层分析}
+
+Transformer每层包含两个核心模块：Attention和MLP。
+
+\subsubsection{MLP层}
+
+MLP层（也称FFN）有两种常见形式：
+
+\paragraph{Standard FFN}
+\begin{equation}
+    \text{FFN}(x) = W_2 \cdot \text{GELU}(W_1 x), \quad W_1 \in \R^{D \times F}, W_2 \in \R^{F \times D}
+\end{equation}
+
+\paragraph{SwiGLU FFN}
+\begin{equation}
+    \text{SwiGLU}(x) = W_2 \cdot (\text{SiLU}(W_1 x) \odot W_3 x), \quad W_1, W_3 \in \R^{D \times F}, W_2 \in \R^{F \times D}
+\end{equation}
+
+其中 $\odot$ 是逐元素乘法，起\textbf{门控}作用：$W_3 x$ 控制 $\text{SiLU}(W_1 x)$ 的信息流通。
+
+\begin{table}[htbp]
+\centering
+\caption{MLP层参数与FLOPs（per layer, 输入shape $[B, T, D]$）}
+\label{tab:mlp_flops}
+\begin{tabular}{lccc}
+\toprule
+类型 & 参数量 & 前向FLOPs & 训练FLOPs \\
+\midrule
+Standard FFN & $2DF$ & $4BTDF$ & $12BTDF$ \\
+SwiGLU & $3DF$ & $6BTDF$ & $18BTDF$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{remark}[参数量一致性]
+为保持总参数量一致，不同结构调整 $F$ 的取值：
+\begin{itemize}
+    \item Standard FFN：$F = 4D$ $\Rightarrow$ 参数量 $= 8D^2$
+    \item SwiGLU：$F = \frac{8}{3}D$ $\Rightarrow$ 参数量 $= 8D^2$
+\end{itemize}
+现代模型（LLaMA、DeepSeek等）普遍采用SwiGLU。
+\end{remark}
+
+\subsubsection{Attention层}
+
+Multi-Head Attention包含四个投影和注意力计算：
+\begin{align}
+    Q = XW_Q, \quad K = XW_K, \quad V = XW_V, \quad O = \text{Attn}(Q, K, V) W_O
+\end{align}
+其中 $W_Q, W_O \in \R^{D \times D}$，$W_K, W_V \in \R^{D \times KH}$。
+
+\begin{equation}
+    \text{Attn}(Q, K, V) = \text{softmax}\left(\frac{QK^\top}{\sqrt{H}}\right)V
+\end{equation}
+
+\begin{table}[htbp]
+\centering
+\caption{Attention层参数与FLOPs（per layer, GQA with $K$ KV heads）}
+\label{tab:attn_flops}
+\begin{tabular}{lcc}
+\toprule
+组件 & 参数量 & 训练FLOPs \\
+\midrule
+Q projection & $D^2$ & $6BTD^2$ \\
+K projection & $DKH$ & $6BTDKH$ \\
+V projection & $DKH$ & $6BTDKH$ \\
+O projection & $D^2$ & $6BTD^2$ \\
+$QK^\top$ & — & $6BT^2NH$ \\
+$\text{softmax} \cdot V$ & — & $6BT^2NH$ \\
+\midrule
+\textbf{Total} & $2D^2 + 2DKH$ & $12BTD^2 + 12BTDKH + 12BT^2NH$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{MHA / GQA / MQA对比}
+\begin{itemize}
+    \item \textbf{MHA}（Multi-Head Attention）：$K = N$，每个head独立KV
+    \item \textbf{GQA}（Grouped-Query Attention）：$1 < K < N$，多个Q head共享KV
+    \item \textbf{MQA}（Multi-Query Attention）：$K = 1$，所有head共享一个KV
+\end{itemize}
+
+\subsubsection{Attention vs MLP 计算量对比}
+
+简化假设（$F = 4D$，$K \ll N$，$NH = D$）下：
+\begin{equation}
+    \frac{\text{Attention FLOPs}}{\text{MLP FLOPs}} \approx \frac{T}{8D}
+\end{equation}
+
+\begin{remark}
+当 $T < 8D$ 时，\textbf{MLP计算量主导}。对于 $D = 8192$ 的模型，序列长度需超过 $65536$ 才能使注意力成为主要计算瓶颈。这解释了为什么长上下文场景才需要特别关注注意力效率。
+\end{remark}
+
+% ============================================
+% 完整模型分析
+% ============================================
+\subsection{完整模型分析}
+
+\subsubsection{总参数量}
+
+完整Transformer模型的参数组成：
+\begin{flalign}
+    & P_{\text{embed}} = VD && \text{（词嵌入）} & \\
+    & P_{\text{attn}} = L \cdot (2D^2 + 2DKH) && \text{（注意力层）} & \\
+    & P_{\text{mlp}} = L \cdot 3DF && \text{（MLP层，SwiGLU）} & \\
+    & P_{\text{norm}} = L \cdot 4D && \text{（LayerNorm）} & \\
+    & P_{\text{head}} = DV && \text{（输出投影）} &
+\end{flalign}
+
+总参数量（不共享embedding时）：
+\begin{equation}
+    \boxed{P_{\text{total}} = 2VD + L \cdot (2D^2 + 2DKH + 3DF + 4D)}
+\end{equation}
+
+\begin{example}[LLaMA-7B参数计算]
+$D = 4096$, $F = 11008$, $L = 32$, $V = 32000$, $N = K = 32$（MHA）, $H = 128$：
+\begin{align}
+    P_{\text{embed}} &= 32000 \times 4096 = 131\text{M} \\
+    P_{\text{attn/layer}} &= 2 \times 4096^2 + 2 \times 4096 \times 32 \times 128 = 67\text{M} \\
+    P_{\text{mlp/layer}} &= 3 \times 4096 \times 11008 = 135\text{M} \\
+    P_{\text{total}} &\approx 2 \times 131\text{M} + 32 \times (67\text{M} + 135\text{M}) \approx \mathbf{6.7B}
+\end{align}
+\end{example}
+
+\subsubsection{训练计算量}
+
+每token的训练FLOPs（忽略注意力中的 $T^2$ 项）：
+\begin{equation}
+    \text{FLOPs/token} \approx 6P + 12LT \cdot NH
+\end{equation}
+
+第一项 $6P$ 是参数相关计算（占主导），第二项是注意力的序列长度相关计算。
+
+\begin{table}[htbp]
+\centering
+\caption{常见模型的计算量}
+\label{tab:model_flops}
+\begin{tabular}{lccc}
+\toprule
+模型 & 参数量 & 前向FLOPs/token & 训练FLOPs/token \\
+\midrule
+GPT-2 & 1.5B & 3B & 9B \\
+LLaMA-7B & 6.7B & 13B & 40B \\
+LLaMA-70B & 70B & 140B & 420B \\
+GPT-4 (est.) & 1.8T & 3.6T & 11T \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{训练内存占用}
+
+训练时的内存组成：
+
+\begin{table}[htbp]
+\centering
+\caption{训练内存组成（$P$ 为参数量）}
+\label{tab:memory}
+\begin{tabular}{lcc}
+\toprule
+组件 & 内存 & 说明 \\
+\midrule
+参数（bf16） & $2P$ & 模型权重 \\
+梯度（bf16） & $2P$ & 反向传播梯度 \\
+优化器状态（Adam, fp32） & $8P$ & momentum + variance \\
+激活值 & $O(BTD \cdot L)$ & 中间结果，用于反向传播 \\
+\midrule
+\textbf{总计（无优化）} & $\approx 12P + \text{activations}$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Activation Checkpointing}
+通过只保存每层输入、重新计算中间激活来节省内存：
+\begin{itemize}
+    \item 内存：从 $O(L \cdot BTD)$ 降至 $O(BTD)$
+    \item 代价：额外约33\%重计算（$6P \to 8P$）
+\end{itemize}
+
+% ============================================
+% 推理分析
+% ============================================
+\subsection{推理分析}
+
+推理与训练有本质区别：无需梯度和优化器状态，但自回归生成引入新的挑战。
+
+\subsubsection{KV Cache}
+
+自回归生成时，每生成一个token需要attend到所有历史token。为避免重复计算，需缓存历史的K和V：
+\begin{equation}
+    \boxed{\text{KV Cache Size} = 2 \times B \times S \times L \times K \times H \times \text{bytes}}
+\end{equation}
+其中 $S$ 是当前序列长度，$K$ 是KV head数，$H$ 是head维度。
+
+\begin{example}[KV Cache计算]
+70B模型：$D = 8192$, $L = 80$, $K = 8$（GQA）, $H = 128$, $S = 8192$, bf16精度：
+\begin{equation}
+    \text{KV Cache} = 2 \times 1 \times 8192 \times 80 \times 8 \times 128 \times 2 = \mathbf{2.1\text{ GB/request}}
+\end{equation}
+\end{example}
+
+\paragraph{KV Cache的影响}
+\begin{itemize}
+    \item 内存瓶颈：限制最大batch size和上下文长度
+    \item GQA/MQA：通过减少 $K$ 降低cache大小（如从32降到8，减少4倍）
+    \item 量化：int8/int4进一步压缩（2-4倍）
+\end{itemize}
+
+\subsubsection{Prefill vs Decode}
+
+推理分为两个阶段，具有不同的计算特性：
+
+\begin{table}[htbp]
+\centering
+\caption{Prefill vs Decode对比}
+\label{tab:prefill_decode_overview}
+\begin{tabular}{lcc}
+\toprule
+ & Prefill & Decode \\
+\midrule
+输入 & 整个prompt（$T$ tokens） & 单个token \\
+计算模式 & 并行处理所有token & 逐token生成 \\
+瓶颈 & Compute-bound & Memory-bound \\
+主要开销 & 矩阵乘法计算 & 权重加载 + KV Cache读写 \\
+优化方向 & 提高计算利用率 & 增大batch、减少访存 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{推理优化策略}
+
+\paragraph{Batching策略}
+\begin{itemize}
+    \item \textbf{Continuous Batching}：动态插入/移除请求，提高GPU利用率
+    \item \textbf{Chunked Prefill}：将长prompt分块处理，与decode交错执行
+\end{itemize}
+
+\paragraph{投机解码（Speculative Decoding）}
+用小模型快速生成候选token序列，大模型并行验证：
+\begin{itemize}
+    \item 小模型（draft）：快速生成 $k$ 个候选token
+    \item 大模型（verify）：一次前向验证所有候选，接受正确的前缀
+    \item 加速比：$1.5\times \sim 3\times$（取决于draft模型准确率）
+\end{itemize}
+
+\paragraph{量化}
+\begin{itemize}
+    \item \textbf{Weight-only}（W4A16）：权重int4，激活fp16，减少权重加载
+    \item \textbf{Full quantization}（W8A8）：权重和激活都int8，利用INT8 Tensor Core
+\end{itemize}

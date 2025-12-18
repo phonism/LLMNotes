@@ -1,0 +1,290 @@
+% ==========================================
+% 强化学习笔记 - 导言区配置
+% ==========================================
+
+% ---------- 中文字体配置----------
+% 文档类使用 ctexbook，支持章节结构
+% 使用冬青黑体（现代清晰风格）
+\setCJKmainfont{Hiragino Sans GB}    % 冬青黑体（正文）
+\setCJKsansfont{Heiti SC}            % 黑体（无衬线）
+\setCJKmonofont{Heiti SC}            % 等宽字体
+
+% ---------- 中文引号配置 ----------
+% 使用 csquotes 包自动处理引号
+\usepackage[autostyle=true]{csquotes}
+% 设置中文引号样式：外层 ""，内层 ''
+\DeclareQuoteStyle{chinese}
+  {\textquotedblleft}{\textquotedblright}   % 外层：" "
+  {\textquoteleft}{\textquoteright}          % 内层：' '
+\setquotestyle{chinese}
+% 让 "..." 自动转换为正确引号
+\MakeOuterQuote{"}
+
+% ---------- 页面设置 ----------
+% 单页模式：左右对称边距
+\usepackage[a4paper,
+    top=2.5cm,
+    bottom=2.5cm,
+    left=2.5cm,
+    right=2.5cm
+]{geometry}
+
+% 页眉页脚设置（单页模式：所有页统一格式）
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+% 章节名在左，页码在右
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{15pt}
+
+% 章节首页使用plain样式（只有页码，居中底部）
+\fancypagestyle{plain}{%
+    \fancyhf{}
+    \fancyfoot[C]{\small\thepage}
+    \renewcommand{\headrulewidth}{0pt}
+}
+
+% 行间距和段落间距优化
+\linespread{1.05}                    % 行间距 (1.0 = 单倍行距)
+\setlength{\parskip}{3pt plus 1pt minus 1pt}  % 段落间距
+\setlength{\parindent}{0em}          % 无首行缩进
+
+% ---------- 数学宏包 ----------
+\usepackage{amsmath}                 % AMS数学
+\usepackage{amssymb}                 % AMS符号
+\usepackage{amsthm}                  % AMS定理环境
+\usepackage{mathtools}               % 数学工具
+\usepackage{bm}                      % 粗体数学符号
+\usepackage{cancel}                  % 数学删除线
+
+% ---------- 图表相关 ----------
+\usepackage{graphicx}                % 插图
+\usepackage{subfigure}               % 子图
+\usepackage{float}                   % 浮动体控制
+\usepackage{caption}                 % 标题设置
+\captionsetup{
+    font=small,                      % 图表标题字体大小
+    labelfont=bf,                    % 标签加粗（如"图 1"）
+    textfont={small},                % 说明文字（中文不使用斜体）
+    skip=6pt,                        % 标题与图表间距
+    justification=justified,         % 两端对齐
+    singlelinecheck=false            % 即使单行也按设置对齐
+}
+\usepackage{booktabs}                % 三线表
+\usepackage{multirow}                % 表格多行合并
+\usepackage{tikz}                    % 绘图
+\usepackage{pgfplots}                % 图表绘制
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{shapes,arrows,positioning,calc,decorations.pathreplacing}
+
+% ---------- 代码高亮 ----------
+\usepackage{minted}                  % 代码高亮（需要Pygments）
+\usemintedstyle{colorful}            % 代码配色方案 (更专业)
+\setminted{
+    breaklines,                      % 自动换行
+    breakanywhere,                   % 任意位置换行
+    fontsize=\footnotesize,          % 字体大小（更小更紧凑）
+    linenos,                         % 行号
+    numbersep=3pt,                   % 行号间距（减小）
+    frame=lines,                     % 边框
+    framesep=1.5mm,                  % 边框间距（减小）
+    tabsize=4,                       % Tab宽度
+    bgcolor=gray!3,                  % 背景色（更浅）
+    baselinestretch=1.0,             % 代码行间距
+    xleftmargin=0pt,                 % 左边距
+    xrightmargin=0pt                 % 右边距
+}
+
+% ---------- 算法伪代码 ----------
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\SetKwComment{Comment}{/* }{ */}
+\SetKwInput{KwInput}{输入}
+\SetKwInput{KwOutput}{输出}
+\SetKwProg{Fn}{函数}{:}{}
+\SetAlgorithmName{算法}{算法}{算法列表}
+% 优化算法环境间距
+\SetAlgoSkip{medskip}                % 算法前后间距
+\SetAlCapSkip{1ex}                   % 标题间距
+\setlength{\algomargin}{1em}         % 算法左边距
+
+% ---------- 超链接 ----------
+% 注意：cleveref 必须在 titlesec 配置之后加载，见文件末尾
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=red, urlcolor=purple]{hyperref}
+
+% ---------- 参考文献 ----------
+\usepackage[backend=biber, style=numeric, sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+% ---------- 其他工具包 ----------
+\usepackage{enumerate}               % 枚举环境
+\usepackage{enumitem}                % 列表定制
+\setlist{
+    itemsep=2pt,                     % 列表项间距
+    parsep=2pt,                      % 段落间距
+    topsep=4pt,                      % 列表前后间距
+    partopsep=0pt                    % 段落列表额外间距
+}
+\usepackage{color,xcolor}            % 颜色
+\usepackage{tcolorbox}               % 彩色文本框
+\tcbuselibrary{most}
+
+% ---------- 标题格式优化 ----------
+\usepackage{titlesec}                % 标题定制
+
+% Chapter标题格式（居中，大字号）
+\titleformat{\chapter}[display]
+    {\normalfont\huge\bfseries\centering}
+    {\chaptertitlename\ \thechapter}
+    {20pt}
+    {\Huge}
+\titlespacing*{\chapter}
+    {0pt}{0pt}{40pt}
+
+% Section标题格式（左对齐，加粗）
+\titleformat{\section}
+    {\normalfont\Large\bfseries}
+    {\thesection}
+    {1em}
+    {}
+\titlespacing*{\section}
+    {0pt}{12pt plus 4pt minus 2pt}{6pt plus 2pt minus 1pt}
+
+% Subsection标题格式（左对齐，加粗）
+\titleformat{\subsection}
+    {\normalfont\large\bfseries}
+    {\thesubsection}
+    {1em}
+    {}
+\titlespacing*{\subsection}
+    {0pt}{10pt plus 3pt minus 2pt}{4pt plus 1pt minus 1pt}
+
+% Subsubsection标题格式（左对齐，加粗）
+\titleformat{\subsubsection}
+    {\normalfont\normalsize\bfseries}
+    {\thesubsubsection}
+    {1em}
+    {}
+\titlespacing*{\subsubsection}
+    {0pt}{8pt plus 2pt minus 1pt}{3pt plus 1pt minus 1pt}
+
+% 设置目录深度（显示到subsection）
+\setcounter{tocdepth}{2}
+% 设置章节编号深度（编号到subsection）
+\setcounter{secnumdepth}{3}
+
+% ---------- 智能引用 ----------
+% 注意：titlesec 与 cleveref 存在兼容性问题，section 引用会出错
+% 解决方案：使用自定义的 \secref 命令代替 \cref 引用章节
+\usepackage{cleveref}
+% cleveref 中文配置（用于非 section 类型的引用）
+\crefname{figure}{图}{图}
+\Crefname{figure}{图}{图}
+\crefname{table}{表}{表}
+\Crefname{table}{表}{表}
+\crefname{equation}{式}{式}
+\Crefname{equation}{式}{式}
+\crefname{theorem}{定理}{定理}
+\Crefname{theorem}{定理}{定理}
+\crefname{lemma}{引理}{引理}
+\Crefname{lemma}{引理}{引理}
+\crefname{definition}{定义}{定义}
+\Crefname{definition}{定义}{定义}
+\crefname{algorithm}{算法}{算法}
+\Crefname{algorithm}{算法}{算法}
+
+% 自定义章节引用命令（绕过 titlesec + cleveref 兼容性问题）
+\newcommand{\chapref}[1]{第\ref{#1}章}
+\newcommand{\secref}[1]{第\ref{#1}节}
+
+% ==========================================
+% 自定义命令 - RL专用
+% ==========================================
+
+% ---------- 数学符号 ----------
+\newcommand{\E}{\mathbb{E}}                    % 期望
+\newcommand{\R}{\mathbb{R}}                    % 实数
+\newcommand{\N}{\mathbb{N}}                    % 自然数
+\newcommand{\prob}{\mathbb{P}}                 % 概率
+\newcommand{\ind}{\mathbb{I}}                  % 指示函数
+
+% ---------- RL核心符号 ----------
+\newcommand{\state}{s}                         % 状态
+\newcommand{\action}{a}                        % 动作
+\newcommand{\reward}{r}                        % 奖励
+\newcommand{\policy}{\pi}                      % 策略
+\newcommand{\Val}{V}                           % 状态价值函数
+\newcommand{\Qval}{Q}                          % 动作价值函数
+\newcommand{\advantage}{A}                     % 优势函数
+\newcommand{\discount}{\gamma}                 % 折扣因子
+\newcommand{\trajectory}{\tau}                 % 轨迹
+\newcommand{\transition}{\mathcal{T}}          % 状态转移
+\newcommand{\statespace}{\mathcal{S}}          % 状态空间
+\newcommand{\actionspace}{\mathcal{A}}         % 动作空间
+
+% ---------- 数学算子 ----------
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\newcommand{\defeq}{\coloneqq}                 % 定义为(:=)
+\newcommand{\norm}[1]{\left\| #1 \right\|}    % 范数
+\newcommand{\abs}[1]{\left| #1 \right|}       % 绝对值
+
+% ==========================================
+% 自定义环境
+% ==========================================
+
+% ---------- 定理环境 ----------
+% Book类中定理环境按章编号（如：定理1.1表示第1章第1个定理）
+\newtheorem{theorem}{定理}[chapter]
+\newtheorem{lemma}[theorem]{引理}
+\newtheorem{proposition}[theorem]{命题}
+\newtheorem{corollary}[theorem]{推论}
+\newtheorem{definition}{定义}[chapter]
+\newtheorem{example}{例}[chapter]
+\newtheorem{remark}{注}[chapter]
+
+% ---------- 彩色文本框 ----------
+\newtcolorbox{keypoint}{
+    colback=blue!5!white,
+    colframe=blue!75!black,
+    title=关键点,
+    fonttitle=\bfseries\small,
+    top=4pt, bottom=4pt,             % 减小上下边距
+    left=6pt, right=6pt,             % 减小左右边距
+    boxsep=2pt,                      % 减小盒子间距
+    before skip=8pt, after skip=8pt  % 减小前后间距
+}
+
+\newtcolorbox{note}{
+    colback=green!5!white,
+    colframe=green!75!black,
+    title=注意,
+    fonttitle=\bfseries\small,
+    top=4pt, bottom=4pt,
+    left=6pt, right=6pt,
+    boxsep=2pt,
+    before skip=8pt, after skip=8pt
+}
+
+\newtcolorbox{important}{
+    colback=red!5!white,
+    colframe=red!75!black,
+    title=重要,
+    fonttitle=\bfseries\small,
+    top=4pt, bottom=4pt,
+    left=6pt, right=6pt,
+    boxsep=2pt,
+    before skip=8pt, after skip=8pt
+}
+
+% ---------- 代码环境快捷方式 ----------
+\newcommand{\pycode}[1]{\mintinline{python}{#1}}
+\newcommand{\bashcode}[1]{\mintinline{bash}{#1}}
+
+% ==========================================
+% 文档信息设置
+% ==========================================
+\newcommand{\settitle}[1]{\title{#1}}
+\newcommand{\setauthor}[1]{\author{#1}}
+\newcommand{\setdate}[1]{\date{#1}}

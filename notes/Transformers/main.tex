@@ -1,0 +1,217 @@
+\documentclass[10pt,a4paper]{article}
+
+% ============================================
+% Packages
+% ============================================
+% 页面布局
+\usepackage[margin=0.8in]{geometry}
+\usepackage{setspace}
+\setstretch{1.2}  % 适中行距，提高可读性
+
+% 数学
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+
+% 图表
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subfig}
+\usepackage{booktabs}
+\usepackage{multirow}
+
+% 代码
+\usepackage{listings}
+\usepackage{xcolor}
+
+% 符号（用于表格中的勾叉）
+\usepackage{pifont}
+
+% 算法
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% 超链接
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+% 参考文献
+\usepackage[numbers,sort&compress]{natbib}
+
+% 中文支持与字体配置
+\usepackage[fontset=macnew]{ctex}
+% macnew 使用：华文宋体/黑体/楷体/仿宋，macOS 原生支持
+
+% 段落格式：无缩进，紧凑段间距
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4ex plus 0.1ex minus 0.1ex}
+
+% 紧凑的列表间距
+\usepackage{enumitem}
+\setlist{noitemsep, topsep=2pt, parsep=1pt, partopsep=0pt}
+
+% 标题样式
+\usepackage{titlesec}
+% Section: 居中，大字
+\titleformat{\section}{\Large\bfseries\centering}{\thesection}{1em}{}
+\titlespacing*{\section}{0pt}{3ex plus 0.5ex minus 0.3ex}{2ex plus 0.2ex}
+% Subsection: 左对齐，中等大小
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+\titlespacing*{\subsection}{0pt}{2.5ex plus 0.4ex minus 0.2ex}{1.2ex plus 0.2ex}
+% Subsubsection: 正文大小加粗，无编号
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
+\titlespacing*{\subsubsection}{0pt}{2ex plus 0.3ex minus 0.2ex}{0.8ex plus 0.1ex}
+% 只编号到 subsection
+\setcounter{secnumdepth}{2}
+
+% TikZ 绘图
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning,calc,matrix}
+
+% ============================================
+% 代码样式设置
+% ============================================
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{pythonstyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    language=Python
+}
+\lstset{style=pythonstyle}
+
+% ============================================
+% 定理环境
+% ============================================
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{remark}{Remark}[section]
+\newtheorem{example}{Example}[section]
+
+% ============================================
+% 自定义命令
+% ============================================
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\softmax}{\mathrm{softmax}}
+\newcommand{\attn}{\mathrm{Attention}}
+\newcommand{\mha}{\mathrm{MultiHead}}
+\newcommand{\ffn}{\mathrm{FFN}}
+\newcommand{\layernorm}{\mathrm{LayerNorm}}
+\newcommand{\transpose}{\mathsf{T}}
+
+% ============================================
+% 文档信息
+% ============================================
+\title{\textbf{Large Language Models: The Complete Guide}}
+\author{卢奇 \\ \texttt{luqi.code@gmail.com}}
+\date{}
+
+% ============================================
+% 文档开始
+% ============================================
+\begin{document}
+
+\maketitle
+
+% Abstract
+\input{sections/abstract}
+
+% Table of Contents
+\setcounter{tocdepth}{1}  % 只显示到 section
+\tableofcontents
+\newpage
+
+% ============================================
+% Part I: 基础理论
+% ============================================
+\newpage
+\part{基础理论}
+\newpage\input{sections/introduction}
+\newpage\input{sections/background}
+\newpage\input{sections/transformer-math}
+\newpage\input{sections/scaling-law}
+
+% ============================================
+% Part II: Transformer核心组件
+% ============================================
+\newpage
+\part{Transformer核心组件}
+\newpage\input{sections/tokenizer}
+\newpage\input{sections/position-encoding}
+\newpage\input{sections/gating}
+
+% ============================================
+% Part III: 注意力机制
+% ============================================
+\newpage
+\part{注意力机制}
+\newpage\input{sections/flash-attention}
+\newpage\input{sections/mla}
+\newpage\input{sections/sparse-attention}
+\newpage\input{sections/linear-attention}
+
+% ============================================
+% Part IV: 模型架构
+% ============================================
+\newpage
+\part{模型架构}
+\newpage\input{sections/moe}
+
+% ============================================
+% Part V: 训练技术
+% ============================================
+\newpage
+\part{训练技术}
+\newpage\input{sections/data}
+\newpage\input{sections/distributed-training}
+\newpage\input{sections/muon-optimizer}
+
+% ============================================
+% Part VI: 评测与Benchmark
+% ============================================
+\newpage
+\part{评测与Benchmark}
+\newpage\input{sections/evaluation}
+
+% ============================================
+% Part VII: 部署优化
+% ============================================
+\newpage
+\part{部署优化}
+\newpage\input{sections/quantization}
+\newpage\input{sections/inference}
+
+% ============================================
+% Part VIII: 前沿应用
+% ============================================
+\newpage
+\part{前沿应用}
+\newpage\input{sections/multimodal}
+\newpage\input{sections/reasoning}
+
+% References
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
