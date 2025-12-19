@@ -4,6 +4,8 @@ title: "为什么 LoRA 在强化学习微调中有效？—— 信息带宽的�
 date: 2025-12-19
 author: Phonism
 tags: [LoRA, RL, RLHF, Information Theory]
+lang: zh
+translation: /lora-information-bandwidth-rl-en/
 ---
 
 ## 引言

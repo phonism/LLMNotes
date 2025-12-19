@@ -52,26 +52,65 @@
     border-color: var(--border-color) !important;
   }
 
-  /* 主题切换按钮 */
-  .theme-toggle {
-    position: absolute;
-    top: 20px;
-    right: 20px;
+  /* Top-right toolbar */
+  .toolbar {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 1000;
+  }
+
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
     background: var(--code-bg);
     border: 1px solid var(--accent-color);
     color: var(--accent-color);
-    padding: 8px 12px;
     cursor: pointer;
     font-family: inherit;
     font-size: 14px;
-    border-radius: 4px;
-    z-index: 1000;
-    transition: all 0.3s;
+    font-weight: bold;
+    border-radius: 6px;
+    transition: all 0.2s;
+    text-decoration: none;
   }
 
-  .theme-toggle:hover {
+  .toolbar-btn:hover {
     background: var(--accent-color);
     color: var(--bg-color);
+    text-decoration: none;
+  }
+
+  .toolbar-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .toolbar-btn.disabled:hover {
+    background: var(--code-bg);
+    color: var(--accent-color);
+  }
+
+  .toolbar-btn svg {
+    fill: currentColor;
+  }
+
+  @media (max-width: 480px) {
+    .toolbar {
+      top: 8px;
+      right: 8px;
+      gap: 6px;
+    }
+    .toolbar-btn {
+      width: 32px;
+      height: 32px;
+      font-size: 12px;
+    }
   }
 
   /* Footer */
@@ -146,7 +185,8 @@
   function updateButton(theme) {
     const btn = document.getElementById('theme-btn');
     if (btn) {
-      btn.textContent = theme === 'light' ? '🌙 Dark' : '☀️ Light';
+      btn.textContent = theme === 'light' ? '🌙' : '☀️';
+      btn.title = theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode';
     }
   }
 

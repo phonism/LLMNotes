@@ -4,6 +4,8 @@ title: "RL 学习笔记（三）：REINFORCE 与 PPO"
 date: 2025-12-19
 author: Phonism
 tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
+lang: zh
+translation: /policy-based-rl-en/
 ---
 
 在上一篇文章中，我们介绍了 Value-Based 方法：先学习 $Q^*$，再通过 $\arg\max$ 导出策略。这种方法在离散动作空间中效果很好，但遇到以下问题时会遇到困难：
