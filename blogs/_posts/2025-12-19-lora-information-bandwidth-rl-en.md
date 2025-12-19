@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Why is LoRA Effective in RL Fine-tuning? An Information Bandwidth Perspective"
-date: 2025-12-19
+date: 2025-12-19 01:00:00
 author: Phonism
 tags: [LoRA, RL, RLHF, Information Theory]
 lang: en
