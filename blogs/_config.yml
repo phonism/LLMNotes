@@ -17,6 +17,7 @@ kramdown:
 # 站点配置
 baseurl: "/LLMNotes"
 url: "https://phonism.github.io"
+repository: phonism/LLMNotes
 
 # 文章配置
 permalink: /:title/
