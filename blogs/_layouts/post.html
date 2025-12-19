@@ -1,0 +1,20 @@
+---
+layout: default
+---
+
+<small>{{ page.date | date: "%Y-%m-%d" }} · {{ page.author }}</small>
+
+{{ content }}
+
+{% if page.tags.size > 0 %}
+<div class="post-tags" style="margin-top: 2em; padding-top: 1em; border-top: 1px dashed #b5e853;">
+  <strong>Tags:</strong>
+  {% for tag in page.tags %}
+    <a href="{{ '/tags/' | relative_url }}#{{ tag | slugify }}" style="margin-left: 8px; padding: 2px 8px; background: #1a1a1a; border: 1px solid #b5e853; border-radius: 3px;">{{ tag }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div style="margin-top: 2em;">
+  <a href="{{ '/' | relative_url }}">← Back to Home</a>
+</div>
