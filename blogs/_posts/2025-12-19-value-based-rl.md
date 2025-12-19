@@ -24,17 +24,17 @@ $$\pi^*(s) = \arg\max_a Q^*(s,a)$$
 这是 Value-Based 方法的理论基础——不直接学习策略，而是通过学习价值函数间接得到策略。
 
 ```
-Value-Based RL 的核心思路：
+Value-Based RL:
 
     ┌──────────────┐      argmax      ┌──────────────┐
-    │  价值函数     │  ───────────►   │   最优策略    │
-    │  V* 或 Q*    │                  │     π*       │
+    │Value Function│  ───────────►   │Optimal Policy│
+    │  V* or Q*    │                  │      π*      │
     └──────────────┘                  └──────────────┘
            ▲
            │
     ┌──────────────┐
     │ Value-Based  │
-    │    方法      │
+    │   Methods    │
     │ DP, MC, TD   │
     │ Q-Learning   │
     │    DQN       │
@@ -318,10 +318,10 @@ $$\mathcal{L}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( \
 ```
 Replay Buffer D
 ┌───────────────────────────────────────┐
-│  [老] ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ [新]  │ ◄── 写入新转移
+│ [old] ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ [new] │ ◄── Write transition
 └───────────────────────────────────────┘
      ↓         ↓         ↓
-   随机采样 mini-batch 用于训练
+   Random sample mini-batch for training
 ```
 
 Experience Replay 的好处：
