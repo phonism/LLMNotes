@@ -1,9 +1,9 @@
 ---
 layout: post
-title: "Model-Based RL 与 Multi-Agent RL：从 MCTS 到 AlphaZero"
+title: "RL 学习笔记（四）：MCTS 与 AlphaZero"
 date: 2025-12-19
 author: Phonism
-tags: [Reinforcement Learning, Model-Based RL, Multi-Agent RL, MCTS, AlphaGo, AlphaZero]
+tags: [RL, Model-Based RL, MARL, MCTS, AlphaZero]
 ---
 
 本文是强化学习系列的第四篇，介绍 Model-Based RL 和 Multi-Agent RL 的核心概念，从样本效率的追求出发，讲解 World Model、Dyna 架构、MCTS，最后以 AlphaGo/AlphaZero 为例展示这些技术的强大组合，并介绍博弈论基础和 Self-Play 方法。

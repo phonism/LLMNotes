@@ -1,8 +1,8 @@
 ---
 layout: post
-title: "基于策略的强化学习：从 REINFORCE 到 PPO"
+title: "RL 学习笔记（三）：REINFORCE 与 PPO"
 date: 2025-12-19
-author: Qi Lu
+author: Phonism
 tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
 ---
 

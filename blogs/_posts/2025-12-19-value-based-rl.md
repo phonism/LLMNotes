@@ -1,8 +1,8 @@
 ---
 layout: post
-title: "基于价值的强化学习：从 Bellman 方程到 DQN"
+title: "RL 学习笔记（二）：Bellman 方程与 DQN"
 date: 2025-12-19
-author: Qi Lu
+author: Phonism
 tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
 ---
 
