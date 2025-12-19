@@ -2,7 +2,7 @@
 layout: post
 title: "LLM-RL 训练稳定性：根因分析与解决方案"
 date: 2025-12-19
-author: LuckyQueen
+author: Qi Lu
 tags: [RL, RLHF, PPO, GRPO, GSPO, 训练稳定性, Importance Sampling]
 ---
 
@@ -45,7 +45,7 @@ LLM-RL 训练不稳定有**两个层面的根因**：
 
 ### 根因一：Training-Inference Mismatch
 
-#### 速度与一致性的矛盾
+**速度与一致性的矛盾**
 
 现代 LLM-RL 系统通常使用**高速推理引擎**（如 vLLM、SGLang）进行 rollout 采样，而使用**训练框架**（如 FSDP、Megatron-LM）进行参数更新。这两类系统有着截然不同的优化目标：
 
@@ -56,7 +56,7 @@ LLM-RL 训练不稳定有**两个层面的根因**：
 
 这种优化目标的分歧导致了**不可避免的数值不一致**。即使参数完全相同，推理引擎计算的 $\mu(y\mid x)$ 和训练引擎计算的 $\pi(y\mid x)$ 也会产生差异。
 
-#### 实际梯度 vs 理论梯度
+**实际梯度 vs 理论梯度**
 
 理论上，on-policy 的策略梯度应该是：
 
@@ -148,11 +148,11 @@ $$\rho(y) \gets \rho(y) \cdot \mathbb{I}\{\rho(y) \le C\}$$
 
 DeepSeek-V3.2 采用了更精细的 masking 策略：
 
-$$M_{i,t} = \begin{cases} 0 & \text{if } \hat{A}_{i,t} < 0 \text{ and } \frac{1}{|o_i|}\sum \log \frac{\pi_{\text{old}}}{\pi_\theta} > \delta \\ 1 & \text{otherwise} \end{cases}$$
+$$M_{i,t} = \begin{cases} 0 & \text{if } \hat{A}_{i,t} < 0 \text{ and } \frac{1}{\lvert o_i \rvert}\sum \log \frac{\pi_{\text{old}}}{\pi_\theta} > \delta \\ 1 & \text{otherwise} \end{cases}$$
 
 核心思路：**只 mask 那些 advantage 为负且 off-policy 程度超过阈值 $\delta$ 的序列**。
 
-这里用 $\frac{1}{|o_i|}\sum \log \frac{\pi_{\text{old}}}{\pi_\theta}$ 来衡量 off-policy 程度，本质上是 **per-token 平均 KL 散度**（等价于 log ratio 的几何平均）。这种长度归一化避免了长序列被系统性丢弃的问题。
+这里用 $\frac{1}{\lvert o_i \rvert}\sum \log \frac{\pi_{\text{old}}}{\pi_\theta}$ 来衡量 off-policy 程度，本质上是 **per-token 平均 KL 散度**（等价于 log ratio 的几何平均）。这种长度归一化避免了长序列被系统性丢弃的问题。
 
 **为什么只 mask 负 advantage？** 正 advantage 的样本即使 off-policy，仍然提供有用的梯度方向；而负 advantage 的 off-policy 样本可能引入有害的梯度噪声。
 
@@ -210,15 +210,16 @@ $$M(k) = \begin{cases} k & \text{if } k \in [\alpha, \beta] \\ 0 & \text{otherwi
 
 GSPO（Group Sequence Policy Optimization）将 IS 操作提升到序列级别：
 
-$$s_i(\theta) = \left(\frac{\pi_\theta(y_i|x)}{\pi_{\text{old}}(y_i|x)}\right)^{1/|y_i|}$$
+$$s_i(\theta) = \left(\frac{\pi_\theta(y_i \mid x)}{\pi_{\text{old}}(y_i \mid x)}\right)^{1/\lvert y_i \rvert}$$
 
 **核心改进**：
 - 先对 sequence-level ratio 做**长度归一化**，再 clip
 - 同一序列的所有 token 共用同一个 IS 权重
 
 **与 GRPO 的区别**：
-| | GRPO | GSPO |
-|---|------|------|
+
+| 维度 | GRPO | GSPO |
+|------|------|------|
 | IS 粒度 | Token-level | Sequence-level |
 | Clip 对象 | 每个 token 的 ratio | 整个序列的归一化 ratio |
 | 长序列稳定性 | 差（方差爆炸） | 好（长度归一化） |

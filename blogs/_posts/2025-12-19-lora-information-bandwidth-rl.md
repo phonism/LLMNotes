@@ -2,7 +2,7 @@
 layout: post
 title: "为什么 LoRA 在强化学习微调中有效？—— 信息带宽的视角"
 date: 2025-12-19
-author: LuckyQueen
+author: Qi Lu
 tags: [LoRA, RL, RLHF, 信息理论]
 ---
 
