@@ -16,7 +16,7 @@ kramdown:
 
 # 站点配置
 baseurl: "/LLMNotes"
-url: "https://luqi.github.io"
+url: "https://phonism.github.io"
 
 # 文章配置
 permalink: /:title/
