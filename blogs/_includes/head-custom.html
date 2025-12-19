@@ -3,6 +3,85 @@
   /* Geek 风格增强 */
   body {
     font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    transition: background-color 0.3s, color 0.3s;
+  }
+
+  /* 深色主题 (默认) */
+  :root {
+    --bg-color: #1a1a1a;
+    --text-color: #b0b0b0;
+    --accent-color: #b5e853;
+    --link-color: #63c0f5;
+    --code-bg: #0d0d0d;
+    --border-color: #333;
+  }
+
+  /* 浅色主题 */
+  [data-theme="light"] {
+    --bg-color: #f5f5f5;
+    --text-color: #333;
+    --accent-color: #2d7d2d;
+    --link-color: #0066cc;
+    --code-bg: #e8e8e8;
+    --border-color: #ccc;
+  }
+
+  [data-theme="light"] body,
+  [data-theme="light"] .wrapper {
+    background: var(--bg-color) !important;
+    color: var(--text-color) !important;
+  }
+
+  [data-theme="light"] header {
+    background: #e0e0e0 !important;
+  }
+
+  [data-theme="light"] h1,
+  [data-theme="light"] h2,
+  [data-theme="light"] h3 {
+    color: var(--accent-color) !important;
+  }
+
+  [data-theme="light"] a {
+    color: var(--link-color) !important;
+  }
+
+  [data-theme="light"] code,
+  [data-theme="light"] pre {
+    background: var(--code-bg) !important;
+    border-color: var(--border-color) !important;
+  }
+
+  /* 主题切换按钮 */
+  .theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--code-bg);
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    padding: 8px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    border-radius: 4px;
+    z-index: 1000;
+    transition: all 0.3s;
+  }
+
+  .theme-toggle:hover {
+    background: var(--accent-color);
+    color: var(--bg-color);
+  }
+
+  /* Footer */
+  .site-footer {
+    margin-top: 4em;
+    padding: 2em 0;
+    border-top: 1px dashed var(--accent-color);
+    text-align: center;
+    color: #666;
+    font-size: 0.85em;
   }
 
   h1, h2, h3 {
@@ -51,15 +130,30 @@
     background: #1a1a1a;
     color: #b5e853;
   }
-
-  /* 终端风格光标闪烁 */
-  .post-title::after {
-    content: '_';
-    animation: blink 1s infinite;
-  }
-
-  @keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
-  }
 </style>
+
+<script>
+  // 主题切换
+  function toggleTheme() {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    updateButton(next);
+  }
+
+  function updateButton(theme) {
+    const btn = document.getElementById('theme-btn');
+    if (btn) {
+      btn.textContent = theme === 'light' ? '🌙 Dark' : '☀️ Light';
+    }
+  }
+
+  // 页面加载时恢复主题
+  document.addEventListener('DOMContentLoaded', function() {
+    const saved = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    updateButton(saved);
+  });
+</script>

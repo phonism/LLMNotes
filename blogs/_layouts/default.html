@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ '/assets/css/style.css?v=' | append: site.github.build_revision | relative_url }}">
+    {% include head-custom.html %}
+    <title>{{ page.title }} | {{ site.title }}</title>
+  </head>
+
+  <body>
+    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
+
+    <header>
+      <div class="container">
+        <a id="a-title" href="{{ '/' | relative_url }}">
+          <h1>{{ site.title }}</h1>
+        </a>
+        <h2>{{ site.description }}</h2>
+
+        <section id="downloads">
+          <a href="{{ site.github.repository_url }}" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        {{ content }}
+      </section>
+
+      <footer class="site-footer">
+        <p>© 2025 {{ site.author }}. Built with Jekyll & Hacker Theme.</p>
+        <p><a href="{{ site.github.repository_url }}">GitHub</a> · <a href="mailto:{{ site.email }}">Email</a></p>
+      </footer>
+    </div>
+  </body>
+</html>
