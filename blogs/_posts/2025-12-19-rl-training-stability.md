@@ -226,7 +226,42 @@ $$s_i(\theta) = \left(\frac{\pi_\theta(y_i \mid x)}{\pi_{\text{old}}(y_i \mid x)
 - 对 MoE 模型更稳定
 - 简化 RL 基础设施设计
 
-### 方案六：工程调优
+### 方案六：多次采样估计（MoE 专用）
+
+KAT-Coder 团队提出了一个不同视角：对于 MoE 模型，**采样噪声本身是导致训练不稳定的主导因素**，而非训推不一致。
+
+**噪声来源分析**：
+
+| 模型类型 | 训推差异 | 推理噪声方差 | 训练噪声方差 |
+|----------|----------|--------------|--------------|
+| Dense | ~0.002 | ~$10^{-5}$ | 0（Megatron 确定性） |
+| MoE | ~0.008 | ~$10^{-3}$ | ~$10^{-7}$（scatter_add 随机性） |
+
+MoE 的推理噪声方差比 Dense 高两个数量级，这才是不稳定的主因。
+
+**核心方法**：计算 $\pi_{\text{old}}$ 时，直接用**推理引擎**重复计算 n 次（n=8），取平均值：
+
+$$\hat{\pi}_{\text{old}}(y \mid x) = \frac{1}{n} \sum_{i=1}^{n} \pi_{\text{inference}}^{(i)}(y \mid x)$$
+
+**关键优势**：
+- 获得**无偏且方差缩小 n 倍**的估计
+- **无需训练引擎 recompute**，直接用推理引擎
+- 在异步框架下，多次采样时间可与 rollout 重叠
+- KV cache 命中率接近 100%
+- 端到端实际**减少 10-20% 训练时间**
+
+**与其他方案对比**：
+
+| 方案 | 问题 |
+|------|------|
+| Routing Replay | 大规模 agentic 场景难以保证 prefix cache 命中 |
+| 截断 IS (TIS) | 对截断边界敏感，不解决估计偏差根因 |
+| 确定性推理 | 需深度改造推理引擎，吞吐下降 40-70% |
+| 多次采样估计 | 无超参，工程友好，效果最优 |
+
+在 Qwen3-235B-A22B 上的实验表明，recompute 和 rollout_logprob 方法在 60-80 步后 reward 崩溃，而该方法保持稳定增长且优于 TIS。
+
+### 方案七：工程调优
 
 一些实用的工程手段：
 
@@ -287,3 +322,4 @@ LLM-RL 训练的稳定性问题，本质上是**现代系统架构分工**带来
 4. [DeepSeek-V3.2 Technical Report](https://arxiv.org/abs/2512.02556)
 5. [Ring-1T: Scaling RL to Trillion Parameters](https://arxiv.org/abs/2510.18855)
 6. [GSPO: Group Sequence Policy Optimization](https://arxiv.org/abs/2507.18071)
+7. [KAT-Coder: MoE 模型 RL 训练稳定性](https://kwaikat.github.io/kwaikat-blog/posts/katcoder_1201/)
