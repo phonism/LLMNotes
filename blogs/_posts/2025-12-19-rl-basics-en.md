@@ -1,0 +1,394 @@
+---
+layout: post
+title: "RL Notes (1): MDP and Value Functions"
+date: 2025-12-19
+author: Phonism
+tags: [RL, MDP, Value Function]
+lang: en
+translation: /rl-basics/
+---
+
+How do we teach a machine to play chess? Supervised learning would have the machine study large collections of game records, imitating expert moves. But this approach has two problems: first, game records cannot cover all possible board positions; second, chess involves **sequential decision-making**—the quality of a move might only be revealed dozens of moves later.
+
+Reinforcement Learning (RL) addresses exactly this type of problem: an agent learns to make optimal decisions through interaction with an environment, without being given "correct answers."
+
+This article aims to establish the mathematical framework of RL. The core conclusion is: RL problems can be formalized as Markov Decision Processes (MDPs), with the goal of finding a policy that maximizes expected cumulative reward.
+
+## 1. Overview of Reinforcement Learning
+
+### 1.1 What is Reinforcement Learning
+
+Reinforcement learning is an important branch of machine learning that studies how agents learn optimal decision-making strategies through interaction with their environment. Compared to supervised and unsupervised learning, RL has three distinctive characteristics:
+
+- **Interactive Learning**: The agent accumulates experience by executing actions and observing feedback, without labeled "correct answers"
+- **Delayed Rewards**: The quality of an action may not be known until much later (think of sacrificing a piece in chess for positional advantage)
+- **Sequential Decision-Making**: Current decisions affect future states; the data distribution is determined by the policy itself
+
+```
+┌─────────────────────────┐
+│         Agent           │
+│  ┌───────────────────┐  │
+│  │   Policy π(a|s)   │  │
+│  └───────────────────┘  │
+└───────────┬─────────────┘
+            │ Action aₜ
+            ▼
+┌─────────────────────────┐
+│      Environment        │
+└───────────┬─────────────┘
+            │ State sₜ₊₁, Reward rₜ
+            ▼
+         (Loop)
+```
+
+**Agent-Environment Interaction Loop**: The agent selects actions based on the current state; the environment returns rewards and new states in response. This loop continues until the task ends or indefinitely.
+
+### 1.2 Fundamental Difference from Supervised Learning
+
+The key difference between RL and supervised learning lies in the **data distribution**. Supervised learning assumes data is independently and identically distributed (i.i.d.), but in RL the data distribution depends entirely on the current policy—when the policy changes, so does the collected data.
+
+| Property | Supervised Learning | Unsupervised Learning | Reinforcement Learning |
+|----------|--------------------|-----------------------|------------------------|
+| Feedback | Labels (correct answers) | None | Reward signal (scalar) |
+| Data Distribution | i.i.d. | i.i.d. | **Policy-dependent, non-i.i.d.** |
+| Objective | Minimize prediction error | Discover data structure | Maximize cumulative reward |
+| Decision Timing | Single-step independent | No decisions | Sequentially correlated |
+
+This difference creates many challenges in practice: policy changes lead to data distribution changes, which in turn affect policy updates, forming a complex dynamic process.
+
+> **Three Core Challenges of RL**:
+> 1. **Exploration vs. Exploitation Trade-off**: Should we try new actions (explore) or use known good actions (exploit)? Over-exploration wastes resources; over-exploitation may miss better strategies.
+> 2. **Credit Assignment Problem**: How do we attribute the final reward to previous actions? In chess, which move led to the final victory or defeat?
+> 3. **Non-stationarity**: The data distribution changes as the policy changes, making training unstable—this is the fundamental reason RL is harder than supervised learning.
+
+### 1.3 Application Scenarios
+
+RL has achieved breakthrough progress in many domains:
+
+- **Game AI**: AlphaGo (Go) defeating world champions, OpenAI Five (Dota 2), AlphaStar (StarCraft)
+- **Robotics**: Robotic arm manipulation, quadruped locomotion, drone control
+- **Autonomous Driving**: Decision planning, path planning
+- **Recommendation Systems**: Optimizing long-term user satisfaction rather than immediate click rates
+- **LLM Alignment**: RLHF (Reinforcement Learning from Human Feedback) has become the standard training pipeline for models like GPT and Claude
+
+Notably, RL's most successful recent application may not be games, but LLM alignment—which is the focus of later articles in this series.
+
+## 2. Markov Decision Process (MDP)
+
+With intuitive understanding established, let's build the mathematical framework. MDP is the standard formalization tool for RL, describing the agent-environment interaction as a discrete-time stochastic control process.
+
+### 2.1 MDP Five-Tuple Definition
+
+**Definition (Markov Decision Process)**: An MDP is defined by the five-tuple $(\mathcal{S}, \mathcal{A}, P, R, \gamma)$:
+
+- $\mathcal{S}$: **State Space**, the set of all possible states
+- $\mathcal{A}$: **Action Space**, the set of all possible actions
+- $P: \mathcal{S} \times \mathcal{A} \times \mathcal{S} \to [0,1]$: **Transition Probability**, $P(s'\|s,a)$ is the probability of transitioning to state $s'$ when taking action $a$ in state $s$
+- $R: \mathcal{S} \times \mathcal{A} \to \mathbb{R}$: **Reward Function**, $R(s,a)$ is the immediate reward for taking action $a$ in state $s$
+- $\gamma \in [0,1]$: **Discount Factor**, balancing the relative importance of immediate vs. future rewards
+
+```
+A simple MDP example:
+
+      a₁: P=0.7, r=1
+    ┌────────────────► (s₂) ◄──┐ r=2
+    │                          │
+   (s₁)                        └──┘
+    │
+    │ a₁: P=0.3, r=1
+    └────────────────► (s₃) ◄──┐ r=-1
+                               │
+    a₂: P=1, r=0               └──┘
+    └──► (s₁) (stay)
+
+State s₁ has two available actions:
+- a₁ transitions to s₂ with 0.7 prob (high reward), to s₃ with 0.3 prob (negative reward)
+- a₂ stays in place with no reward
+```
+
+> **Note**: The reward function has multiple forms: $R(s,a)$, $R(s,a,s')$, $R(s)$. These can be converted between each other. For example, $R(s,a,s')$ converts to $R(s,a) = \sum_{s'} P(s'\|s,a) R(s,a,s')$. This article uses $R(s,a)$ by default.
+
+### 2.2 Markov Property
+
+The core assumption of MDP is the **Markov Property**, also called "memorylessness":
+
+**Definition (Markov Property)**: Given current state $s_t$ and action $a_t$, the distribution of next state $s_{t+1}$ and reward $r_t$ depends only on $(s_t, a_t)$, independent of history:
+
+$$P(s_{t+1}, r_t | s_t, a_t) = P(s_{t+1}, r_t | s_0, a_0, s_1, a_1, \ldots, s_t, a_t)$$
+
+Intuition: **The current state contains all information needed to predict the future**. History can be "compressed" into the current state; the state is a "sufficient statistic" of history.
+
+> **What if the real environment doesn't satisfy the Markov property?** The answer is to expand the state representation:
+> - **History Window**: In Atari games, use 4 consecutive frames as state to capture motion
+> - **RNN Hidden State**: Use the hidden state of a recurrent network to encode history
+> - **Transformer**: Use attention mechanisms to handle variable-length history
+>
+> Essentially, we encode "history" into the state representation so that the expanded state satisfies the Markov property.
+
+### 2.3 Classification of State and Action Spaces
+
+Based on the nature of state and action spaces, RL problems can be classified as:
+
+| Type | State Space | Action Space | Typical Examples |
+|------|-------------|--------------|------------------|
+| Discrete-Discrete | Finite/Countable | Finite/Countable | Board games (board layout × move position) |
+| Continuous-Discrete | $\mathbb{R}^n$ | Finite/Countable | Atari games (pixel images × buttons) |
+| Continuous-Continuous | $\mathbb{R}^n$ | $\mathbb{R}^m$ | Robotics (joint angles × torques) |
+
+## 3. Trajectories and Returns
+
+### 3.1 Trajectory Definition
+
+The state-action-reward sequence generated by agent-environment interaction is called a **trajectory**, also known as an episode or rollout.
+
+**Definition (Trajectory)**: A trajectory $\tau$ is a sequence of states, actions, and rewards:
+
+$$\tau = (s_0, a_0, r_0, s_1, a_1, r_1, \ldots, s_{T-1}, a_{T-1}, r_{T-1}, s_T)$$
+
+where $T$ is the trajectory length (episode termination time).
+
+```
+Trajectory generation process:
+
+(s₀) ──π(a₀|s₀)──► [a₀] ──P,r₀──► (s₁) ──π(a₁|s₁)──► [a₁] ──P,r₁──► (s₂) ─...─► (sₜ)
+
+○ = state    □ = action
+Policy π determines actions, environment P determines transitions and rewards
+```
+
+### 3.2 Trajectory Probability Decomposition
+
+How do we compute trajectory probability?
+
+**Theorem (Trajectory Probability Decomposition)**: Under policy $\pi$, the probability of trajectory $\tau$ is:
+
+$$p(\tau | \pi) = p(s_0) \prod_{t=0}^{T-1} \pi(a_t | s_t) \cdot P(s_{t+1} | s_t, a_t)$$
+
+**Proof**: Using the chain rule of conditional probability and the Markov property:
+
+$$\begin{aligned}
+p(\tau | \pi) &= p(s_0, a_0, s_1, a_1, \ldots, s_T | \pi) \\
+&= p(s_0) \cdot p(a_0 | s_0) \cdot p(s_1 | s_0, a_0) \cdot p(a_1 | s_1) \cdot p(s_2 | s_1, a_1) \cdots \\
+&= p(s_0) \prod_{t=0}^{T-1} \underbrace{p(a_t | s_t)}_{\pi(a_t|s_t)} \cdot \underbrace{p(s_{t+1} | s_t, a_t)}_{P(s_{t+1}|s_t,a_t)}
+\end{aligned}$$
+
+The second step uses the Markov property: $p(s_{t+1} \| s_0, a_0, \ldots, s_t, a_t) = p(s_{t+1} \| s_t, a_t)$.
+
+> **This decomposition is crucial!** Observe the formula:
+> - $p(s_0)$: Initial state distribution, determined by environment
+> - $\pi(a_t\|s_t)$: Policy, what we want to learn/optimize
+> - $P(s_{t+1}\|s_t,a_t)$: Environment dynamics, determined by environment
+>
+> **Key observation**: $p(s_0)$ and $P(s_{t+1}\|s_t,a_t)$ are independent of policy parameters $\theta$. Therefore, when computing the gradient of $\log p(\tau\|\pi_\theta)$ with respect to $\theta$, the environment dynamics terms vanish! This is the core of the Policy Gradient theorem.
+
+### 3.3 Return Definition
+
+**Definition (Return / Reward-to-go)**: The **return** or **reward-to-go** starting from time $t$ is defined as the discounted cumulative sum of future rewards:
+
+$$G_t = \sum_{k=0}^{\infty} \gamma^k r_{t+k} = r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + \cdots$$
+
+where $\gamma \in [0,1]$ is the discount factor.
+
+The return $G_t$ satisfies a simple but important recursive relation:
+
+$$G_t = r_t + \gamma G_{t+1}$$
+
+The Bellman equation is based on this recursive structure—the next article will elaborate in detail.
+
+```
+Computing return Gₜ:
+
+Timeline:  ──rₜ────rₜ₊₁────rₜ₊₂────rₜ₊₃────...──►
+Weights:    ×1     ×γ      ×γ²     ×γ³
+
+Gₜ = rₜ + γ·rₜ₊₁ + γ²·rₜ₊₂ + γ³·rₜ₊₃ + ...
+
+Smaller γ means lower weight for distant rewards
+```
+
+### 3.4 Episodic vs Continuing Tasks
+
+Based on whether there's a terminal state, RL problems fall into two categories:
+
+- **Episodic Task**: Terminal state $s_T$ exists; trajectory has finite length. Examples: board games (win/lose ending), robot completing specific task, one game round
+- **Continuing Task**: No terminal state, $T \to \infty$. Examples: stock trading, continuously running control systems, server scheduling
+
+For continuing tasks, $\gamma < 1$ is required to ensure bounded return. When $|r_t| \leq R_{\max}$:
+
+$$|G_t| \leq \sum_{k=0}^{\infty} \gamma^k R_{\max} = \frac{R_{\max}}{1 - \gamma}$$
+
+### 3.5 Multiple Interpretations of the Discount Factor
+
+The discount factor $\gamma$ is a seemingly simple but richly meaningful hyperparameter:
+
+- $\gamma = 0$: Agent only cares about immediate reward, ignoring future entirely ("myopic")
+- $\gamma = 1$: Agent treats all future rewards equally (only for episodic tasks)
+- $0 < \gamma < 1$: Balances immediate and future rewards; larger $\gamma$ means more "far-sighted"
+
+> **Multiple interpretations of discount factor**:
+> 1. **Mathematical**: Ensures infinite sum converges, $G_t$ is bounded
+> 2. **Economic**: Time value of money—"$1 today is worth more than $1 in the future"
+> 3. **Uncertainty**: The further into the future, the less accurate predictions are, so weight should decrease
+> 4. **Practical**: $\gamma$ defines the "effective time horizon." Rewards beyond $1/(1-\gamma)$ steps decay exponentially to negligible. For example, when $\gamma=0.99$, effective horizon is about 100 steps.
+
+## 4. Policies and Value Functions
+
+### 4.1 Policy Definition
+
+**Definition (Policy)**: A **policy** $\pi$ is a mapping from states to actions, defining how the agent chooses actions in each state. Policies come in two types:
+
+- **Deterministic Policy**: $\pi: \mathcal{S} \to \mathcal{A}$, i.e., $a = \pi(s)$
+- **Stochastic Policy**: $\pi: \mathcal{S} \times \mathcal{A} \to [0,1]$, i.e., $\pi(a\|s)$ is the probability of choosing action $a$ in state $s$
+
+Stochastic policies satisfy normalization: for all $s \in \mathcal{S}$,
+
+$$\sum_{a \in \mathcal{A}} \pi(a|s) = 1$$
+
+Why do we need stochastic policies? Isn't deterministic simpler?
+
+> **Three advantages of stochastic policies**:
+> 1. **Exploration**: Randomness helps explore unknown actions, avoiding local optima
+> 2. **Adversarial settings**: In game scenarios, deterministic policies are predictable by opponents (think rock-paper-scissors)
+> 3. **Optimization-friendly**: Gradients of stochastic policies are easier to compute (deterministic policy gradients involve $\arg\max$, which is non-differentiable)
+>
+> Deterministic policies can be seen as special cases of stochastic policies (probability concentrated on a single action).
+
+### 4.2 State Value Function $V^\pi(s)$
+
+**Definition (State Value Function)**: The **state value function** for policy $\pi$ is defined as the expected return starting from state $s$, following policy $\pi$:
+
+$$V^\pi(s) = \mathbb{E}_\pi \left[ G_t \mid S_t = s \right] = \mathbb{E}_\pi \left[ \sum_{k=0}^{\infty} \gamma^k r_{t+k} \mid S_t = s \right]$$
+
+where the expectation is over all possible trajectories under policy $\pi$.
+
+$V^\pi(s)$ answers the question: **In state $s$, if we follow policy $\pi$ from now on, what is the expected total reward?**
+
+### 4.3 Action Value Function $Q^\pi(s,a)$
+
+**Definition (Action Value Function)**: The **action value function** for policy $\pi$ is defined as the expected return when taking action $a$ in state $s$, then following policy $\pi$:
+
+$$Q^\pi(s,a) = \mathbb{E}_\pi \left[ G_t \mid S_t = s, A_t = a \right] = \mathbb{E}_\pi \left[ \sum_{k=0}^{\infty} \gamma^k r_{t+k} \mid S_t = s, A_t = a \right]$$
+
+$Q^\pi(s,a)$ provides finer-grained information than $V^\pi(s)$: it allows us to evaluate each action individually, rather than just knowing "the overall expectation following $\pi$." This enables comparing actions and improving the policy.
+
+### 4.4 Relationship Between $V$ and $Q$
+
+There's a simple but important connection between the two value functions:
+
+**Theorem (Relationship between $V$ and $Q$)**:
+
+$$V^\pi(s) = \sum_{a \in \mathcal{A}} \pi(a|s) Q^\pi(s,a) = \mathbb{E}_{a \sim \pi(\cdot|s)} \left[ Q^\pi(s,a) \right]$$
+
+**Proof**: By the law of total expectation:
+
+$$\begin{aligned}
+V^\pi(s) &= \mathbb{E}_\pi \left[ G_t \mid S_t = s \right] \\
+&= \sum_{a \in \mathcal{A}} p(A_t = a | S_t = s) \cdot \mathbb{E}_\pi \left[ G_t \mid S_t = s, A_t = a \right] \\
+&= \sum_{a \in \mathcal{A}} \pi(a|s) \cdot Q^\pi(s,a)
+\end{aligned}$$
+
+Intuition: State value $V^\pi(s)$ is the weighted average of action values $Q^\pi(s,a)$, weighted by policy probabilities $\pi(a\|s)$.
+
+### 4.5 Advantage Function $A^\pi(s,a)$
+
+**Definition (Advantage Function)**: The **advantage function** is defined as the difference between action value and state value:
+
+$$A^\pi(s,a) = Q^\pi(s,a) - V^\pi(s)$$
+
+The advantage function measures: how much better or worse action $a$ is compared to the "average level" (sampling actions according to the policy) in state $s$.
+
+**Theorem (Key Property of Advantage Function)**: The expected advantage under the policy distribution is zero:
+
+$$\mathbb{E}_{a \sim \pi(\cdot|s)} \left[ A^\pi(s,a) \right] = 0$$
+
+**Proof**:
+
+$$\begin{aligned}
+\mathbb{E}_{a \sim \pi(\cdot|s)} \left[ A^\pi(s,a) \right]
+&= \mathbb{E}_{a \sim \pi} \left[ Q^\pi(s,a) - V^\pi(s) \right] \\
+&= \mathbb{E}_{a \sim \pi} \left[ Q^\pi(s,a) \right] - V^\pi(s) \\
+&= V^\pi(s) - V^\pi(s) = 0
+\end{aligned}$$
+
+> **Intuition of advantage function**:
+> - $A(s,a) > 0$: Action $a$ is better than average
+> - $A(s,a) < 0$: Action $a$ is worse than average
+> - $A(s,a) = 0$: Action $a$ is at the average level
+>
+> The role of advantage functions in Policy Gradient will be discussed in detail in subsequent articles.
+
+### 4.6 Optimal Policy and Optimal Value Functions
+
+**Definition (Optimal Value Functions)**: The **optimal state value function** $V^*(s)$ and **optimal action value function** $Q^*(s,a)$ are defined as the maximum values achievable across all policies:
+
+$$\begin{aligned}
+V^*(s) &= \max_\pi V^\pi(s) \\
+Q^*(s,a) &= \max_\pi Q^\pi(s,a)
+\end{aligned}$$
+
+**Definition (Optimal Policy)**: Policy $\pi^*$ is called an **optimal policy** if for all states $s \in \mathcal{S}$:
+
+$$V^{\pi^*}(s) = V^*(s)$$
+
+**Theorem (Existence of Optimal Policy)**: For finite MDPs (finite state and action spaces), at least one deterministic optimal policy exists.
+
+The optimal policy can be derived directly from the optimal action value function:
+
+**Theorem (Deriving Optimal Policy from $Q^*$)**: Given $Q^*$, the optimal policy is:
+
+$$\pi^*(s) = \arg\max_{a \in \mathcal{A}} Q^*(s,a)$$
+
+This result is the theoretical foundation of Q-Learning and other value-based methods: **if we learn $Q^*$, we immediately get the optimal policy**.
+
+## 5. Formal Objective of RL
+
+Combining the above definitions, the objective of reinforcement learning can be formalized as:
+
+**Definition (RL Objective)**: Find optimal policy $\pi^*$ that maximizes expected return:
+
+$$\pi^* = \arg\max_\pi J(\pi)$$
+
+where $J(\pi)$ is the policy performance metric, with common definitions including:
+
+1. **From fixed initial state**: $J(\pi) = V^\pi(s_0)$
+2. **Initial state has distribution**: $J(\pi) = \mathbb{E}_{s_0 \sim p(s_0)} \left[ V^\pi(s_0) \right]$
+3. **Trajectory expectation**: $J(\pi) = \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^{T} \gamma^t r_t \right]$
+
+These three definitions are equivalent in most cases. Subsequent articles will introduce different methods for solving this optimization problem:
+
+- **Value-Based Methods**: Learn $V^*$ or $Q^*$, then derive $\pi^*$ via $\arg\max$
+- **Policy-Based Methods**: Directly optimize parameterized policy $\pi_\theta$
+- **Actor-Critic Methods**: Learn both policy (Actor) and value function (Critic)
+
+```
+         ┌─────────────────┐
+         │   RL Methods    │
+         └────────┬────────┘
+                  │
+    ┌─────────────┼─────────────┐
+    ▼             ▼             ▼
+┌────────┐  ┌────────┐  ┌────────────┐
+│Value-  │  │Policy- │  │Actor-      │
+│Based   │  │Based   │  │Critic      │
+│Learn Q*│  │Learn πθ│  │Learn both  │
+└────────┘  └────────┘  └────────────┘
+    │             │             │
+DQN          REINFORCE      A2C, PPO
+Q-Learning   TRPO           SAC
+```
+
+## Summary
+
+Returning to the opening question: how do we teach a machine sequential decision-making? The answer is to formalize the problem as an MDP, with the goal of maximizing expected cumulative reward.
+
+**Core concepts established in this chapter**:
+
+1. **MDP Five-Tuple** $(\mathcal{S}, \mathcal{A}, P, R, \gamma)$ is the standard formalization framework for RL
+2. **Markov Property**: The current state contains all information needed to predict the future
+3. **Trajectory Probability Decomposition**: $p(\tau\|\pi) = p(s_0) \prod_t \pi(a_t\|s_t) P(s_{t+1}\|s_t,a_t)$, separating policy from environment dynamics
+4. **Return Recursion**: $G_t = r_t + \gamma G_{t+1}$, the starting point for Bellman equations
+5. **Value Functions**: $V^\pi$ and $Q^\pi$ measure long-term value of policies
+6. **Advantage Function**: $A^\pi(s,a) = Q^\pi(s,a) - V^\pi(s)$, with zero expectation
+7. **RL Objective**: $\max_\pi J(\pi)$, finding the policy that maximizes expected return
+
+The next article will introduce Bellman equations—using the recursive structure of returns to efficiently compute value functions—and value-based algorithms like Q-Learning and DQN.

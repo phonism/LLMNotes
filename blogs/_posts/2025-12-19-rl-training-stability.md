@@ -2,8 +2,10 @@
 layout: post
 title: "LLM-RL 训练稳定性：根因分析与解决方案"
 date: 2025-12-19
-author: Qi Lu
-tags: [RL, RLHF, PPO, GRPO, GSPO, 训练稳定性, Importance Sampling]
+author: Phonism
+tags: [RL, RLHF, PPO, GRPO, GSPO, Training Stability]
+lang: zh
+translation: /rl-training-stability-en/
 ---
 
 ## 引言

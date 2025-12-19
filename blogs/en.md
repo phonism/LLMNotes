@@ -1,13 +1,14 @@
 ---
 layout: default
 title: Home
-lang: zh
-translation: /en/
+permalink: /en/
+lang: en
+translation: /
 ---
 
 ## Posts
 
-{% assign posts = site.posts | where: "lang", "zh" %}
+{% assign posts = site.posts | where: "lang", "en" %}
 {% for post in posts %}
 <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 1em;">
   <a href="{{ post.url | relative_url }}" style="font-size: 1.1em;">{{ post.title }}</a>

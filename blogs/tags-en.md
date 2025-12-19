@@ -1,14 +1,14 @@
 ---
 layout: default
 title: Tags
-permalink: /tags/
-lang: zh
-translation: /tags-en/
+permalink: /tags-en/
+lang: en
+translation: /tags/
 ---
 
 # Tags
 
-{% assign filtered_posts = site.posts | where: "lang", "zh" %}
+{% assign filtered_posts = site.posts | where: "lang", "en" %}
 {% assign rawtags = "" %}
 {% for post in filtered_posts %}
   {% assign ttags = post.tags | join:'|' | append:'|' %}
