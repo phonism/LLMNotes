@@ -1,0 +1,29 @@
+title: LLMNotes Blog
+description: 大语言模型与强化学习技术博客
+author: 卢奇
+email: luqi.code@gmail.com
+
+# 使用 hacker 主题 (geek 风格，黑绿终端风)
+remote_theme: pages-themes/hacker@v0.2.0
+plugins:
+  - jekyll-remote-theme
+
+# Markdown 配置
+markdown: kramdown
+kramdown:
+  math_engine: mathjax
+  syntax_highlighter: rouge
+
+# 站点配置
+baseurl: "/LLMNotes"
+url: "https://luqi.github.io"
+
+# 文章配置
+permalink: /:title/
+show_excerpts: true
+
+# 排除不需要的文件
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock

@@ -1,0 +1,65 @@
+{% include mathjax.html %}
+<style>
+  /* Geek 风格增强 */
+  body {
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  }
+
+  h1, h2, h3 {
+    color: #b5e853;
+    border-bottom: 1px dashed #b5e853;
+  }
+
+  a {
+    color: #63c0f5;
+  }
+
+  a:hover {
+    color: #b5e853;
+    text-shadow: 0 0 5px #b5e853;
+  }
+
+  code {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+
+  pre {
+    background: #0d0d0d;
+    border: 1px solid #b5e853;
+    border-left: 3px solid #b5e853;
+  }
+
+  blockquote {
+    border-left: 3px solid #b5e853;
+    color: #999;
+    font-style: italic;
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+
+  th, td {
+    border: 1px solid #333;
+    padding: 8px 12px;
+  }
+
+  th {
+    background: #1a1a1a;
+    color: #b5e853;
+  }
+
+  /* 终端风格光标闪烁 */
+  .post-title::after {
+    content: '_';
+    animation: blink 1s infinite;
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+</style>
