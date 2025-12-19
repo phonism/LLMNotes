@@ -3,8 +3,10 @@ MathJax = {
   tex: {
     inlineMath: [['$', '$'], ['\\(', '\\)']],
     displayMath: [['$$', '$$'], ['\\[', '\\]']],
-    processEscapes: true
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
   },
+  loader: {load: ['[tex]/ams']},
   svg: {
     fontCache: 'global'
   }

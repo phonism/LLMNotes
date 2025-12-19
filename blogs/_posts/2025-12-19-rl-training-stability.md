@@ -132,7 +132,7 @@ logprob 差在长序列上**线性累积**，exp 后变成**指数级差异**。
 
 正确的无偏估计器需要在整个序列上应用 importance ratio：
 
-$$g_{\text{seq}} = \mathbb{E}_{y \sim \pi^{\text{vllm}}} \left[ \frac{\pi^{\text{fsdp}}(y|x)}{\pi^{\text{vllm}}(y|x)} \cdot R(x,y) \cdot \nabla \log \pi^{\text{fsdp}}(y|x) \right]$$
+$$g_{\text{seq}} = \mathbb{E}_{y \sim \mu} \left[ \frac{\pi_\theta(y|x)}{\mu(y|x)} \cdot R(x,y) \cdot \nabla \log \pi_\theta(y|x) \right]$$
 
 实践中有两种变体：
 
@@ -185,7 +185,7 @@ $$D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}}) = \frac{\pi_\theta}{\pi_{\text{o
 
 Ring-1T 提出的 IcePop 在 **token 粒度**上处理 mismatch，与前面的 sequence-level 方法形成互补。
 
-**核心思路**：定义 token-level 的 ratio $k_{i,t} = \frac{\pi_{\text{train}}(y_t|s_t)}{\pi_{\text{infer}}(y_t|s_t)}$，对超出合理范围的 token 进行 masking：
+**核心思路**：定义 token-level 的 ratio $k_{i,t} = \frac{\pi(y_t|s_t)}{\mu(y_t|s_t)}$，对超出合理范围的 token 进行 masking：
 
 $$M(k) = \begin{cases} k & \text{if } k \in [\alpha, \beta] \\ 0 & \text{otherwise} \end{cases}$$
 
@@ -243,7 +243,7 @@ $$s_i(\theta) = \left(\frac{\pi_\theta(y_i|x)}{\pi_{\text{old}}(y_i|x)}\right)^{
 
 **vllm-kl** 是一个重要的早期预警指标：
 
-$$\text{vllm-kl} = \mathbb{E}_{s, a \sim \pi^{\text{vllm}}} \left[ \log \frac{\pi^{\text{vllm}}(a|s)}{\pi^{\text{fsdp}}(a|s)} \right]$$
+$$\text{vllm-kl} = \mathbb{E}_{s, a \sim \mu} \left[ \log \frac{\mu(a|s)}{\pi(a|s)} \right]$$
 
 建议同时监控：
 - **vllm-kl**：mismatch 程度
