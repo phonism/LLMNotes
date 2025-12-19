@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "RL 学习笔记（六）：GRPO 与 Long CoT RL"
-date: 2025-12-19
+date: 2025-12-19 03:00:00
 author: Phonism
 tags: [RL, LLM, GRPO, PRM, Long-CoT, Alignment]
 lang: zh
@@ -136,7 +136,9 @@ $$\begin{align}
 &= \text{KL}(\pi_\theta \| \pi_{\text{ref}})
 \end{align}$$
 
-其中 $\mathbb{E}_{y \sim \pi_\theta}\left[\frac{\pi_{\text{ref}}(y)}{\pi_\theta(y)}\right] = \sum_y \pi_\theta(y) \cdot \frac{\pi_{\text{ref}}(y)}{\pi_\theta(y)} = \sum_y \pi_{\text{ref}}(y) = 1$。
+其中
+
+$$\mathbb{E}_{y \sim \pi_\theta}\left[\frac{\pi_{\text{ref}}(y)}{\pi_\theta(y)}\right] = \sum_y \pi_\theta(y) \cdot \frac{\pi_{\text{ref}}(y)}{\pi_\theta(y)} = \sum_y \pi_{\text{ref}}(y) = 1$$
 
 低方差：$(r-1)$ 项是一个 control variate，期望为 0，与 $\log r$ 负相关，减少方差。
 

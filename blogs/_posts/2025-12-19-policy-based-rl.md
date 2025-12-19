@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "RL 学习笔记（三）：REINFORCE 与 PPO"
-date: 2025-12-19
+date: 2025-12-19 06:00:00
 author: Phonism
 tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
 lang: zh
