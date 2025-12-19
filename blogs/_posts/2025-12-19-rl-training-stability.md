@@ -18,10 +18,10 @@ tags: [RL, RLHF, PPO, GRPO, GSPO, 训练稳定性, Importance Sampling]
 |------|------|
 | $\pi_\theta$ | 当前正在优化的策略（训练引擎计算） |
 | $\pi_{\text{old}}$ | 采样时的策略（训练引擎计算，但参数是旧的） |
-| $\mu$ | 推理引擎计算的策略（vLLM/SGLang，数值上与 $\pi$ 有差异） |
+| $\pi_\text{vllm}$ | 推理引擎计算的策略（vLLM/SGLang，数值上与 $\pi$ 有差异） |
 | $\pi_{\text{ref}}$ | 参考策略（KL 正则的锚点，通常是 SFT 模型） |
 
-核心区分：$\pi$ vs $\mu$ 是**同一参数在不同引擎上的数值差异**，$\pi_\theta$ vs $\pi_{\text{old}}$ 是**同一引擎在不同时刻的参数差异**。
+核心区分：$\pi$ vs $\pi_\text{vllm}$ 是**同一参数在不同引擎上的数值差异**，$\pi_\theta$ vs $\pi_{\text{old}}$ 是**同一引擎在不同时刻的参数差异**。
 
 ## 问题现象：突如其来的崩溃
 
@@ -38,7 +38,7 @@ tags: [RL, RLHF, PPO, GRPO, GSPO, 训练稳定性, Importance Sampling]
 
 LLM-RL 训练不稳定有**两个层面的根因**：
 
-1. **系统层面**：Training-Inference Mismatch（推理引擎 $\mu$ vs 训练引擎 $\pi$ 的数值差异）
+1. **系统层面**：Training-Inference Mismatch（推理引擎 $\pi_\text{vllm}$ vs 训练引擎 $\pi$ 的数值差异）
 2. **算法层面**：Token-Sequence Mismatch（token-level 优化目标 vs sequence-level 奖励）
 
 这两个问题相互独立但会叠加放大。下面分别分析。
@@ -54,7 +54,7 @@ LLM-RL 训练不稳定有**两个层面的根因**：
 | 推理引擎 | 吞吐量最大化 | Speculative Decoding, INT8/FP8, 批次变体 CUDA 核心 |
 | 训练框架 | 数值稳定性 | FP32 Master Weights, 确定性算子 |
 
-这种优化目标的分歧导致了**不可避免的数值不一致**。即使参数完全相同，推理引擎计算的 $\mu(y\mid x)$ 和训练引擎计算的 $\pi(y\mid x)$ 也会产生差异。
+这种优化目标的分歧导致了**不可避免的数值不一致**。即使参数完全相同，推理引擎计算的 $\pi_\text{vllm}(y\mid x)$ 和训练引擎计算的 $\pi(y\mid x)$ 也会产生差异。
 
 **实际梯度 vs 理论梯度**
 
@@ -62,9 +62,9 @@ LLM-RL 训练不稳定有**两个层面的根因**：
 
 $$\mathbb{E}_{y \sim \pi_\theta} \left[ R(x,y) \nabla_\theta \log \pi_\theta(y|x) \right]$$
 
-但实际上，由于样本来自推理引擎 $\mu$：
+但实际上，由于样本来自推理引擎 $\pi_\text{vllm}$：
 
-$$\mathbb{E}_{y \sim \mu} \left[ R(x,y) \nabla_\theta \log \pi_\theta(y|x) \right]$$
+$$\mathbb{E}_{y \sim \pi_\text{vllm}} \left[ R(x,y) \nabla_\theta \log \pi_\theta(y|x) \right]$$
 
 这意味着：**你以为在做 on-policy 训练，实际上是在做 off-policy 训练。**
 
@@ -74,15 +74,15 @@ $$\mathbb{E}_{y \sim \mu} \left[ R(x,y) \nabla_\theta \log \pi_\theta(y|x) \righ
 
 **一阶近似的理论基础**：Sequence-level IS weight 可以展开为：
 
-$$\frac{\pi_\theta(y|x)}{\mu(y|x)} = \prod_{t=1}^{|y|}(1+\delta_t) \approx 1 + \sum_{t=1}^{|y|}\delta_t$$
+$$\frac{\pi_\theta(y|x)}{\pi_\text{vllm}(y|x)} = \prod_{t=1}^{|y|}(1+\delta_t) \approx 1 + \sum_{t=1}^{|y|}\delta_t$$
 
-其中 $\delta_t = \frac{\pi_\theta(y_t \mid s_t)}{\mu(y_t \mid s_t)} - 1$。这说明 token-level 目标是 sequence-level 目标的**一阶近似**，忽略了 $O(\delta^2)$ 的高阶项。
+其中 $\delta_t = \frac{\pi_\theta(y_t \mid s_t)}{\pi_\text{vllm}(y_t \mid s_t)} - 1$。这说明 token-level 目标是 sequence-level 目标的**一阶近似**，忽略了 $O(\delta^2)$ 的高阶项。
 
 **IS weight 的分解**：Token-level IS weight 可以分解为两个因子：
 
-$$\frac{\pi_\theta(y_t|s_t)}{\mu(y_t|s_t)} = \underbrace{\frac{\pi_{\text{old}}(y_t|s_t)}{\mu(y_t|s_t)}}_{\text{Training-Inference Discrepancy}} \times \underbrace{\frac{\pi_\theta(y_t|s_t)}{\pi_{\text{old}}(y_t|s_t)}}_{\text{Policy Staleness}}$$
+$$\frac{\pi_\theta(y_t|s_t)}{\pi_\text{vllm}(y_t|s_t)} = \underbrace{\frac{\pi_{\text{old}}(y_t|s_t)}{\pi_\text{vllm}(y_t|s_t)}}_{\text{Training-Inference Discrepancy}} \times \underbrace{\frac{\pi_\theta(y_t|s_t)}{\pi_{\text{old}}(y_t|s_t)}}_{\text{Policy Staleness}}$$
 
-- **Training-Inference Discrepancy**：推理引擎 $\mu$ 和训练引擎 $\pi$ 的数值差异（根因一）
+- **Training-Inference Discrepancy**：推理引擎 $\pi_\text{vllm}$ 和训练引擎 $\pi$ 的数值差异（根因一）
 - **Policy Staleness**：mini-batch 处理过程中策略的漂移
 
 这个分解说明：**两个根因通过乘法叠加**，任何一个偏大都会导致 IS weight 偏离 1，进而破坏一阶近似的有效性。
@@ -132,15 +132,12 @@ logprob 差在长序列上**线性累积**，exp 后变成**指数级差异**。
 
 正确的无偏估计器需要在整个序列上应用 importance ratio：
 
-$$g_{\text{seq}} = \mathbb{E}_{y \sim \mu} \left[ \frac{\pi_\theta(y|x)}{\mu(y|x)} \cdot R(x,y) \cdot \nabla \log \pi_\theta(y|x) \right]$$
+$$g_{\text{seq}} = \mathbb{E}_{y \sim \pi_\text{vllm}} \left[ \frac{\pi_\theta(y|x)}{\pi_\text{vllm}(y|x)} \cdot R(x,y) \cdot \nabla \log \pi_\theta(y|x) \right]$$
 
 实践中有两种变体：
 
-**Truncated IS (TIS)**：对 ratio 进行截断
-$$\rho(y) \gets \min(\rho(y), C)$$
-
-**Masked IS (MIS)**：对超过阈值的序列直接 mask
-$$\rho(y) \gets \rho(y) \cdot \mathbb{I}\{\rho(y) \le C\}$$
++ **Truncated IS (TIS)**：对 ratio 进行截断 $$\rho(y) \gets \min(\rho(y), C)$$
++ **Masked IS (MIS)**：对超过阈值的序列直接 mask $$\rho(y) \gets \rho(y) \cdot \mathbb{I}\{\rho(y) \le C\}$$
 
 实验表明 **MIS 比 TIS 效果更好**，不仅稳定了训练，还超过了崩溃前的峰值性能。
 
@@ -185,7 +182,7 @@ $$D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}}) = \frac{\pi_\theta}{\pi_{\text{o
 
 Ring-1T 提出的 IcePop 在 **token 粒度**上处理 mismatch，与前面的 sequence-level 方法形成互补。
 
-**核心思路**：定义 token-level 的 ratio $k_{i,t} = \frac{\pi(y_t \mid s_t)}{\mu(y_t \mid s_t)}$，对超出合理范围的 token 进行 masking：
+**核心思路**：定义 token-level 的 ratio $k_{i,t} = \frac{\pi(y_t \mid s_t)}{\pi_\text{vllm}(y_t \mid s_t)}$，对超出合理范围的 token 进行 masking：
 
 $$M(k) = \begin{cases} k & \text{if } k \in [\alpha, \beta] \\ 0 & \text{otherwise} \end{cases}$$
 
@@ -244,7 +241,7 @@ $$s_i(\theta) = \left(\frac{\pi_\theta(y_i \mid x)}{\pi_{\text{old}}(y_i \mid x)
 
 **vllm-kl** 是一个重要的早期预警指标：
 
-$$\text{vllm-kl} = \mathbb{E}_{s, a \sim \mu} \left[ \log \frac{\mu(a|s)}{\pi(a|s)} \right]$$
+$$\text{vllm-kl} = \mathbb{E}_{s, a \sim \pi_\text{vllm}} \left[ \log \frac{\pi_\text{vllm}(a|s)}{\pi(a|s)} \right]$$
 
 建议同时监控：
 - **vllm-kl**：mismatch 程度
