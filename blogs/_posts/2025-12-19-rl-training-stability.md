@@ -54,7 +54,7 @@ LLM-RL 训练不稳定有**两个层面的根因**：
 | 推理引擎 | 吞吐量最大化 | Speculative Decoding, INT8/FP8, 批次变体 CUDA 核心 |
 | 训练框架 | 数值稳定性 | FP32 Master Weights, 确定性算子 |
 
-这种优化目标的分歧导致了**不可避免的数值不一致**。即使参数完全相同，推理引擎计算的 $\mu(y|x)$ 和训练引擎计算的 $\pi(y|x)$ 也会产生差异。
+这种优化目标的分歧导致了**不可避免的数值不一致**。即使参数完全相同，推理引擎计算的 $\mu(y\mid x)$ 和训练引擎计算的 $\pi(y\mid x)$ 也会产生差异。
 
 #### 实际梯度 vs 理论梯度
 
@@ -76,7 +76,7 @@ $$\mathbb{E}_{y \sim \mu} \left[ R(x,y) \nabla_\theta \log \pi_\theta(y|x) \righ
 
 $$\frac{\pi_\theta(y|x)}{\mu(y|x)} = \prod_{t=1}^{|y|}(1+\delta_t) \approx 1 + \sum_{t=1}^{|y|}\delta_t$$
 
-其中 $\delta_t = \frac{\pi_\theta(y_t|s_t)}{\mu(y_t|s_t)} - 1$。这说明 token-level 目标是 sequence-level 目标的**一阶近似**，忽略了 $O(\delta^2)$ 的高阶项。
+其中 $\delta_t = \frac{\pi_\theta(y_t \mid s_t)}{\mu(y_t \mid s_t)} - 1$。这说明 token-level 目标是 sequence-level 目标的**一阶近似**，忽略了 $O(\delta^2)$ 的高阶项。
 
 **IS weight 的分解**：Token-level IS weight 可以分解为两个因子：
 
@@ -185,7 +185,7 @@ $$D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}}) = \frac{\pi_\theta}{\pi_{\text{o
 
 Ring-1T 提出的 IcePop 在 **token 粒度**上处理 mismatch，与前面的 sequence-level 方法形成互补。
 
-**核心思路**：定义 token-level 的 ratio $k_{i,t} = \frac{\pi(y_t|s_t)}{\mu(y_t|s_t)}$，对超出合理范围的 token 进行 masking：
+**核心思路**：定义 token-level 的 ratio $k_{i,t} = \frac{\pi(y_t \mid s_t)}{\mu(y_t \mid s_t)}$，对超出合理范围的 token 进行 masking：
 
 $$M(k) = \begin{cases} k & \text{if } k \in [\alpha, \beta] \\ 0 & \text{otherwise} \end{cases}$$
 
