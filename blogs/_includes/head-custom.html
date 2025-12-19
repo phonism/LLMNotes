@@ -155,5 +155,13 @@
     const saved = localStorage.getItem('theme') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
     updateButton(saved);
+
+    // 文章内容中的外部链接在新标签页打开
+    document.querySelectorAll('#main_content a').forEach(function(link) {
+      if (link.hostname !== window.location.hostname) {
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+      }
+    });
   });
 </script>

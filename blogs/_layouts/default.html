@@ -18,13 +18,14 @@
     <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
 
     <header>
-      <div class="container">
-        <a id="a-title" href="{{ '/' | relative_url }}">
-          <h1>{{ site.title }}</h1>
-        </a>
-        <h2>{{ site.description }}</h2>
-
-        <section id="downloads">
+      <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <a id="a-title" href="{{ '/' | relative_url }}">
+            <h1 style="margin: 0;">{{ site.title }}</h1>
+          </a>
+          <h2 style="margin: 5px 0 0 0;">{{ site.description }}</h2>
+        </div>
+        <section id="downloads" style="margin: 0;">
           <a href="{{ site.github.repository_url }}" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
         </section>
       </div>
