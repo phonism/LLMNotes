@@ -374,18 +374,26 @@ $$Y' = Y \odot \sigma(XW_g)$$
 
 StreamingLLM 的关键发现：当使用滑动窗口注意力时，一旦初始 token 被移出窗口，模型输出会**完全崩溃**。但只需保留最初的 4 个 token，性能就能大幅恢复。
 
-```
-浅层 Attention          深层 Attention
-(主要沿对角线)          (第一列出现Sink)
+<div class="mermaid">
+graph LR
+    subgraph shallow["浅层 Attention (对角线)"]
+        A1["■□□□□"]
+        A2["□■□□□"]
+        A3["□□■□□"]
+        A4["□□□■□"]
+        A5["□□□□■"]
+    end
+    subgraph deep["深层 Attention (Sink)"]
+        B1["■□□□□"]
+        B2["■□■□□"]
+        B3["■□□■□"]
+        B4["■□□□■"]
+        B5["■□□□□"]
+    end
+    shallow --> |"vs"| deep
+</div>
 
-■ □ □ □ □              ■ □ □ □ □
-□ ■ □ □ □              ■ □ ■ □ □
-□ □ ■ □ □    vs        ■ □ □ ■ □
-□ □ □ ■ □              ■ □ □ □ ■
-□ □ □ □ ■              ■ □ □ □ □ ■
-                        ↑
-                       Sink
-```
+> **图示说明**：左侧浅层注意力主要集中在对角线（每个 token 关注自己）；右侧深层注意力的第一列出现 Sink 现象（所有 token 都关注第一个 token）。
 
 **表面原因：Softmax 的概率约束**
 
