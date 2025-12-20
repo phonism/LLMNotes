@@ -31,22 +31,43 @@ GRPO's approach: **Use group-relative rewards to replace the Critic**, achieving
 >
 > where $\bar{R} = \frac{1}{G}\sum_i R_i$ is the group mean, $\text{Std}(R)$ is the group standard deviation.
 
-```
-                              ┌─────┐
-          ┌───────────────────│ y₁  │───▶ R₁ = 0.8 ───▶ Â₁ > 0 ✓
-          │                   └─────┘
-          │                   ┌─────┐
-┌─────────┴─────────┐         │ y₂  │───▶ R₂ = 0.6 ───▶ Â₂ > 0 ✓
-│    Prompt x       │─────────└─────┘
-│                   │         ┌─────┐
-└─────────┬─────────┘         │ y₃  │───▶ R₃ = 0.3 ───▶ Â₃ < 0 ✗
-          │                   └─────┘
-          │                   ┌─────┐
-          └───────────────────│ y₄  │───▶ R₄ = 0.1 ───▶ Â₄ < 0 ✗
-                              └─────┘
-                                         R̄ = 0.45
+```tikz
+\begin{tikzpicture}[
+    sample/.style={circle, draw, minimum size=0.6cm, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Prompt
+    \node[draw, rounded corners, fill=blue!20, minimum width=2cm] (prompt) at (0, 0) {Prompt $x$};
 
-         Group-relative comparison: boost above mean, suppress below mean
+    % Generate multiple responses
+    \node[sample, fill=green!30] (y1) at (3, 1.5) {$y_1$};
+    \node[sample, fill=green!20] (y2) at (3, 0.5) {$y_2$};
+    \node[sample, fill=red!20] (y3) at (3, -0.5) {$y_3$};
+    \node[sample, fill=red!30] (y4) at (3, -1.5) {$y_4$};
+
+    \draw[arrow] (prompt) -- (y1);
+    \draw[arrow] (prompt) -- (y2);
+    \draw[arrow] (prompt) -- (y3);
+    \draw[arrow] (prompt) -- (y4);
+
+    % Rewards
+    \node[font=\scriptsize] at (4.5, 1.5) {$R_1 = 0.8$};
+    \node[font=\scriptsize] at (4.5, 0.5) {$R_2 = 0.6$};
+    \node[font=\scriptsize] at (4.5, -0.5) {$R_3 = 0.3$};
+    \node[font=\scriptsize] at (4.5, -1.5) {$R_4 = 0.1$};
+
+    % Normalization
+    \node[font=\small] at (7, 0) {$\bar{R} = 0.45$};
+
+    % Advantage
+    \node[font=\scriptsize, green!60!black] at (9, 1.5) {$\hat{A}_1 > 0$ \checkmark};
+    \node[font=\scriptsize, green!60!black] at (9, 0.5) {$\hat{A}_2 > 0$ \checkmark};
+    \node[font=\scriptsize, red] at (9, -0.5) {$\hat{A}_3 < 0$ $\times$};
+    \node[font=\scriptsize, red] at (9, -1.5) {$\hat{A}_4 < 0$ $\times$};
+
+    % Explanation
+    \node[font=\small, align=center] at (5, -3) {Group-relative comparison:\\boost above mean, suppress below mean};
+\end{tikzpicture}
 ```
 
 Advantages of group normalization:
@@ -234,20 +255,44 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
 >   - Input: $(x, y_{\leq t})$
 >   - Output: Correctness score up to step $t$
 
-```
-ORM: Only evaluates final answer
-┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-│ Step 1 │───▶│ Step 2 │───▶│ Step 3 │───▶│ Answer │
-└────────┘    └────────┘    └────────┘    └────┬───┘
-                                               │
-                                            r = 1
+```tikz
+\begin{tikzpicture}[
+    step/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.6cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % ORM
+    \begin{scope}[shift={(-4, 0)}]
+        \node[step, fill=blue!20] (s1) at (0, 0) {Step 1};
+        \node[step, fill=blue!20] (s2) at (2, 0) {Step 2};
+        \node[step, fill=blue!20] (s3) at (4, 0) {Step 3};
+        \node[step, fill=green!30] (ans) at (6, 0) {Answer};
 
-PRM: Evaluates each step
-┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-│ Step 1 │───▶│ Step 2 │───▶│ Step 3 │───▶│ Answer │
-└────┬───┘    └────┬───┘    └────┬───┘    └────┬───┘
-     │             │             │             │
-  r₁ = 1 ✓     r₂ = 1 ✓     r₃ = 0 ✗      r₄ = 0 ✗
+        \draw[arrow] (s1) -- (s2);
+        \draw[arrow] (s2) -- (s3);
+        \draw[arrow] (s3) -- (ans);
+
+        \node[font=\small, red] at (6, -0.8) {$r = 1$};
+        \node[font=\bfseries] at (3, 1.2) {ORM: Only evaluates final answer};
+    \end{scope}
+
+    % PRM
+    \begin{scope}[shift={(-4, -3)}]
+        \node[step, fill=green!30] (s1) at (0, 0) {Step 1};
+        \node[step, fill=green!30] (s2) at (2, 0) {Step 2};
+        \node[step, fill=red!30] (s3) at (4, 0) {Step 3};
+        \node[step, fill=red!30] (ans) at (6, 0) {Answer};
+
+        \draw[arrow] (s1) -- (s2);
+        \draw[arrow] (s2) -- (s3);
+        \draw[arrow] (s3) -- (ans);
+
+        \node[font=\scriptsize, green!60!black] at (0, -0.7) {$r_1 = 1$ \checkmark};
+        \node[font=\scriptsize, green!60!black] at (2, -0.7) {$r_2 = 1$ \checkmark};
+        \node[font=\scriptsize, red] at (4, -0.7) {$r_3 = 0$ $\times$};
+        \node[font=\scriptsize, red] at (6, -0.7) {$r_4 = 0$ $\times$};
+        \node[font=\bfseries] at (3, 1.2) {PRM: Evaluates each step};
+    \end{scope}
+\end{tikzpicture}
 ```
 
 ### Advantages of PRM
@@ -284,21 +329,24 @@ RL training for long Chain-of-Thought sequences (Long CoT) faces unique challeng
 
 3. **Sparse reward harder**: Only the final answer has feedback, signal must propagate thousands of steps
 
-```
-        IS weight variance
-        (log scale)
-           ▲
-           │                   ╱
-           │                 ╱   Token-level IS
-           │               ╱     (exponential growth)
-           │             ╱
-           │           ╱
-           │         ╱
-           │       ╱
-           │     ╱ ─ ─ ─ ─ ─ ─ ─  Sequence-level IS
-           │   ╱                  (linear growth)
-           │ ╱
-           └─────────────────────────────▶ Sequence length T
+```tikz
+\begin{tikzpicture}
+    \begin{axis}[
+        width=10cm, height=5cm,
+        xlabel={Sequence length $T$},
+        ylabel={IS weight variance (log scale)},
+        domain=1:100,
+        samples=50,
+        ymode=log,
+        grid=major,
+        legend pos=north west
+    ]
+        \addplot[thick, blue] {exp(0.1*x)};
+        \addlegendentry{Token-level IS (exponential)}
+        \addplot[thick, red, dashed] {1 + 0.1*x};
+        \addlegendentry{Sequence-level IS (linear)}
+    \end{axis}
+\end{tikzpicture}
 ```
 
 ### GSPO: Sequence-level IS
@@ -408,16 +456,27 @@ Both factors can cause first-order approximation to fail:
    - Sequence-level IS replaces token-level IS
    - Kimi, DeepSeek practical techniques
 
-```
-         LLM Alignment RL Evolution
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Method evolution
+    \node[box, fill=blue!20] (rlhf) at (0, 0) {RLHF\\(2020-2022)};
+    \node[box, fill=green!20] (dpo) at (4, 0) {DPO\\(2023)};
+    \node[box, fill=orange!20] (grpo) at (8, 0) {GRPO\\(2024)};
+    \node[box, fill=purple!20] (longcot) at (12, 0) {Long CoT RL\\(2024-2025)};
 
-┌─────────────┐ Simplify ┌─────────────┐  Online   ┌─────────────┐ Long seq ┌─────────────┐
-│    RLHF     │─────────▶│     DPO     │─────────▶│    GRPO     │─────────▶│ Long CoT RL │
-│ (2020-2022) │          │   (2023)    │          │   (2024)    │          │ (2024-2025) │
-├─────────────┤          ├─────────────┤          ├─────────────┤          ├─────────────┤
-│Need RM+Critic          │Offline train│          │ No Critic   │          │Sequence-level│
-│Complex impl │          │No exploration          │Group norm   │          │  IS + Var   │
-└─────────────┘          └─────────────┘          └─────────────┘          └─────────────┘
+    \draw[arrow] (rlhf) -- node[above, font=\scriptsize] {Simplify} (dpo);
+    \draw[arrow] (dpo) -- node[above, font=\scriptsize] {Online} (grpo);
+    \draw[arrow] (grpo) -- node[above, font=\scriptsize] {Long seq} (longcot);
+
+    % Feature labels
+    \node[font=\scriptsize, gray, align=center] at (0, -1) {Need RM + Critic\\Complex impl};
+    \node[font=\scriptsize, gray, align=center] at (4, -1) {Offline training\\No exploration};
+    \node[font=\scriptsize, gray, align=center] at (8, -1) {No Critic\\Group normalization};
+    \node[font=\scriptsize, gray, align=center] at (12, -1) {Sequence-level IS\\Variance control};
+\end{tikzpicture}
 ```
 
 ## Series Summary
