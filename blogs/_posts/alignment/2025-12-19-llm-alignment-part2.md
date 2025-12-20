@@ -31,22 +31,43 @@ GRPO 的思路：**用组内相对奖励代替 Critic**，实现"无 Critic 的�
 >
 > 其中 $\bar{R} = \frac{1}{G}\sum_i R_i$ 是组内均值，$\text{Std}(R)$ 是组内标准差。
 
-```
-                              ┌─────┐
-          ┌───────────────────│ y₁  │───▶ R₁ = 0.8 ───▶ Â₁ > 0 ✓
-          │                   └─────┘
-          │                   ┌─────┐
-┌─────────┴─────────┐         │ y₂  │───▶ R₂ = 0.6 ───▶ Â₂ > 0 ✓
-│    Prompt x       │─────────└─────┘
-│                   │         ┌─────┐
-└─────────┬─────────┘         │ y₃  │───▶ R₃ = 0.3 ───▶ Â₃ < 0 ✗
-          │                   └─────┘
-          │                   ┌─────┐
-          └───────────────────│ y₄  │───▶ R₄ = 0.1 ───▶ Â₄ < 0 ✗
-                              └─────┘
-                                         R̄ = 0.45
+```tikz
+\begin{tikzpicture}[
+    sample/.style={circle, draw, minimum size=0.6cm, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Prompt
+    \node[draw, rounded corners, fill=blue!20, minimum width=2cm] (prompt) at (0, 0) {Prompt $x$};
 
-         组内相对比较：高于均值的增强，低于均值的抑制
+    % 生成多个回复
+    \node[sample, fill=green!30] (y1) at (3, 1.5) {$y_1$};
+    \node[sample, fill=green!20] (y2) at (3, 0.5) {$y_2$};
+    \node[sample, fill=red!20] (y3) at (3, -0.5) {$y_3$};
+    \node[sample, fill=red!30] (y4) at (3, -1.5) {$y_4$};
+
+    \draw[arrow] (prompt) -- (y1);
+    \draw[arrow] (prompt) -- (y2);
+    \draw[arrow] (prompt) -- (y3);
+    \draw[arrow] (prompt) -- (y4);
+
+    % 奖励
+    \node[font=\scriptsize] at (4.5, 1.5) {$R_1 = 0.8$};
+    \node[font=\scriptsize] at (4.5, 0.5) {$R_2 = 0.6$};
+    \node[font=\scriptsize] at (4.5, -0.5) {$R_3 = 0.3$};
+    \node[font=\scriptsize] at (4.5, -1.5) {$R_4 = 0.1$};
+
+    % 标准化
+    \node[font=\small] at (7, 0) {$\bar{R} = 0.45$};
+
+    % Advantage
+    \node[font=\scriptsize, green!60!black] at (9, 1.5) {$\hat{A}_1 > 0$ \checkmark};
+    \node[font=\scriptsize, green!60!black] at (9, 0.5) {$\hat{A}_2 > 0$ \checkmark};
+    \node[font=\scriptsize, red] at (9, -0.5) {$\hat{A}_3 < 0$ $\times$};
+    \node[font=\scriptsize, red] at (9, -1.5) {$\hat{A}_4 < 0$ $\times$};
+
+    % 说明
+    \node[font=\small, align=center] at (5, -3) {组内相对比较：\\高于均值的增强，低于均值的抑制};
+\end{tikzpicture}
 ```
 
 组内标准化的优势：
@@ -236,20 +257,44 @@ PRM 提供过程级监督，将稀疏的终局奖励变成密集的步级奖励�
 >   - 输入：$(x, y_{\leq t})$
 >   - 输出：到第 $t$ 步为止的正确性分数
 
-```
-ORM：只评估最终答案
-┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-│ Step 1 │───▶│ Step 2 │───▶│ Step 3 │───▶│ Answer │
-└────────┘    └────────┘    └────────┘    └────┬───┘
-                                               │
-                                            r = 1
+```tikz
+\begin{tikzpicture}[
+    step/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.6cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % ORM
+    \begin{scope}[shift={(-4, 0)}]
+        \node[step, fill=blue!20] (s1) at (0, 0) {Step 1};
+        \node[step, fill=blue!20] (s2) at (2, 0) {Step 2};
+        \node[step, fill=blue!20] (s3) at (4, 0) {Step 3};
+        \node[step, fill=green!30] (ans) at (6, 0) {Answer};
 
-PRM：评估每个步骤
-┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-│ Step 1 │───▶│ Step 2 │───▶│ Step 3 │───▶│ Answer │
-└────┬───┘    └────┬───┘    └────┬───┘    └────┬───┘
-     │             │             │             │
-  r₁ = 1 ✓     r₂ = 1 ✓     r₃ = 0 ✗      r₄ = 0 ✗
+        \draw[arrow] (s1) -- (s2);
+        \draw[arrow] (s2) -- (s3);
+        \draw[arrow] (s3) -- (ans);
+
+        \node[font=\small, red] at (6, -0.8) {$r = 1$};
+        \node[font=\bfseries] at (3, 1.2) {ORM：只评估最终答案};
+    \end{scope}
+
+    % PRM
+    \begin{scope}[shift={(-4, -3)}]
+        \node[step, fill=green!30] (s1) at (0, 0) {Step 1};
+        \node[step, fill=green!30] (s2) at (2, 0) {Step 2};
+        \node[step, fill=red!30] (s3) at (4, 0) {Step 3};
+        \node[step, fill=red!30] (ans) at (6, 0) {Answer};
+
+        \draw[arrow] (s1) -- (s2);
+        \draw[arrow] (s2) -- (s3);
+        \draw[arrow] (s3) -- (ans);
+
+        \node[font=\scriptsize, green!60!black] at (0, -0.7) {$r_1 = 1$ \checkmark};
+        \node[font=\scriptsize, green!60!black] at (2, -0.7) {$r_2 = 1$ \checkmark};
+        \node[font=\scriptsize, red] at (4, -0.7) {$r_3 = 0$ $\times$};
+        \node[font=\scriptsize, red] at (6, -0.7) {$r_4 = 0$ $\times$};
+        \node[font=\bfseries] at (3, 1.2) {PRM：评估每个步骤};
+    \end{scope}
+\end{tikzpicture}
 ```
 
 ### PRM 的优势
@@ -286,21 +331,24 @@ $$r_t = \text{PRM}(x, y_{\leq t}) - \text{PRM}(x, y_{\leq t-1})$$
 
 3. **稀疏奖励更难**：只有最终答案有反馈，信号传播数千步
 
-```
-        IS 权重方差
-        (对数尺度)
-           ▲
-           │                   ╱
-           │                 ╱   Token-level IS
-           │               ╱     （指数增长）
-           │             ╱
-           │           ╱
-           │         ╱
-           │       ╱
-           │     ╱ ─ ─ ─ ─ ─ ─ ─  Sequence-level IS
-           │   ╱                  （线性增长）
-           │ ╱
-           └─────────────────────────────▶ 序列长度 T
+```tikz
+\begin{tikzpicture}
+    \begin{axis}[
+        width=10cm, height=5cm,
+        xlabel={序列长度 $T$},
+        ylabel={IS 权重方差（对数尺度）},
+        domain=1:100,
+        samples=50,
+        ymode=log,
+        grid=major,
+        legend pos=north west
+    ]
+        \addplot[thick, blue] {exp(0.1*x)};
+        \addlegendentry{Token-level IS（指数增长）}
+        \addplot[thick, red, dashed] {1 + 0.1*x};
+        \addlegendentry{Sequence-level IS（线性增长）}
+    \end{axis}
+\end{tikzpicture}
 ```
 
 ### GSPO：序列级 IS
@@ -410,16 +458,27 @@ $$\frac{\pi_\theta(y)}{\mu(y)} = \underbrace{\frac{\pi_{\theta_{\text{old}}}(y)}
    - 序列级 IS 代替 token 级 IS
    - Kimi、DeepSeek 等实践技巧
 
-```
-         LLM Alignment RL Evolution
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 方法演进
+    \node[box, fill=blue!20] (rlhf) at (0, 0) {RLHF\\(2020-2022)};
+    \node[box, fill=green!20] (dpo) at (4, 0) {DPO\\(2023)};
+    \node[box, fill=orange!20] (grpo) at (8, 0) {GRPO\\(2024)};
+    \node[box, fill=purple!20] (longcot) at (12, 0) {Long CoT RL\\(2024-2025)};
 
-┌─────────────┐ Simplify ┌─────────────┐  Online   ┌─────────────┐ Long seq ┌─────────────┐
-│    RLHF     │─────────▶│     DPO     │─────────▶│    GRPO     │─────────▶│ Long CoT RL │
-│ (2020-2022) │          │   (2023)    │          │   (2024)    │          │ (2024-2025) │
-├─────────────┤          ├─────────────┤          ├─────────────┤          ├─────────────┤
-│Need RM+Critic          │Offline train│          │ No Critic   │          │Sequence-level│
-│Complex impl │          │No exploration          │Group norm   │          │  IS + Var   │
-└─────────────┘          └─────────────┘          └─────────────┘          └─────────────┘
+    \draw[arrow] (rlhf) -- node[above, font=\scriptsize] {简化} (dpo);
+    \draw[arrow] (dpo) -- node[above, font=\scriptsize] {在线探索} (grpo);
+    \draw[arrow] (grpo) -- node[above, font=\scriptsize] {长序列} (longcot);
+
+    % 特点标注
+    \node[font=\scriptsize, gray, align=center] at (0, -1) {需要 RM + Critic\\实现复杂};
+    \node[font=\scriptsize, gray, align=center] at (4, -1) {离线训练\\无探索};
+    \node[font=\scriptsize, gray, align=center] at (8, -1) {无 Critic\\组内标准化};
+    \node[font=\scriptsize, gray, align=center] at (12, -1) {序列级 IS\\方差控制};
+\end{tikzpicture}
 ```
 
 ## 系列总结

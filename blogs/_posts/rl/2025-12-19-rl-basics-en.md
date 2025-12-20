@@ -24,22 +24,28 @@ Reinforcement learning is an important branch of machine learning that studies h
 - **Delayed Rewards**: The quality of an action may not be known until much later (think of sacrificing a piece in chess for positional advantage)
 - **Sequential Decision-Making**: Current decisions affect future states; the data distribution is determined by the policy itself
 
-```
-┌─────────────────────────┐
-│         Agent           │
-│  ┌───────────────────┐  │
-│  │   Policy π(a|s)   │  │
-│  └───────────────────┘  │
-└───────────┬─────────────┘
-            │ Action aₜ
-            ▼
-┌─────────────────────────┐
-│      Environment        │
-└───────────┬─────────────┘
-            │ State sₜ₊₁, Reward rₜ
-            ▼
-         (Loop)
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.9]
+    % Agent box
+    \draw[rounded corners, fill=blue!10] (-2.5,2) rectangle (2.5,4.5);
+    \node at (0,4.2) {\textbf{Agent}};
+    \draw[rounded corners, fill=orange!30] (-1.5,2.5) rectangle (1.5,3.5);
+    \node at (0,3) {Policy $\pi(a|s)$};
+
+    % Environment box
+    \draw[rounded corners, fill=green!20] (-2.5,-1.5) rectangle (2.5,0.5);
+    \node at (0,-0.5) {\textbf{Environment}};
+
+    % Arrows
+    \draw[->, very thick, blue!70] (2.5,3) -- (4,3) -- (4,-0.5) -- (2.5,-0.5);
+    \node[right] at (4,1.2) {Action $a_t$};
+
+    \draw[->, very thick, red!70] (-2.5,-0.5) -- (-4,-0.5) -- (-4,3) -- (-2.5,3);
+    \node[left] at (-4,1.2) {State $s_{t+1}$, Reward $r_t$};
+\end{tikzpicture}
+</script>
+</div>
 
 **Agent-Environment Interaction Loop**: The agent selects actions based on the current state; the environment returns rewards and new states in response. This loop continues until the task ends or indefinitely.
 
@@ -87,24 +93,28 @@ With intuitive understanding established, let's build the mathematical framework
 - $R: \mathcal{S} \times \mathcal{A} \to \mathbb{R}$: **Reward Function**, $R(s,a)$ is the immediate reward for taking action $a$ in state $s$
 - $\gamma \in [0,1]$: **Discount Factor**, balancing the relative importance of immediate vs. future rewards
 
-```
-A simple MDP example:
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.9,
+    state/.style={circle, draw, fill=blue!20, minimum size=1cm}]
+    % States
+    \node[state] (s1) at (0,0) {$s_1$};
+    \node[state] (s2) at (4,1) {$s_2$};
+    \node[state] (s3) at (4,-1) {$s_3$};
 
-      a₁: P=0.7, r=1
-    ┌────────────────► (s₂) ◄──┐ r=2
-    │                          │
-   (s₁)                        └──┘
-    │
-    │ a₁: P=0.3, r=1
-    └────────────────► (s₃) ◄──┐ r=-1
-                               │
-    a₂: P=1, r=0               └──┘
-    └──► (s₁) (stay)
+    % Transitions from s1
+    \draw[->, thick, bend left=15] (s1) to node[above] {$a_1$: $P$=0.7, $r$=1} (s2);
+    \draw[->, thick, bend right=15] (s1) to node[below] {$a_1$: $P$=0.3, $r$=1} (s3);
+    \draw[->, thick] (s1) to[loop left] node[left] {$a_2$: $P$=1, $r$=0} (s1);
 
-State s₁ has two available actions:
-- a₁ transitions to s₂ with 0.7 prob (high reward), to s₃ with 0.3 prob (negative reward)
-- a₂ stays in place with no reward
-```
+    % Self loops
+    \draw[->, thick] (s2) to[loop right] node[right] {$r$=2} (s2);
+    \draw[->, thick] (s3) to[loop right] node[right] {$r$=-1} (s3);
+\end{tikzpicture}
+</script>
+</div>
+
+> **MDP Example**: State $s_1$ has two actions: $a_1$ transitions to $s_2$ with 0.7 probability (high reward), or to $s_3$ with 0.3 probability (negative reward); $a_2$ stays in place with no reward.
 
 > **Note**: The reward function has multiple forms: $R(s,a)$, $R(s,a,s')$, $R(s)$. These can be converted between each other. For example, $R(s,a,s')$ converts to $R(s,a) = \sum_{s'} P(s'\|s,a) R(s,a,s')$. This article uses $R(s,a)$ by default.
 
@@ -147,14 +157,32 @@ $$\tau = (s_0, a_0, r_0, s_1, a_1, r_1, \ldots, s_{T-1}, a_{T-1}, r_{T-1}, s_T)$
 
 where $T$ is the trajectory length (episode termination time).
 
-```
-Trajectory generation process:
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.8,
+    state/.style={circle, draw, fill=blue!20, minimum size=0.8cm},
+    action/.style={rectangle, draw, fill=orange!20, minimum size=0.6cm}]
+    % States and actions
+    \node[state] (s0) at (0,0) {$s_0$};
+    \node[action] (a0) at (2,0) {$a_0$};
+    \node[state] (s1) at (4,0) {$s_1$};
+    \node[action] (a1) at (6,0) {$a_1$};
+    \node[state] (s2) at (8,0) {$s_2$};
+    \node at (10,0) {...};
+    \node[state] (st) at (12,0) {$s_T$};
 
-(s₀) ──π(a₀|s₀)──► [a₀] ──P,r₀──► (s₁) ──π(a₁|s₁)──► [a₁] ──P,r₁──► (s₂) ─...─► (sₜ)
+    % Arrows
+    \draw[->, thick] (s0) -- node[above] {$\pi$} (a0);
+    \draw[->, thick] (a0) -- node[above] {$P,r_0$} (s1);
+    \draw[->, thick] (s1) -- node[above] {$\pi$} (a1);
+    \draw[->, thick] (a1) -- node[above] {$P,r_1$} (s2);
+    \draw[->, thick] (s2) -- (9.5,0);
+    \draw[->, thick] (10.5,0) -- (st);
+\end{tikzpicture}
+</script>
+</div>
 
-○ = state    □ = action
-Policy π determines actions, environment P determines transitions and rewards
-```
+> **Trajectory Generation**: Policy $\pi$ determines actions, environment $P$ determines state transitions and rewards.
 
 ### 3.2 Trajectory Probability Decomposition
 
@@ -195,16 +223,27 @@ $$G_t = r_t + \gamma G_{t+1}$$
 
 The Bellman equation is based on this recursive structure—the next article will elaborate in detail.
 
-```
-Computing return Gₜ:
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.9]
+    % Time axis
+    \draw[->, thick] (0,0) -- (10,0) node[right] {Time};
 
-Timeline:  ──rₜ────rₜ₊₁────rₜ₊₂────rₜ₊₃────...──►
-Weights:    ×1     ×γ      ×γ²     ×γ³
+    % Rewards
+    \foreach \i/\label/\weight in {1/$r_t$/$\times 1$, 3/$r_{t+1}$/$\times \gamma$, 5/$r_{t+2}$/$\times \gamma^2$, 7/$r_{t+3}$/$\times \gamma^3$} {
+        \fill[blue!50] (\i,0) circle (0.15);
+        \node[above] at (\i,0.2) {\label};
+        \node[below, gray] at (\i,-0.3) {\weight};
+    }
+    \node at (9,0) {...};
 
-Gₜ = rₜ + γ·rₜ₊₁ + γ²·rₜ₊₂ + γ³·rₜ₊₃ + ...
+    % Formula
+    \node[below] at (5,-1.2) {$G_t = r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + \gamma^3 r_{t+3} + \cdots$};
+\end{tikzpicture}
+</script>
+</div>
 
-Smaller γ means lower weight for distant rewards
-```
+> Smaller $\gamma$ means lower weight for distant rewards.
 
 ### 3.4 Episodic vs Continuing Tasks
 
@@ -360,22 +399,15 @@ These three definitions are equivalent in most cases. Subsequent articles will i
 - **Policy-Based Methods**: Directly optimize parameterized policy $\pi_\theta$
 - **Actor-Critic Methods**: Learn both policy (Actor) and value function (Critic)
 
-```
-         ┌─────────────────┐
-         │   RL Methods    │
-         └────────┬────────┘
-                  │
-    ┌─────────────┼─────────────┐
-    ▼             ▼             ▼
-┌────────┐  ┌────────┐  ┌────────────┐
-│Value-  │  │Policy- │  │Actor-      │
-│Based   │  │Based   │  │Critic      │
-│Learn Q*│  │Learn πθ│  │Learn both  │
-└────────┘  └────────┘  └────────────┘
-    │             │             │
-DQN          REINFORCE      A2C, PPO
-Q-Learning   TRPO           SAC
-```
+<div class="mermaid">
+graph TD
+    RL["RL Methods"] --> VB["Value-Based<br/>Learn Q*"]
+    RL --> PB["Policy-Based<br/>Learn πθ"]
+    RL --> AC["Actor-Critic<br/>Learn both"]
+    VB --> DQN["DQN, Q-Learning"]
+    PB --> PG["REINFORCE, TRPO"]
+    AC --> ACEX["A2C, PPO, SAC"]
+</div>
 
 ## Summary
 

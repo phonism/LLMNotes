@@ -30,24 +30,35 @@ Model-Based RL 的核心思想正是：**学习或利用环境模型，通过规
 > - **Model-Free**：不学习或使用环境模型，直接从真实经验中学习价值函数或策略
 > - **Model-Based**：学习或利用环境模型 $\hat{P}(s'\|s,a)$, $\hat{R}(s,a)$，在模型中进行规划
 
-```
-Model-Free                          Model-Based
-┌──────────────────┐               ┌──────────────────┐
-│   Real Environ   │               │   Real Environ   │
-└────────┬─────────┘               └────────┬─────────┘
-         │                                  │
-         │ Many samples                     │ Few samples
-         ▼                                  ▼
-┌──────────────────┐               ┌──────────────────┐
-│  Policy / Value  │               │   World Model    │
-└──────────────────┘               └────────┬─────────┘
-                                           │ Simulation
-                                           ▼
-                                  ┌──────────────────┐
-                                  │  Policy / Value  │
-                                  └──────────────────┘
-   Low sample efficiency            High sample efficiency
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Model-Free
+    \begin{scope}[shift={(-4,0)}]
+        \node[box, fill=blue!20] (env1) at (0, 1.5) {真实环境};
+        \node[box, fill=orange!20] (policy1) at (0, -1) {策略/价值函数};
+        \draw[arrow, red, very thick] (env1) -- node[right, font=\small] {大量真实经验} (policy1);
+        \node[font=\bfseries] at (0, 3) {Model-Free};
+        \node[font=\scriptsize, text=red] at (0, -2.3) {样本效率低};
+    \end{scope}
+
+    % Model-Based
+    \begin{scope}[shift={(4,0)}]
+        \node[box, fill=blue!20] (env2) at (0, 1.5) {真实环境};
+        \node[box, fill=green!20] (model) at (0, 0) {环境模型};
+        \node[box, fill=orange!20] (policy2) at (0, -1.5) {策略/价值函数};
+        \draw[arrow] (env2) -- node[right, font=\small] {少量经验} (model);
+        \draw[arrow, green!60!black, very thick] (model) -- node[right, font=\small] {大量模拟} (policy2);
+        \draw[arrow, dashed] (env2.west) to[out=180, in=180] node[left, font=\small] {校正} (policy2.west);
+        \node[font=\bfseries] at (0, 3) {Model-Based};
+        \node[font=\scriptsize, text=green!60!black] at (0, -2.8) {样本效率高};
+    \end{scope}
+\end{tikzpicture}
+</script>
+</div>
 
 | 特性 | Model-Free | Model-Based |
 |------|------------|-------------|
@@ -102,15 +113,48 @@ $$z_{t+1} = f_\theta(z_t, a_t), \quad z_t = \text{Encoder}(s_t)$$
 
 Model Bias 的关键问题是**误差累积**（Error Compounding）：
 
-```
-真实轨迹:    s₀ ──a₀──▶ s₁ ──a₁──▶ s₂ ──a₂──▶ s₃ ──a₃──▶ s₄
-                        │          │          │          │
-                       ε₁         ε₂         ε₃         ε₄
-                        │          │          │          │
-预测轨迹:    s₀ ──a₀──▶ ŝ₁ ──a₁──▶ ŝ₂ ──a₂──▶ ŝ₃ ──a₃──▶ ŝ₄
-                        ↓          ↓          ↓          ↓
-                       偏离逐渐增大，误差累积
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    state/.style={circle, draw, fill=blue!20, minimum size=0.8cm},
+    pred/.style={circle, draw, dashed, fill=red!20, minimum size=0.8cm},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 真实轨迹
+    \node[state] (s0) at (0, 0) {$s_0$};
+    \node[state] (s1) at (2, 0) {$s_1$};
+    \node[state] (s2) at (4, 0) {$s_2$};
+    \node[state] (s3) at (6, 0) {$s_3$};
+    \node[state] (s4) at (8, 0) {$s_4$};
+
+    \draw[arrow] (s0) -- node[above, font=\scriptsize] {$a_0$} (s1);
+    \draw[arrow] (s1) -- node[above, font=\scriptsize] {$a_1$} (s2);
+    \draw[arrow] (s2) -- node[above, font=\scriptsize] {$a_2$} (s3);
+    \draw[arrow] (s3) -- node[above, font=\scriptsize] {$a_3$} (s4);
+
+    % 预测轨迹
+    \node[pred] (h1) at (2, -1) {$\hat{s}_1$};
+    \node[pred] (h2) at (4, -1.5) {$\hat{s}_2$};
+    \node[pred] (h3) at (6, -2.2) {$\hat{s}_3$};
+    \node[pred] (h4) at (8, -3) {$\hat{s}_4$};
+
+    \draw[arrow, dashed, red] (s0) -- (h1);
+    \draw[arrow, dashed, red] (h1) -- (h2);
+    \draw[arrow, dashed, red] (h2) -- (h3);
+    \draw[arrow, dashed, red] (h3) -- (h4);
+
+    % 误差标注
+    \draw[<->, gray] (s1) -- node[right, font=\scriptsize] {$\epsilon_1$} (h1);
+    \draw[<->, gray] (s2) -- node[right, font=\scriptsize] {$\epsilon_2$} (h2);
+    \draw[<->, gray] (s3) -- node[right, font=\scriptsize] {$\epsilon_3$} (h3);
+    \draw[<->, gray] (s4) -- node[right, font=\scriptsize] {$\epsilon_4$} (h4);
+
+    % 图例
+    \node[font=\small] at (4, 1) {真实轨迹（实线）};
+    \node[font=\small, red] at (4, -4) {预测轨迹（虚线）——误差逐步累积};
+\end{tikzpicture}
+</script>
+</div>
 
 > **误差累积上界定理**：设单步模型误差为 $\epsilon = \max_{s,a} \|\hat{P}(\cdot\|s,a) - P(\cdot\|s,a)\|_1$，则 $H$ 步规划的总变差距离上界为：
 >
@@ -132,32 +176,58 @@ Model Bias 的关键问题是**误差累积**（Error Compounding）：
 > - **Background Planning**：在与真实环境交互之外，利用模型生成模拟经验来训练策略
 > - **Decision-time Planning**：在需要做决策时，利用模型进行前向搜索，选择最优动作
 
-```
-┌─────────────────────────┐     ┌─────────────────────────┐
-│   Background Planning   │     │  Decision-time Planning │
-├─────────────────────────┤     ├─────────────────────────┤
-│  - Offline simulation   │     │  - Online search        │
-│  - Train policy network │     │  - No training          │
-│  - Example: Dyna        │     │  - Example: MCTS        │
-└─────────────────────────┘     └─────────────────────────┘
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=3.5cm, minimum height=1.2cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Background Planning
+    \begin{scope}[shift={(-4.5, 0)}]
+        \node[box, fill=green!20] (bg) at (0, 0) {Background\\Planning};
+        \node[font=\small, align=center] at (0, -2) {离线生成经验\\训练策略网络\\代表：Dyna};
+        \node[font=\bfseries] at (0, 1.5) {训练时规划};
+    \end{scope}
+
+    % Decision-time Planning
+    \begin{scope}[shift={(4.5, 0)}]
+        \node[box, fill=orange!20] (dt) at (0, 0) {Decision-time\\Planning};
+        \node[font=\small, align=center] at (0, -2) {在线搜索决策\\不训练网络\\代表：MCTS};
+        \node[font=\bfseries] at (0, 1.5) {决策时规划};
+    \end{scope}
+\end{tikzpicture}
+</script>
+</div>
 
 ### Dyna 架构
 
 Dyna 是 Background Planning 的经典框架，由 Sutton 于 1991 年提出。其核心思想是：**每次真实交互后，用模型生成多次模拟经验来加速学习**。
 
-```
-┌─────────────┐      Learn Model      ┌─────────────┐
-│ Real Environ│────────────────────▶  │ World Model │
-└──────┬──────┘                       └──────┬──────┘
-       │                                     │
-       │ Real exp                            │ Simulated exp (n)
-       ▼                                     ▼
-┌─────────────┐      Direct RL        ┌─────────────┐
-│   Replay    │────────────────────▶  │   Q(s,a)    │
-│  (s,a,r,s') │                       │   Policy    │
-└─────────────┘                       └─────────────┘
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.95,
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 组件
+    \node[box, fill=blue!20] (env) at (0, 2) {真实环境};
+    \node[box, fill=green!20] (model) at (5, 2) {环境模型\\$\hat{P}, \hat{R}$};
+    \node[box, fill=orange!20] (policy) at (2.5, -1) {策略/价值函数\\$Q(s,a)$};
+    \node[box, fill=purple!15] (exp) at (-2.5, -1) {经验缓存\\$(s,a,r,s')$};
+
+    % 连接
+    \draw[arrow] (env) -- node[above, font=\small] {学习模型} (model);
+    \draw[arrow] (env) -- node[left, font=\small, pos=0.3] {真实经验} (exp);
+    \draw[arrow] (exp) -- node[below, font=\small] {直接学习} (policy);
+    \draw[arrow, green!60!black, very thick] (model) -- node[right, font=\small, pos=0.3] {模拟经验\\（$n$ 次）} (policy);
+    \draw[arrow, dashed] (policy.north) to[out=120, in=240] node[left, font=\small] {动作} (env.south);
+
+    % 标注
+    \node[font=\scriptsize, red] at (5, 0.3) {每步真实交互};
+    \node[font=\scriptsize, red] at (5, -0.1) {可生成 $n$ 步模拟};
+\end{tikzpicture}
+</script>
+</div>
 
 **Dyna-Q 算法**：
 
@@ -221,17 +291,85 @@ MCTS 的目标是在有限的计算预算内，估计当前状态下各动作的
 
 MCTS 的每次迭代包含四个步骤：
 
-```
-1. Selection      2. Expansion      3. Evaluation     4. Backup
-     (○)               (○)               (○)              (+1)
-     / \               / \               / \              / \
-   (○) (○)           (○) (○)           (○) (○)         (+1)(○)
-   /                 / \               / \              / \
- (○)               (○) (◇)           (○) → v=?      (+1)(○)
-  ↑                      ↑                ↓              ↑
-Select by UCB     Expand new node   Rollout or      Backpropagate
-                                    Value Network    statistics
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.8, every node/.style={scale=0.8},
+    treenode/.style={circle, draw, minimum size=0.7cm},
+    selected/.style={treenode, fill=blue!30, very thick},
+    expanded/.style={treenode, fill=green!30, dashed},
+    evaluated/.style={treenode, fill=orange!30},
+    backed/.style={treenode, fill=red!20}
+]
+    % Step 1: Selection
+    \begin{scope}[shift={(0, 0)}]
+        \node[selected] (r1) at (0, 0) {};
+        \node[selected] (a1) at (-0.8, -1) {};
+        \node[treenode] (b1) at (0.8, -1) {};
+        \node[selected] (c1) at (-1.2, -2) {};
+        \node[treenode] (d1) at (-0.4, -2) {};
+
+        \draw[very thick, blue, ->] (r1) -- (a1);
+        \draw (r1) -- (b1);
+        \draw[very thick, blue, ->] (a1) -- (c1);
+        \draw (a1) -- (d1);
+
+        \node[font=\small\bfseries] at (0, 0.8) {1. Selection};
+        \node[font=\scriptsize, align=center] at (0, -3) {沿树用 UCB\\选择子节点};
+    \end{scope}
+
+    % Step 2: Expansion
+    \begin{scope}[shift={(4, 0)}]
+        \node[treenode] (r2) at (0, 0) {};
+        \node[treenode] (a2) at (-0.8, -1) {};
+        \node[treenode] (b2) at (0.8, -1) {};
+        \node[treenode] (c2) at (-1.2, -2) {};
+        \node[expanded] (new) at (-0.4, -2) {};
+
+        \draw (r2) -- (a2);
+        \draw (r2) -- (b2);
+        \draw (a2) -- (c2);
+        \draw[thick, green!60!black, dashed] (a2) -- (new);
+
+        \node[font=\small\bfseries] at (0, 0.8) {2. Expansion};
+        \node[font=\scriptsize, align=center] at (0, -3) {扩展一个\\新子节点};
+    \end{scope}
+
+    % Step 3: Evaluation
+    \begin{scope}[shift={(8, 0)}]
+        \node[treenode] (r3) at (0, 0) {};
+        \node[treenode] (a3) at (-0.8, -1) {};
+        \node[treenode] (b3) at (0.8, -1) {};
+        \node[evaluated] (c3) at (-1.2, -2) {};
+
+        \draw (r3) -- (a3);
+        \draw (r3) -- (b3);
+        \draw (a3) -- (c3);
+
+        % Rollout
+        \draw[thick, orange, ->] (c3) -- ++(0.3, -0.8) -- ++(0.2, -0.6) -- ++(-0.1, -0.5);
+        \node[font=\scriptsize] at (-0.3, -3.5) {$v = ?$};
+
+        \node[font=\small\bfseries] at (0, 0.8) {3. Evaluation};
+        \node[font=\scriptsize, align=center] at (0, -4.5) {Rollout 或\\价值网络};
+    \end{scope}
+
+    % Step 4: Backup
+    \begin{scope}[shift={(12, 0)}]
+        \node[backed] (r4) at (0, 0) {$\uparrow$};
+        \node[backed] (a4) at (-0.8, -1) {$\uparrow$};
+        \node[treenode] (b4) at (0.8, -1) {};
+        \node[backed] (c4) at (-1.2, -2) {$v$};
+
+        \draw[thick, red, <-] (r4) -- (a4);
+        \draw (r4) -- (b4);
+        \draw[thick, red, <-] (a4) -- (c4);
+
+        \node[font=\small\bfseries] at (0, 0.8) {4. Backup};
+        \node[font=\scriptsize, align=center] at (0, -3) {沿路径\\更新统计};
+    \end{scope}
+\end{tikzpicture}
+</script>
+</div>
 
 1. **Selection（选择）**：从根节点开始，使用**树策略**（如 UCB）递归选择子节点，直到到达叶节点（未完全扩展的节点）。
 
@@ -319,30 +457,40 @@ AlphaGo 和 AlphaZero 是 MCTS + 深度学习 + Self-Play 的里程碑式成果�
 
 AlphaGo 在 2016 年以 4:1 击败世界冠军李世石，其架构包括：
 
-```
-         ┌────────────────────┐
-         │  Board State 19x19 │
-         └─────────┬──────────┘
-                   │
-         ┌─────────┴──────────┐
-         │                    │
-         ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐
-│  Policy Network │  │  Value Network  │
-│    p_θ(a|s)     │  │     v_φ(s)      │
-└────────┬────────┘  └────────┬────────┘
-         │ Guide search       │ Evaluate leaf
-         ▼                    ▼
-         └─────────┬──────────┘
-                   │
-         ┌─────────▼──────────┐
-         │    MCTS Search     │
-         └─────────┬──────────┘
-                   │
-         ┌─────────▼──────────┐
-         │    Final Action    │
-         └────────────────────┘
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3cm, minimum height=1.2cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 输入
+    \node[box, fill=blue!20] (input) at (0, 0) {棋盘状态\\$19 \times 19$};
+
+    % Policy Network
+    \node[box, fill=green!20] (pn) at (-3.5, -2.5) {Policy Network\\$p_\theta(a|s)$};
+
+    % Value Network
+    \node[box, fill=orange!20] (vn) at (3.5, -2.5) {Value Network\\$v_\phi(s)$};
+
+    % MCTS
+    \node[box, fill=purple!20, minimum width=4cm] (mcts) at (0, -5) {MCTS 搜索};
+
+    % 输出
+    \node[box, fill=red!15] (output) at (0, -7.5) {最终动作};
+
+    % 连接
+    \draw[arrow] (input) -- (pn);
+    \draw[arrow] (input) -- (vn);
+    \draw[arrow] (pn) -- node[left, font=\small] {指导选择} (mcts);
+    \draw[arrow] (vn) -- node[right, font=\small] {评估叶节点} (mcts);
+    \draw[arrow] (mcts) -- (output);
+
+    % 训练方式标注
+    \node[font=\scriptsize, align=left] at (-6.5, -2.5) {监督学习\\（人类棋谱）\\+ RL 微调};
+    \node[font=\scriptsize, align=right] at (6.5, -2.5) {监督学习\\（自我对弈\\结果预测）};
+\end{tikzpicture}
+</script>
+</div>
 
 1. **Policy Network** $p_\theta(a\|s)$：
    - 输入：棋盘状态（多通道特征）
@@ -376,51 +524,54 @@ AlphaZero 在 2017 年大幅简化了 AlphaGo 的设计，却取得了更强的�
 | 训练时间 | 数月 | **数小时** |
 | 适用游戏 | 仅围棋 | **围棋、国际象棋、将棋** |
 
-```
-         ┌────────────────────┐
-         │   Board State s    │
-         └─────────┬──────────┘
-                   │
-         ┌─────────▼──────────┐
-         │       ResNet       │
-         │  (Unified Network) │
-         └─────────┬──────────┘
-                   │
-         ┌─────────┴──────────┐
-         │                    │
-         ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐
-│    p_θ(a|s)     │  │     v_θ(s)      │
-│   Policy Head   │  │   Value Head    │
-└─────────────────┘  └─────────────────┘
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 统一网络
+    \node[box, fill=blue!20] (input) at (0, 0) {棋盘状态 $s$};
+    \node[box, fill=purple!25, minimum height=2cm] (net) at (0, -2.5) {ResNet\\（统一网络）};
 
-Single network outputs both policy and value.
-Shared representation, fewer params, more efficient.
-```
+    % 双头输出
+    \node[box, fill=green!20] (policy) at (-2.5, -5) {$p_\theta(a|s)$\\策略头};
+    \node[box, fill=orange!20] (value) at (2.5, -5) {$v_\theta(s)$\\价值头};
+
+    \draw[arrow] (input) -- (net);
+    \draw[arrow] (net) -- (policy);
+    \draw[arrow] (net) -- (value);
+
+    \node[font=\small, align=center] at (0, -6.5) {单个网络同时输出策略分布和价值估计\\共享底层表示，参数更少，训练更高效};
+\end{tikzpicture}
+</script>
+</div>
 
 ### AlphaZero 训练循环
 
 AlphaZero 的训练是一个**自我增强**的循环：
 
-```
-                    ┌──────────────────┐
-       ┌───────────▶│    Self-Play     │
-       │            │  Generate games  │
-       │            └────────┬─────────┘
-       │                     │
-       │                     │ (s, π_MCTS, z)
-       │                     ▼
-┌──────┴───────┐    ┌──────────────────┐
-│ Neural Net   │◀───│  Network Train   │
-│ (p_θ, v_θ)   │    │ Learn from MCTS  │
-└──────────────┘    └──────────────────┘
-       │
-       │ Guide search
-       │
-       └─────────────────────────────────┐
-                                         │
-              Positive loop: keep improving
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3cm, minimum height=1.2cm, align=center},
+    arrow/.style={->, very thick, >=stealth}
+]
+    % 三个组件
+    \node[box, fill=green!20] (selfplay) at (0, 0) {Self-Play\\生成对弈数据};
+    \node[box, fill=orange!20] (train) at (5, -3) {网络训练\\学习搜索结果};
+    \node[box, fill=blue!20] (network) at (-5, -3) {神经网络\\$(p_\theta, v_\theta)$};
+
+    % 循环箭头
+    \draw[arrow, green!60!black] (selfplay) -- node[right, font=\small, pos=0.5] {$(s, \pi_{\text{MCTS}}, z)$} (train);
+    \draw[arrow, orange] (train) -- node[below, font=\small, yshift=-3pt] {更新 $\theta$} (network);
+    \draw[arrow, blue] (network) -- node[left, font=\small, pos=0.5] {指导搜索} (selfplay);
+
+    % 中心说明
+    \node[font=\small, align=center, text=gray] at (0, -1.8) {正向循环\\不断变强};
+\end{tikzpicture}
+</script>
+</div>
 
 **AlphaZero 训练算法**：
 
@@ -441,8 +592,12 @@ repeat 直到收敛:
     // 网络训练
     从训练数据中采样 batch
     最小化损失：L(θ) = (z - v_θ(s))² - π_MCTS^T log p_θ(s) + c‖θ‖²
-                       └───价值损失───┘  └───策略损失────┘  └正则化┘
 ```
+
+其中损失函数各项含义：
+- **$(z - v_\theta(s))^2$**：价值损失，让价值预测接近游戏结果
+- **$-\pi_{\text{MCTS}}^\top \log p_\theta(s)$**：策略损失，让策略接近 MCTS 搜索结果
+- **$c\|\theta\|^2$**：L2 正则化项
 
 **AlphaZero 的核心洞察**：
 1. **MCTS 作为策略改进**：搜索产生的 $\pi_{\text{MCTS}}$ 比原始网络 $p_\theta$ 更好
@@ -546,31 +701,36 @@ Self-Play 是训练博弈 AI 的强大方法，也是 AlphaGo/AlphaZero 成功�
 
 > **Self-Play**：Agent 与自己（或自己的历史版本）进行对弈，从对弈经验中学习改进策略。
 
-```
-┌──────────────┐                    ┌──────────────┐
-│Current Policy│                    │   Opponent   │
-│     π_θ      │                    │ π_θ or π_θ'  │
-└──────┬───────┘                    └──────┬───────┘
-       │                                   │
-       │                                   │
-       └─────────────┬─────────────────────┘
-                     │
-                     ▼
-              ┌──────────────┐
-              │   Game Play  │
-              └──────┬───────┘
-                     │
-                     ▼
-              ┌──────────────┐         ┌──────────────┐
-              │  Experience  │◀ ─ ─ ─ ┤ Opponent Pool│
-              │ (s,a,r,s')   │         │ {π_θ₁, ...} │
-              └──────┬───────┘         └──────────────┘
-                     │ Update
-                     ▼
-              ┌──────────────┐
-              │Current Policy│
-              └──────────────┘
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 当前策略
+    \node[box, fill=blue!20] (current) at (0, 0) {当前策略\\$\pi_\theta$};
+
+    % 对手（自己的副本）
+    \node[box, fill=blue!10] (opponent) at (5, 0) {对手\\$\pi_\theta$ 或 $\pi_{\theta'}$};
+
+    % 对弈
+    \node[box, fill=green!20] (game) at (2.5, -2.5) {对弈};
+
+    % 经验
+    \node[box, fill=orange!20] (exp) at (2.5, -5) {对弈经验\\$(s, a, r, s')$};
+
+    % 更新
+    \draw[arrow] (current) -- (game);
+    \draw[arrow] (opponent) -- (game);
+    \draw[arrow] (game) -- (exp);
+    \draw[arrow] (exp) to[out=180, in=270] node[left, font=\small] {更新} (current);
+
+    % 可能的历史对手池
+    \node[box, fill=gray!20, dashed] (pool) at (8, -2.5) {历史对手池\\$\{\pi_{\theta_1}, \ldots\}$};
+    \draw[arrow, dashed] (pool) -- (opponent);
+\end{tikzpicture}
+</script>
+</div>
 
 ### Self-Play 的优势
 
@@ -627,24 +787,47 @@ Self-Play 是训练博弈 AI 的强大方法，也是 AlphaGo/AlphaZero 成功�
    - Nash 均衡：稳定的策略组合
    - Self-Play：训练博弈 AI 的有效方法
 
-```
-                          RL 方法
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-          Model-Free                    Model-Based
-              │                             │
-    ┌─────────┼─────────┐         ┌─────────┴─────────┐
-    │         │         │         │                   │
-Value-Based Policy-Based Actor-Critic  Background    Decision-time
-   DQN     REINFORCE   PPO, SAC    Planning          Planning
-                                    Dyna               MCTS
-                                                        │
-                                               ┌────────┴────────┐
-                                               │    AlphaZero    │
-                                               │  = MCTS + NN    │
-                                               │  + Self-Play    │
-                                               └─────────────────┘
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 层次结构
+    \node[box, fill=blue!25] (rl) at (0, 0) {RL 方法};
+
+    \node[box, fill=green!20] (mf) at (-4, -1.5) {Model-Free};
+    \node[box, fill=orange!20] (mb) at (4, -1.5) {Model-Based};
+
+    \node[box, minimum width=2.2cm] (vb) at (-6.5, -3) {Value-Based};
+    \node[box, minimum width=2.2cm] (pb) at (-4, -3) {Policy-Based};
+    \node[box, minimum width=2.2cm] (ac) at (-1.5, -3) {Actor-Critic};
+
+    \node[box] (bg) at (2.5, -3) {Background\\Planning};
+    \node[box] (dt) at (5.5, -3) {Decision-time\\Planning};
+
+    \node[font=\scriptsize, gray] at (-6.5, -3.8) {DQN};
+    \node[font=\scriptsize, gray] at (-4, -3.8) {REINFORCE};
+    \node[font=\scriptsize, gray] at (-1.5, -3.8) {PPO, SAC};
+    \node[font=\scriptsize, gray] at (2.5, -3.8) {Dyna};
+    \node[font=\scriptsize, gray] at (5.5, -3.8) {MCTS};
+
+    % AlphaZero 横跨
+    \node[box, fill=purple!20, minimum width=3cm] (az) at (4, -5) {AlphaZero};
+
+    \draw[arrow] (rl) -- (mf);
+    \draw[arrow] (rl) -- (mb);
+    \draw[arrow] (mf) -- (vb);
+    \draw[arrow] (mf) -- (pb);
+    \draw[arrow] (mf) -- (ac);
+    \draw[arrow] (mb) -- (bg);
+    \draw[arrow] (mb) -- (dt);
+    \draw[arrow, dashed] (dt) -- (az);
+    \draw[arrow, dashed] (ac.south) to[out=-45, in=180] (az.west);
+
+    \node[font=\scriptsize, align=center] at (0, -5.5) {AlphaZero = MCTS + Policy Network + Value Network + Self-Play};
+\end{tikzpicture}
+</script>
+</div>
 
 下一篇博客将进入 LLM 与 RL 的结合领域，介绍 RLHF 和 DPO 等用于语言模型对齐的方法。

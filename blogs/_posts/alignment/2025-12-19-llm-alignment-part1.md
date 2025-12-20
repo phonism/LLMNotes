@@ -35,12 +35,29 @@ translation: /llm-alignment-part1-en/
 - 用人类偏好定义奖励函数
 - 通过最大化奖励来优化策略
 
-```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Pre-training   │────▶│       SFT        │────▶│   RL Alignment   │
-│ Next Token Pred  │     │ Imitate quality  │     │ Optimize prefs   │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
-     Can speak            Can answer Qs          Act as humans expect
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 预训练
+    \node[box, fill=blue!20] (pt) at (0, 0) {预训练\\（Next Token Prediction）};
+
+    % SFT
+    \node[box, fill=green!20] (sft) at (5, 0) {监督微调 SFT\\（模仿高质量回复）};
+
+    % RLHF
+    \node[box, fill=orange!20] (rlhf) at (10, 0) {RL 对齐\\（优化人类偏好）};
+
+    % 箭头
+    \draw[arrow] (pt) -- node[above, font=\small, yshift=5pt] {语言能力} (sft);
+    \draw[arrow] (sft) -- node[above, font=\small, yshift=5pt] {指令遵循} (rlhf);
+
+    % 标注
+    \node[font=\scriptsize, gray] at (0, -1) {会说话};
+    \node[font=\scriptsize, gray] at (5, -1) {能回答问题};
+    \node[font=\scriptsize, gray] at (10, -1) {按人类期望行事};
+\end{tikzpicture}
 ```
 
 ## LLM 对齐的 RL 建模
@@ -56,12 +73,41 @@ translation: /llm-alignment-part1-en/
 > - **Trajectory** $\tau$：完整的生成序列 $y = (y_1, y_2, \ldots, y_T)$
 > - **Reward** $r$：通常只在序列结束时给出
 
-```
-State:  [x (prompt)] ──a₁──▶ [x, y₁] ──a₂──▶ [x, y₁, y₂] ─...─▶ [x, y₁:T] ──▶ r(x,y)
-                       │              │                                        │
-                      y₁             y₂                                     Reward
-                       │              │
-              π_θ(y₁|x)      π_θ(y₂|x,y₁)
+```tikz
+\begin{tikzpicture}[
+    state/.style={draw, rounded corners, fill=blue!15, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
+    action/.style={circle, draw, fill=orange!20, minimum size=0.6cm, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 状态序列
+    \node[state] (s0) at (0, 0) {$x$ (prompt)};
+    \node[state] (s1) at (3.5, 0) {$x, y_1$};
+    \node[state] (s2) at (7, 0) {$x, y_1, y_2$};
+    \node[font=\small] at (9.5, 0) {$\cdots$};
+    \node[state] (sT) at (12, 0) {$x, y_{1:T}$};
+
+    % 动作
+    \node[action] (a1) at (1.75, 1) {$y_1$};
+    \node[action] (a2) at (5.25, 1) {$y_2$};
+    \node[action] (aT) at (10.5, 1) {$y_T$};
+
+    % 奖励
+    \node[font=\small, red] at (13.5, 0) {$r(x, y)$};
+
+    % 连接
+    \draw[arrow] (s0) -- (a1);
+    \draw[arrow] (a1) -- (s1);
+    \draw[arrow] (s1) -- (a2);
+    \draw[arrow] (a2) -- (s2);
+    \draw[arrow, dashed] (s2) -- (9, 0);
+    \draw[arrow] (10, 0) -- (aT);
+    \draw[arrow] (aT) -- (sT);
+    \draw[arrow, red] (sT) -- (13.2, 0);
+
+    % 标注
+    \node[font=\scriptsize, gray] at (1.75, 1.6) {$\pi_\theta(y_1|x)$};
+    \node[font=\scriptsize, gray] at (5.25, 1.6) {$\pi_\theta(y_2|x,y_1)$};
+\end{tikzpicture}
 ```
 
 LLM RL 的特点：
@@ -91,23 +137,54 @@ RLHF（Reinforcement Learning from Human Feedback）是 LLM 对齐的经典方�
 
 ### RLHF 整体架构
 
-```
-    Stage 1: SFT             Stage 2: RM              Stage 3: PPO
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Pretrained LLM  │     │   SFT Model     │     │   π_ref   r_φ   │
-└────────┬────────┘     └────────┬────────┘     └────┬───────┬────┘
-         │                       │                   │       │
-         ▼                       ▼                   ▼       ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Quality data   │     │ Preference data │     │   PPO Train     │
-│                 │     │  (x, y_w, y_l)  │     │                 │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   SFT Model     │     │  Reward Model   │     │ Aligned Model   │
-│     π_ref       │     │    r_φ(x,y)     │     │      π_θ        │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+```tikz
+\begin{tikzpicture}[scale=0.9, every node/.style={scale=0.9},
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center},
+    data/.style={draw, rounded corners, fill=gray!15, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Stage 1
+    \begin{scope}[shift={(-5, 0)}]
+        \node[box, fill=blue!20] (pt) at (0, 2) {预训练模型};
+        \node[data] (sft_data) at (0, 0) {高质量对话\\数据};
+        \node[box, fill=green!20] (sft) at (0, -2) {SFT 模型\\$\pi_{\text{ref}}$};
+
+        \draw[arrow] (pt) -- (sft);
+        \draw[arrow] (sft_data) -- (sft);
+
+        \node[font=\bfseries] at (0, 3.5) {Stage 1: SFT};
+    \end{scope}
+
+    % Stage 2
+    \begin{scope}[shift={(0, 0)}]
+        \node[box, fill=green!15] (sft2) at (0, 2) {SFT 模型};
+        \node[data] (pref_data) at (0, 0) {人类偏好数据\\$(x, y_w, y_l)$};
+        \node[box, fill=orange!20] (rm) at (0, -2) {Reward Model\\$r_\phi(x, y)$};
+
+        \draw[arrow] (sft2) -- (rm);
+        \draw[arrow] (pref_data) -- (rm);
+
+        \node[font=\bfseries] at (0, 3.5) {Stage 2: RM};
+    \end{scope}
+
+    % Stage 3
+    \begin{scope}[shift={(5.5, 0)}]
+        \node[box, fill=green!15] (ref) at (-1.8, 2) {$\pi_{\text{ref}}$};
+        \node[box, fill=orange!15] (rm2) at (1.8, 2) {$r_\phi$};
+        \node[box, fill=purple!20] (ppo) at (0, 0) {PPO 训练};
+        \node[box, fill=red!20] (final) at (0, -2) {对齐模型\\$\pi_\theta$};
+
+        \draw[arrow] (ref) -- (ppo);
+        \draw[arrow] (rm2) -- (ppo);
+        \draw[arrow] (ppo) -- (final);
+
+        \node[font=\bfseries] at (0, 3.5) {Stage 3: PPO};
+    \end{scope}
+
+    % 连接箭头
+    \draw[arrow, dashed, gray] (-3, -2) -- (-2, 2);
+    \draw[arrow, dashed, gray] (2, -2) -- (4, 2);
+\end{tikzpicture}
 ```
 
 ### Stage 1: Supervised Fine-Tuning (SFT)
@@ -182,20 +259,28 @@ KL 正则项 $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ 至关重要：
    - 约束优化空间，避免策略崩溃
    - 提供正则化效果
 
-```
-    E[r_φ]
-       ▲
-       │     ╭──────╮
-       │    ╱        ╲
-       │   ╱          ╲
-       │  ╱   最优权衡  ╲
-       │ ╱      ●       ╲
-       │╱                ╲
-       └────────────────────▶ KL(π_θ ‖ π_ref)
+```tikz
+\begin{tikzpicture}[
+    arrow/.style={->, thick, >=stealth}
+]
+    % 坐标轴
+    \draw[arrow] (-0.5, 0) -- (8, 0) node[right] {$\text{KL}(\pi_\theta \| \pi_{\text{ref}})$};
+    \draw[arrow] (0, -0.5) -- (0, 5) node[above] {$\mathbb{E}[r_\phi]$};
 
-       ↑                  ↑
-    KL太小             KL太大
-   改进有限          Reward Hacking
+    % 曲线
+    \draw[thick, blue, domain=0.2:7, samples=100] plot (\x, {4 - 0.8*(\x-3)^2/9 + 0.5*ln(\x)});
+
+    % 最优点
+    \fill[red] (2.5, 3.8) circle (3pt);
+    \node[font=\small, red] at (2.5, 4.3) {最优权衡};
+
+    % 区域标注
+    \node[font=\scriptsize, align=center] at (1, 2) {KL 太小\\改进有限};
+    \node[font=\scriptsize, align=center] at (6, 2) {KL 太大\\Reward Hacking};
+
+    % beta 的作用
+    \draw[dashed, gray] (0, 3.8) -- (2.5, 3.8) -- (2.5, 0);
+\end{tikzpicture}
 ```
 
 #### PPO 更新流程
@@ -317,15 +402,20 @@ $\beta \log Z(x)$ 项相消了！
 
 最大化偏好数据的 log-likelihood，用 $\pi_\theta$ 代替 $\pi^*$，得到 DPO Loss。
 
-```
-RLHF 目标                    ──KL-RL闭式解──▶    最优策略闭式解
-max E[r] - β·KL                               π* ∝ π_ref exp(r/β)
-                                                      │
-                                                    取对数
-                                                      │
-                                                      ▼
-DPO Loss              ◀──代入BT模型──          反解 reward
-Z(x) 消除                                   r = β log(π*/π_ref) + β log Z
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=3.5cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box] (rlhf) at (0, 3) {RLHF 目标\\$\max \mathbb{E}[r] - \beta \cdot \text{KL}$};
+    \node[box] (opt) at (0, 1) {最优策略闭式解\\$\pi^* \propto \pi_{\text{ref}} \exp(r/\beta)$};
+    \node[box] (reward) at (0, -1) {反解 reward\\$r = \beta \log \frac{\pi^*}{\pi_{\text{ref}}} + \beta \log Z$};
+    \node[box, fill=green!20] (dpo) at (0, -3) {DPO Loss\\$Z(x)$ 消除};
+
+    \draw[arrow] (rlhf) -- node[right, font=\small] {KL-RL 闭式解} (opt);
+    \draw[arrow] (opt) -- node[right, font=\small] {取对数} (reward);
+    \draw[arrow] (reward) -- node[right, font=\small] {代入 BT 模型} (dpo);
+\end{tikzpicture}
 ```
 
 > **DPO 的核心洞察**：
@@ -382,16 +472,29 @@ DPO 的局限：
    - 只需 2 个模型（$\pi_\theta$ 和 $\pi_{\text{ref}}$）
    - 局限：无探索能力，难任务提升有限
 
-```
-    Method Evolution
-┌─────────────────┐           ┌─────────────────┐
-│     RLHF        │ ─Simplify─│      DPO        │
-│   (2020-2022)   │           │    (2023)       │
-├─────────────────┤           ├─────────────────┤
-│ Need RM+Critic  │           │ Offline train   │
-│ Complex impl    │           │ No exploration  │
-│ 4 models        │           │ 2 models        │
-└─────────────────┘           └─────────────────┘
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=2cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (rlhf) at (0, 0) {
+        \textbf{RLHF}\\[3pt]
+        (2020-2022)\\[3pt]
+        \scriptsize 需要 RM + Critic\\[-1pt]
+        \scriptsize 实现复杂\\[-1pt]
+        \scriptsize 4 个模型
+    };
+
+    \node[box, fill=green!20] (dpo) at (6, 0) {
+        \textbf{DPO}\\[3pt]
+        (2023)\\[3pt]
+        \scriptsize 离线训练\\[-1pt]
+        \scriptsize 无探索能力\\[-1pt]
+        \scriptsize 2 个模型
+    };
+
+    \draw[arrow] (rlhf) -- node[above, font=\small] {简化} (dpo);
+\end{tikzpicture}
 ```
 
 下一篇将介绍 GRPO、KL 估计器、PRM 以及 Long CoT RL 等更先进的方法，这些方法试图在保持 DPO 简洁性的同时恢复在线探索能力。

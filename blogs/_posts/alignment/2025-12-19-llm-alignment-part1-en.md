@@ -35,12 +35,29 @@ Reinforcement learning provides a different perspective:
 - Define the reward function using human preferences
 - Optimize the policy by maximizing rewards
 
-```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Pre-training   │────▶│       SFT        │────▶│   RL Alignment   │
-│ Next Token Pred  │     │ Imitate quality  │     │ Optimize prefs   │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
-     Can speak            Can answer Qs          Act as humans expect
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Pre-training
+    \node[box, fill=blue!20] (pt) at (0, 0) {Pre-training\\(Next Token Prediction)};
+
+    % SFT
+    \node[box, fill=green!20] (sft) at (5, 0) {SFT\\(Imitate Quality)};
+
+    % RLHF
+    \node[box, fill=orange!20] (rlhf) at (10, 0) {RL Alignment\\(Optimize Preferences)};
+
+    % Arrows
+    \draw[arrow] (pt) -- node[above, font=\small, yshift=5pt] {Language ability} (sft);
+    \draw[arrow] (sft) -- node[above, font=\small, yshift=5pt] {Instruction following} (rlhf);
+
+    % Labels
+    \node[font=\scriptsize, gray] at (0, -1) {Can speak};
+    \node[font=\scriptsize, gray] at (5, -1) {Can answer Qs};
+    \node[font=\scriptsize, gray] at (10, -1) {Act as humans expect};
+\end{tikzpicture}
 ```
 
 ## RL Modeling of LLM Alignment
@@ -56,12 +73,41 @@ Modeling the LLM alignment problem as an RL problem:
 > - **Trajectory** $\tau$: complete generation sequence $y = (y_1, y_2, \ldots, y_T)$
 > - **Reward** $r$: usually only given at the end of the sequence
 
-```
-State:  [x (prompt)] ──a₁──▶ [x, y₁] ──a₂──▶ [x, y₁, y₂] ─...─▶ [x, y₁:T] ──▶ r(x,y)
-                       │              │                                        │
-                      y₁             y₂                                     Reward
-                       │              │
-              π_θ(y₁|x)      π_θ(y₂|x,y₁)
+```tikz
+\begin{tikzpicture}[
+    state/.style={draw, rounded corners, fill=blue!15, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
+    action/.style={circle, draw, fill=orange!20, minimum size=0.6cm, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % State sequence
+    \node[state] (s0) at (0, 0) {$x$ (prompt)};
+    \node[state] (s1) at (3.5, 0) {$x, y_1$};
+    \node[state] (s2) at (7, 0) {$x, y_1, y_2$};
+    \node[font=\small] at (9.5, 0) {$\cdots$};
+    \node[state] (sT) at (12, 0) {$x, y_{1:T}$};
+
+    % Actions
+    \node[action] (a1) at (1.75, 1) {$y_1$};
+    \node[action] (a2) at (5.25, 1) {$y_2$};
+    \node[action] (aT) at (10.5, 1) {$y_T$};
+
+    % Reward
+    \node[font=\small, red] at (13.5, 0) {$r(x, y)$};
+
+    % Connections
+    \draw[arrow] (s0) -- (a1);
+    \draw[arrow] (a1) -- (s1);
+    \draw[arrow] (s1) -- (a2);
+    \draw[arrow] (a2) -- (s2);
+    \draw[arrow, dashed] (s2) -- (9, 0);
+    \draw[arrow] (10, 0) -- (aT);
+    \draw[arrow] (aT) -- (sT);
+    \draw[arrow, red] (sT) -- (13.2, 0);
+
+    % Labels
+    \node[font=\scriptsize, gray] at (1.75, 1.6) {$\pi_\theta(y_1|x)$};
+    \node[font=\scriptsize, gray] at (5.25, 1.6) {$\pi_\theta(y_2|x,y_1)$};
+\end{tikzpicture}
 ```
 
 Characteristics of LLM RL:
@@ -91,23 +137,54 @@ RLHF (Reinforcement Learning from Human Feedback) is the classic approach to LLM
 
 ### RLHF Overall Architecture
 
-```
-    Stage 1: SFT             Stage 2: RM              Stage 3: PPO
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Pretrained LLM  │     │   SFT Model     │     │   π_ref   r_φ   │
-└────────┬────────┘     └────────┬────────┘     └────┬───────┬────┘
-         │                       │                   │       │
-         ▼                       ▼                   ▼       ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Quality data   │     │ Preference data │     │   PPO Train     │
-│                 │     │  (x, y_w, y_l)  │     │                 │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   SFT Model     │     │  Reward Model   │     │ Aligned Model   │
-│     π_ref       │     │    r_φ(x,y)     │     │      π_θ        │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+```tikz
+\begin{tikzpicture}[scale=0.9, every node/.style={scale=0.9},
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center},
+    data/.style={draw, rounded corners, fill=gray!15, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Stage 1
+    \begin{scope}[shift={(-5, 0)}]
+        \node[box, fill=blue!20] (pt) at (0, 2) {Pretrained LLM};
+        \node[data] (sft_data) at (0, 0) {High-quality\\dialogue data};
+        \node[box, fill=green!20] (sft) at (0, -2) {SFT Model\\$\pi_{\text{ref}}$};
+
+        \draw[arrow] (pt) -- (sft);
+        \draw[arrow] (sft_data) -- (sft);
+
+        \node[font=\bfseries] at (0, 3.5) {Stage 1: SFT};
+    \end{scope}
+
+    % Stage 2
+    \begin{scope}[shift={(0, 0)}]
+        \node[box, fill=green!15] (sft2) at (0, 2) {SFT Model};
+        \node[data] (pref_data) at (0, 0) {Preference data\\$(x, y_w, y_l)$};
+        \node[box, fill=orange!20] (rm) at (0, -2) {Reward Model\\$r_\phi(x, y)$};
+
+        \draw[arrow] (sft2) -- (rm);
+        \draw[arrow] (pref_data) -- (rm);
+
+        \node[font=\bfseries] at (0, 3.5) {Stage 2: RM};
+    \end{scope}
+
+    % Stage 3
+    \begin{scope}[shift={(5.5, 0)}]
+        \node[box, fill=green!15] (ref) at (-1.8, 2) {$\pi_{\text{ref}}$};
+        \node[box, fill=orange!15] (rm2) at (1.8, 2) {$r_\phi$};
+        \node[box, fill=purple!20] (ppo) at (0, 0) {PPO Training};
+        \node[box, fill=red!20] (final) at (0, -2) {Aligned Model\\$\pi_\theta$};
+
+        \draw[arrow] (ref) -- (ppo);
+        \draw[arrow] (rm2) -- (ppo);
+        \draw[arrow] (ppo) -- (final);
+
+        \node[font=\bfseries] at (0, 3.5) {Stage 3: PPO};
+    \end{scope}
+
+    % Connection arrows
+    \draw[arrow, dashed, gray] (-3, -2) -- (-2, 2);
+    \draw[arrow, dashed, gray] (2, -2) -- (4, 2);
+\end{tikzpicture}
 ```
 
 ### Stage 1: Supervised Fine-Tuning (SFT)
@@ -182,20 +259,28 @@ The KL regularization term $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ is crucia
    - Constrain the optimization space, avoid policy collapse
    - Provide regularization effect
 
-```
-    E[r_φ]
-       ▲
-       │     ╭──────╮
-       │    ╱        ╲
-       │   ╱          ╲
-       │  ╱   最优权衡  ╲
-       │ ╱      ●       ╲
-       │╱                ╲
-       └────────────────────▶ KL(π_θ ‖ π_ref)
+```tikz
+\begin{tikzpicture}[
+    arrow/.style={->, thick, >=stealth}
+]
+    % Axes
+    \draw[arrow] (-0.5, 0) -- (8, 0) node[right] {$\text{KL}(\pi_\theta \| \pi_{\text{ref}})$};
+    \draw[arrow] (0, -0.5) -- (0, 5) node[above] {$\mathbb{E}[r_\phi]$};
 
-       ↑                  ↑
-    KL太小             KL太大
-   改进有限          Reward Hacking
+    % Curve
+    \draw[thick, blue, domain=0.2:7, samples=100] plot (\x, {4 - 0.8*(\x-3)^2/9 + 0.5*ln(\x)});
+
+    % Optimal point
+    \fill[red] (2.5, 3.8) circle (3pt);
+    \node[font=\small, red] at (2.5, 4.3) {Optimal tradeoff};
+
+    % Region labels
+    \node[font=\scriptsize, align=center] at (1, 2) {KL too small\\Limited improvement};
+    \node[font=\scriptsize, align=center] at (6, 2) {KL too large\\Reward Hacking};
+
+    % Beta's effect
+    \draw[dashed, gray] (0, 3.8) -- (2.5, 3.8) -- (2.5, 0);
+\end{tikzpicture}
 ```
 
 #### PPO Update Process
@@ -317,15 +402,20 @@ The $\beta \log Z(x)$ terms cancel out!
 
 Maximize the log-likelihood of preference data, replace $\pi^*$ with $\pi_\theta$, and we get the DPO Loss.
 
-```
-RLHF Objective                   ──KL-RL closed form──▶    Optimal Policy Closed Form
-max E[r] - β·KL                                          π* ∝ π_ref exp(r/β)
-                                                              │
-                                                          Take log
-                                                              │
-                                                              ▼
-DPO Loss              ◀──Substitute into BT model──    Solve for reward
-Z(x) cancels                                      r = β log(π*/π_ref) + β log Z
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=3.5cm, minimum height=1cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box] (rlhf) at (0, 3) {RLHF Objective\\$\max \mathbb{E}[r] - \beta \cdot \text{KL}$};
+    \node[box] (opt) at (0, 1) {Optimal Policy Closed Form\\$\pi^* \propto \pi_{\text{ref}} \exp(r/\beta)$};
+    \node[box] (reward) at (0, -1) {Solve for reward\\$r = \beta \log \frac{\pi^*}{\pi_{\text{ref}}} + \beta \log Z$};
+    \node[box, fill=green!20] (dpo) at (0, -3) {DPO Loss\\$Z(x)$ cancels};
+
+    \draw[arrow] (rlhf) -- node[right, font=\small] {KL-RL closed form} (opt);
+    \draw[arrow] (opt) -- node[right, font=\small] {Take log} (reward);
+    \draw[arrow] (reward) -- node[right, font=\small] {Substitute into BT} (dpo);
+\end{tikzpicture}
 ```
 
 > **DPO's Core Insights**:
@@ -382,16 +472,29 @@ DPO limitations:
    - Only needs 2 models ($\pi_\theta$ and $\pi_{\text{ref}}$)
    - Limitations: No exploration ability, limited improvement on difficult tasks
 
-```
-    Method Evolution
-┌─────────────────┐           ┌─────────────────┐
-│     RLHF        │ ─Simplify─│      DPO        │
-│   (2020-2022)   │           │    (2023)       │
-├─────────────────┤           ├─────────────────┤
-│ Need RM+Critic  │           │ Offline train   │
-│ Complex impl    │           │ No exploration  │
-│ 4 models        │           │ 2 models        │
-└─────────────────┘           └─────────────────┘
+```tikz
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=2cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (rlhf) at (0, 0) {
+        \textbf{RLHF}\\[3pt]
+        (2020-2022)\\[3pt]
+        \scriptsize Need RM + Critic\\[-1pt]
+        \scriptsize Complex impl\\[-1pt]
+        \scriptsize 4 models
+    };
+
+    \node[box, fill=green!20] (dpo) at (6, 0) {
+        \textbf{DPO}\\[3pt]
+        (2023)\\[3pt]
+        \scriptsize Offline training\\[-1pt]
+        \scriptsize No exploration\\[-1pt]
+        \scriptsize 2 models
+    };
+
+    \draw[arrow] (rlhf) -- node[above, font=\small] {Simplify} (dpo);
+\end{tikzpicture}
 ```
 
 The next article will introduce more advanced methods such as GRPO, KL estimators, PRM, and Long CoT RL, which attempt to restore online exploration capabilities while maintaining DPO's simplicity.

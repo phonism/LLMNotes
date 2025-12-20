@@ -105,15 +105,33 @@ Action $a_t$ only affects future rewards, not past rewards. Therefore, we can re
 
 REINFORCE is the simplest Policy Gradient algorithm, using Monte Carlo sampling directly to estimate the gradient.
 
-```
-Algorithm: REINFORCE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-For each episode:
-    Sample trajectory τ = (s₀, a₀, r₀, ..., sₜ) following policy πθ
-    For t = 0, 1, ..., T:
-        Compute Gₜ = Σₖ γᵏ rₜ₊ₖ
-    Update parameters: θ ← θ + α Σₜ ∇θ log πθ(aₜ|sₜ) · Gₜ
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.8]
+    % Title
+    \node[font=\bfseries] at (0,4) {REINFORCE};
+    \draw[thick] (-5,3.7) -- (5,3.7);
+
+    % Main loop
+    \draw[rounded corners, thick, blue!50] (-4.8,3.2) rectangle (4.8,-2.2);
+    \node[anchor=west, blue!70] at (-4.5,2.9) {\textbf{For each episode:}};
+
+    \node[anchor=west, font=\small] at (-4.2,2.2) {Sample trajectory $\tau = (s_0, a_0, r_0, \ldots, s_T)$ from $\pi_\theta$};
+
+    % Inner loop
+    \draw[rounded corners, thick, green!50!black] (-4.5,1.6) rectangle (4.5,0.4);
+    \node[anchor=west, green!60!black, font=\small] at (-4.2,1.3) {\textbf{For} $t = 0, 1, \ldots, T$\textbf{:}};
+    \node[anchor=west, font=\small] at (-4,0.7) {Compute $G_t = \sum_{k=0}^{T-t} \gamma^k r_{t+k}$};
+
+    % Update
+    \node[anchor=west, font=\small] at (-4.2,-0.2) {Update: $\theta \leftarrow \theta + \alpha \sum_t \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot G_t$};
+
+    % Key insight box
+    \draw[rounded corners, thick, orange!70] (-4.5,-1) rectangle (4.5,-1.9);
+    \node[font=\small] at (0,-1.45) {Monte Carlo: use actual returns $G_t$};
+\end{tikzpicture}
+</script>
+</div>
 
 **REINFORCE is an unbiased estimator**: $\mathbb{E}[\hat{g}] = \nabla_\theta J(\theta)$
 
@@ -190,20 +208,46 @@ To estimate $\hat{V}(s)$, we introduce a **Critic** network. Actor-Critic method
 - **Actor**: Policy network $\pi_\theta(a|s)$, outputs action distribution
 - **Critic**: Value network $\hat{V}_\phi(s)$, estimates state value
 
-```
-           ┌──────────────────┐
-    s ───► │ Actor πθ(a|s)    │ ───► a ~ πθ ───► Environment
-           └────────┬─────────┘                      │
-                    │                                │
-           ┌────────┴─────────┐                      │
-    s ───► │ Critic V̂φ(s)    │ ◄──── s', r ─────────┘
-           └────────┬─────────┘
-                    │
-                 Âₜ (advantage)
-                    │
-                    ▼
-              Update Actor
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.85]
+    % Actor box
+    \draw[rounded corners, fill=blue!15, thick] (-2,2) rectangle (2,3.5);
+    \node at (0,3.1) {\textbf{Actor}};
+    \node at (0,2.5) {$\pi_\theta(a|s)$};
+
+    % Critic box
+    \draw[rounded corners, fill=green!15, thick] (-2,-0.5) rectangle (2,1);
+    \node at (0,0.6) {\textbf{Critic}};
+    \node at (0,0) {$\hat{V}_\phi(s)$};
+
+    % Environment box
+    \draw[rounded corners, fill=orange!20, thick] (5,0.5) rectangle (8,2.5);
+    \node at (6.5,1.5) {\textbf{Environment}};
+
+    % State input
+    \node[left] at (-3,2.75) {$s$};
+    \draw[->, thick] (-3,2.75) -- (-2,2.75);
+    \draw[->, thick] (-3,0.25) -- (-2,0.25);
+    \node[left] at (-3,0.25) {$s$};
+
+    % Actor to Environment
+    \draw[->, thick, blue!70] (2,2.75) -- (5,2.75) -- (5,2);
+    \node[above] at (3.5,2.75) {$a \sim \pi_\theta$};
+
+    % Environment feedback
+    \draw[->, thick, red!70] (8,1.5) -- (9,1.5) -- (9,-1) -- (0,-1) -- (0,-0.5);
+    \node[right] at (9,0.25) {$s', r$};
+
+    % Advantage calculation
+    \draw[->, thick, green!60!black] (0,1) -- (0,2);
+    \node[right] at (0.2,1.5) {$\hat{A}_t$};
+
+    % Update arrow
+    \node[below] at (0,-1.5) {\small Update Actor with $\nabla_\theta \log \pi_\theta \cdot \hat{A}_t$};
+\end{tikzpicture}
+</script>
+</div>
 
 **A2C (Advantage Actor-Critic)** core update rules:
 
@@ -325,24 +369,41 @@ where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a|s)]$ is the entropy of the 
 
 ### 8.4 Complete PPO Algorithm
 
-```
-Algorithm: Proximal Policy Optimization (PPO)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-For iteration = 1, 2, ...:
-    Data collection: Collect N trajectories using current policy πθ
-    Compute GAE advantage Âₜ (using V̂φ)
-    Compute return R̂ₜ = Âₜ + V̂φ(sₜ) (as Critic target)
-    Record π_old = πθ (fixed, for computing ρₜ)
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.7]
+    % Title
+    \node[font=\bfseries] at (0,7.5) {Proximal Policy Optimization (PPO)};
+    \draw[thick] (-7,7.2) -- (7,7.2);
 
-    Policy update: For k = 1, ..., K:
-        For mini-batch data compute:
-        - ρₜ = πθ(aₜ|sₜ) / π_old(aₜ|sₜ)
-        - L^CLIP = E[min(ρₜ Âₜ, clip(ρₜ, 1-ε, 1+ε) Âₜ)]
-        - L^Value = E[(V̂φ(sₜ) - R̂ₜ)²]
-        - L^Entropy = -E[log πθ(aₜ|sₜ)]
-        Total objective: L = L^CLIP - c₁ L^Value + c₂ L^Entropy
-        Gradient ascent update θ, gradient descent update φ
-```
+    % Outer loop
+    \draw[rounded corners, thick, blue!50] (-6.8,6.8) rectangle (6.8,-4.5);
+    \node[anchor=west, blue!70] at (-6.5,6.5) {\textbf{For iteration} $= 1, 2, \ldots$\textbf{:}};
+
+    % Data collection phase
+    \node[anchor=west, font=\small] at (-6.2,5.8) {\textbf{Data Collection:}};
+    \node[anchor=west, font=\small] at (-5.8,5.1) {Collect $N$ trajectories using $\pi_\theta$};
+    \node[anchor=west, font=\small] at (-5.8,4.4) {Compute GAE: $\hat{A}_t$ using $\hat{V}_\phi$};
+    \node[anchor=west, font=\small] at (-5.8,3.7) {Compute returns: $\hat{R}_t = \hat{A}_t + \hat{V}_\phi(s_t)$};
+    \node[anchor=west, font=\small] at (-5.8,3.0) {Store $\pi_{\text{old}} = \pi_\theta$ (fixed)};
+
+    % Inner loop
+    \draw[rounded corners, thick, green!50!black] (-6.5,2.3) rectangle (6.5,-4);
+    \node[anchor=west, green!60!black, font=\small] at (-6.2,2) {\textbf{Policy Update: For} $k = 1, \ldots, K$\textbf{:}};
+
+    \node[anchor=west, font=\small] at (-5.8,1.3) {Compute importance ratio: $\rho_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{\text{old}}(a_t|s_t)}$};
+    \node[anchor=west, font=\small] at (-5.8,0.5) {$L^{\text{CLIP}} = \mathbb{E}[\min(\rho_t \hat{A}_t, \text{clip}(\rho_t, 1\!-\!\epsilon, 1\!+\!\epsilon)\hat{A}_t)]$};
+    \node[anchor=west, font=\small] at (-5.8,-0.3) {$L^{\text{Value}} = \mathbb{E}[(\hat{V}_\phi(s_t) - \hat{R}_t)^2]$};
+    \node[anchor=west, font=\small] at (-5.8,-1.1) {$L^{\text{Entropy}} = -\mathbb{E}[\log \pi_\theta(a_t|s_t)]$};
+
+    % Total objective box
+    \draw[rounded corners, thick, orange!70, fill=orange!10] (-5.5,-1.7) rectangle (6,-2.7);
+    \node[font=\small] at (0.25,-2.2) {$L = L^{\text{CLIP}} - c_1 L^{\text{Value}} + c_2 L^{\text{Entropy}}$};
+
+    \node[anchor=west, font=\small] at (-5.8,-3.4) {Gradient ascent on $\theta$, gradient descent on $\phi$};
+\end{tikzpicture}
+</script>
+</div>
 
 > **Reasons for PPO's Success**:
 > 1. **Simple and efficient**: Only needs first-order optimization, no Hessian computation required
@@ -379,12 +440,12 @@ For iteration = 1, 2, ...:
    - TRPO: KL-constrained optimization, complex implementation
    - PPO: Clip mechanism, simple and efficient, the preferred choice in practice
 
-```
-Evolution of Policy Gradient Methods:
-
-REINFORCE ──► + Baseline ──► Actor-Critic ──► + GAE ──► PPO
-(unbiased,      (reduce        (learn          (λ         (stable,
-high variance)  variance)      Critic)         tradeoff)  efficient)
-```
+<div class="mermaid">
+graph LR
+    R["REINFORCE<br/><small>unbiased, high variance</small>"] -->|"+Baseline"| B["+ Baseline<br/><small>reduce variance</small>"]
+    B -->|"+Critic"| AC["Actor-Critic<br/><small>learn Critic</small>"]
+    AC -->|"+GAE"| GAE["+ GAE<br/><small>λ tradeoff</small>"]
+    GAE -->|"+Clip"| PPO["PPO<br/><small>stable, efficient</small>"]
+</div>
 
 The next article will introduce Model-Based RL and multi-agent learning, including MCTS and AlphaGo/Zero.
