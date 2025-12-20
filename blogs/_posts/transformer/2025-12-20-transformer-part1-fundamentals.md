@@ -5,6 +5,7 @@ date: 2025-12-20 10:00:00
 author: Phonism
 tags: [Transformer, LLM, Scaling Law, GPU]
 lang: zh
+translation: /transformer-part1-fundamentals-en/
 ---
 
 从 RNN 到 LSTM 再到 Transformer，序列建模的范式经历了根本性转变。2017 年 Vaswani 等人提出的 Transformer 架构完全摒弃循环结构，仅使用注意力机制建模序列依赖，开启了大语言模型（LLM）时代。
