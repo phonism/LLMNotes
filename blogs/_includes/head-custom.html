@@ -1,4 +1,36 @@
 {% include mathjax.html %}
+
+<!-- Mermaid 图表支持 -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
+<!-- TikZJax: 在浏览器中直接渲染 TikZ 代码 -->
+<link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css">
+<script src="https://tikzjax.com/v1/tikzjax.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: theme === 'light' ? 'neutral' : 'dark',
+      themeVariables: theme === 'light' ? {} : {
+        primaryColor: '#1a1a1a',
+        primaryTextColor: '#b5e853',
+        primaryBorderColor: '#b5e853',
+        lineColor: '#b5e853',
+        secondaryColor: '#0d0d0d',
+        tertiaryColor: '#333',
+        background: '#1a1a1a',
+        mainBkg: '#1a1a1a',
+        nodeBorder: '#b5e853',
+        clusterBkg: '#0d0d0d',
+        clusterBorder: '#b5e853',
+        titleColor: '#b5e853',
+        edgeLabelBackground: '#1a1a1a'
+      }
+    });
+  });
+</script>
+
 <style>
   /* Geek 风格增强 */
   body {
@@ -172,6 +204,46 @@
   th {
     background: #1a1a1a;
     color: #b5e853;
+  }
+
+  /* Mermaid 图表样式 */
+  .mermaid {
+    background: #0d0d0d;
+    border: 1px solid #b5e853;
+    border-radius: 6px;
+    padding: 1em;
+    margin: 1em 0;
+    text-align: center;
+  }
+
+  [data-theme="light"] .mermaid {
+    background: #f8f8f8;
+    border-color: #2d7d2d;
+  }
+
+  /* TikZ 图表样式 */
+  .tikz-container {
+    background: #0d0d0d;
+    border: 1px solid #b5e853;
+    border-radius: 6px;
+    padding: 1em;
+    margin: 1em 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+
+  [data-theme="light"] .tikz-container {
+    background: #f8f8f8;
+    border-color: #2d7d2d;
+  }
+
+  /* TikZJax 输出反色适配深色主题 */
+  .tikz-container svg {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
+  [data-theme="light"] .tikz-container svg {
+    filter: none;
   }
 </style>
 

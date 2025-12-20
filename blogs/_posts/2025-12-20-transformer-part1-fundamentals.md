@@ -89,19 +89,25 @@ $$I_{\text{critical}} = \frac{\text{Peak FLOPs/s}}{\text{Memory Bandwidth}}$$
 - 当 $I < I_{\text{critical}}$ 时，程序是 **Memory-bound**
 - 当 $I > I_{\text{critical}}$ 时，程序是 **Compute-bound**
 
-```
-Performance
-    ^
-    |                    ______ Compute-bound (峰值计算)
-    |                   /
-    |                  /
-    |                 /  Memory-bound
-    |                /   (带宽受限)
-    |               /
-    |              /
-    +-------------/-----------------------> Arithmetic Intensity
-                 I_critical
-```
+<div class="tikz-container">
+<script type="text/tikz">
+\begin{tikzpicture}[scale=0.9]
+    % Axes
+    \draw[->] (0,0) -- (8,0) node[right] {Arithmetic Intensity (FLOPs/Byte)};
+    \draw[->] (0,0) -- (0,5) node[above] {Performance (FLOPs/s)};
+    % Roofline
+    \draw[thick, blue] (0,0) -- (3,4) node[midway, above, sloped] {Memory-bound};
+    \draw[thick, red] (3,4) -- (8,4) node[midway, above] {Compute-bound};
+    % Critical point
+    \fill (3,4) circle (2pt) node[above left] {$I_{\text{critical}}$};
+    % Peak lines (dashed)
+    \draw[dashed, gray] (0,4) -- (3,4);
+    \draw[dashed, gray] (3,0) -- (3,4);
+    % Labels
+    \node[left] at (0,4) {Peak FLOPs/s};
+\end{tikzpicture}
+</script>
+</div>
 
 ### 2.4 主流 AI 加速器规格
 
