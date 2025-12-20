@@ -1,10 +1,11 @@
 ---
 layout: post
-title: "Transformer 深度解析（六）：评测与 Benchmark"
-date: 2025-12-20
+title: "Transformer 学习笔记（六）：评测与 Benchmark"
+date: 2025-12-20 10:50:00
 categories: [Deep Learning, Transformer]
 tags: [Evaluation, Benchmark, MMLU, LiveCodeBench, Chatbot Arena]
 math: true
+lang: zh
 ---
 
 本文是 Transformer 系列的第六篇，系统介绍大语言模型的 **评测与 Benchmark**。评测是一个复杂且快速演进的领域，本文重点关注 2024 年以来顶级模型普遍采用的评测基准。
