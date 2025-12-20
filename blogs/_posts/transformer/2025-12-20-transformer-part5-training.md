@@ -1,10 +1,12 @@
 ---
 layout: post
-title: "Transformer 深度解析（五）：训练技术全景"
-date: 2025-12-20
+title: "Transformer 学习笔记（五）：训练技术全景"
+date: 2025-12-20 10:40:00
 categories: [Deep Learning, Transformer]
 tags: [Data Engineering, Distributed Training, ZeRO, FSDP, Muon Optimizer]
 math: true
+lang: zh
+translation: /transformer-part5-training-en/
 ---
 
 本文是 Transformer 系列的第五篇，全面解析大模型的 **训练技术**，包括数据工程、分布式训练框架和新型优化器。这些技术共同支撑了千亿参数模型的高效训练。

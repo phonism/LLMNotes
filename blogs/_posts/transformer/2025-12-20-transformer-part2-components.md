@@ -5,6 +5,7 @@ date: 2025-12-20 10:10:00
 author: Phonism
 tags: [Transformer, Tokenizer, RoPE, SwiGLU]
 lang: zh
+translation: /transformer-part2-components-en/
 ---
 
 Transformer 的强大能力建立在三个精心设计的核心组件之上：分词器（Tokenizer）将文本转换为模型可处理的离散符号；位置编码（Position Encoding）为自注意力机制注入序列顺序信息；门控机制（Gating）让网络学会选择性地传递信息。
