@@ -592,8 +592,12 @@ repeat until convergence:
     // Network training
     Sample batch from training data
     Minimize loss: L(θ) = (z - v_θ(s))² - π_MCTS^T log p_θ(s) + c‖θ‖²
-                       └───value loss───┘  └───policy loss────┘  └regularization┘
 ```
+
+Where each loss term means:
+- **$(z - v_\theta(s))^2$**: Value loss, making value prediction approach game outcome
+- **$-\pi_{\text{MCTS}}^\top \log p_\theta(s)$**: Policy loss, making policy approach MCTS search result
+- **$c\|\theta\|^2$**: L2 regularization term
 
 **AlphaZero's Core Insights**:
 1. **MCTS as policy improvement**: Search-generated $\pi_{\text{MCTS}}$ is better than raw network $p_\theta$
