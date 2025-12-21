@@ -5,7 +5,7 @@ date: 2025-12-19 07:00:00
 author: Phonism
 tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
 lang: zh
-translation: /value-based-rl-en/
+translation: /en/value-based-rl/
 ---
 
 在上一篇文章中，我们定义了价值函数 $V^\pi(s)$ 和 $Q^\pi(s,a)$，它们衡量了给定策略 $\pi$ 下状态或状态-动作对的"好坏"。现在自然的问题是：

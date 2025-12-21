@@ -5,7 +5,7 @@ date: 2025-12-19 01:00:00
 author: Phonism
 tags: [LoRA, RL, RLHF, Information Theory]
 lang: zh
-translation: /lora-information-bandwidth-rl-en/
+translation: /en/lora-information-bandwidth-rl/
 ---
 
 ## 引言

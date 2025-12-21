@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Tags
-permalink: /tags-en/
+permalink: /en/tags/
 lang: en
 translation: /tags/
 ---

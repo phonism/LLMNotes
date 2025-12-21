@@ -6,7 +6,7 @@ categories: [Deep Learning, Transformer]
 tags: [Multimodal, Reasoning, GPT-4o, DeepSeek-R1, VLM]
 math: true
 lang: zh
-translation: /transformer-part8-frontiers-en/
+translation: /en/transformer-part8-frontiers/
 ---
 
 本文是 Transformer 系列的最后一篇，探讨大语言模型的 **前沿应用**：多模态大模型和推理大模型。这两个方向代表了当前 AI 研究的最前沿，正在深刻改变我们对智能的理解。

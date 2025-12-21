@@ -5,7 +5,7 @@ date: 2025-12-19 05:00:00
 author: Phonism
 tags: [RL, Model-Based, MARL, MCTS, AlphaZero]
 lang: zh
-translation: /model-based-marl-en/
+translation: /en/model-based-marl/
 ---
 
 本文是强化学习系列的第四篇，介绍 Model-Based RL 和 Multi-Agent RL 的核心概念，从样本效率的追求出发，讲解 World Model、Dyna 架构、MCTS，最后以 AlphaGo/AlphaZero 为例展示这些技术的强大组合，并介绍博弈论基础和 Self-Play 方法。
