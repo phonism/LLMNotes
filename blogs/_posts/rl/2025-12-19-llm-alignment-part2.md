@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "RL 学习笔记（六）：GRPO 与 Long CoT RL"
-date: 2025-12-19 03:00:00
+date: 2025-12-19 08:00:00
 author: Phonism
 tags: [RL, LLM, GRPO, PRM, Long-CoT, Alignment]
 lang: zh
