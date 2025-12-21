@@ -3,7 +3,7 @@ layout: default
 title: Tags
 permalink: /tags/
 lang: zh
-translation: /tags-en/
+translation: /en/tags/
 ---
 
 # Tags
