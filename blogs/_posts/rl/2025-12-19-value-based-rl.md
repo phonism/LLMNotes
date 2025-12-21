@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "RL 学习笔记（二）：Bellman 方程与 DQN"
-date: 2025-12-19 07:00:00
+date: 2025-12-19 04:00:00
 author: Phonism
 tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
 lang: zh

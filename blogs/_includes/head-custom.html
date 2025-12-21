@@ -32,6 +32,12 @@
 </script>
 
 <style>
+  /* 防止移动端横向滚动 */
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
   /* Geek 风格增强 */
   body {
     font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
@@ -192,18 +198,63 @@
     padding-left: 1em;
   }
 
+  /* 表格容器：支持横向滚动 */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 1em 0;
+  }
+
   table {
     border-collapse: collapse;
+    min-width: 100%;
   }
 
   th, td {
     border: 1px solid #333;
     padding: 8px 12px;
+    white-space: nowrap;
   }
 
   th {
     background: #1a1a1a;
     color: #b5e853;
+  }
+
+  /* MathJax 公式容器：支持横向滚动 */
+  mjx-container {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 块级公式额外处理 */
+  mjx-container[display="true"] {
+    display: block !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5em 0;
+    margin: 0.5em 0;
+  }
+
+  /* 移动端公式缩小 */
+  @media (max-width: 600px) {
+    mjx-container {
+      font-size: 90% !important;
+    }
+    mjx-container[display="true"] {
+      font-size: 85% !important;
+    }
+  }
+
+  @media (max-width: 400px) {
+    mjx-container {
+      font-size: 80% !important;
+    }
+    mjx-container[display="true"] {
+      font-size: 75% !important;
+    }
   }
 
   /* Mermaid 图表样式 */
@@ -277,6 +328,16 @@
       if (link.hostname !== window.location.hostname) {
         link.setAttribute('target', '_blank');
         link.setAttribute('rel', 'noopener noreferrer');
+      }
+    });
+
+    // 给表格添加滚动容器
+    document.querySelectorAll('table').forEach(function(table) {
+      if (!table.parentElement.classList.contains('table-wrapper')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-wrapper';
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
       }
     });
   });
