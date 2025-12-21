@@ -35,7 +35,7 @@ translation: /en/llm-alignment-part1/
 - 用人类偏好定义奖励函数
 - 通过最大化奖励来优化策略
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
     arrow/.style={->, thick, >=stealth}
@@ -58,7 +58,7 @@ translation: /en/llm-alignment-part1/
     \node[font=\scriptsize, gray] at (5, -1) {能回答问题};
     \node[font=\scriptsize, gray] at (10, -1) {按人类期望行事};
 \end{tikzpicture}
-```
+</script>
 
 ## LLM 对齐的 RL 建模
 
@@ -73,7 +73,7 @@ translation: /en/llm-alignment-part1/
 > - **Trajectory** $\tau$：完整的生成序列 $y = (y_1, y_2, \ldots, y_T)$
 > - **Reward** $r$：通常只在序列结束时给出
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     state/.style={draw, rounded corners, fill=blue!15, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
     action/.style={circle, draw, fill=orange!20, minimum size=0.6cm, font=\scriptsize},
@@ -108,7 +108,7 @@ translation: /en/llm-alignment-part1/
     \node[font=\scriptsize, gray] at (1.75, 1.6) {$\pi_\theta(y_1|x)$};
     \node[font=\scriptsize, gray] at (5.25, 1.6) {$\pi_\theta(y_2|x,y_1)$};
 \end{tikzpicture}
-```
+</script>
 
 LLM RL 的特点：
 - **动作空间巨大**：词表通常有 10 万+ token
@@ -137,7 +137,7 @@ RLHF（Reinforcement Learning from Human Feedback）是 LLM 对齐的经典方�
 
 ### RLHF 整体架构
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[scale=0.9, every node/.style={scale=0.9},
     box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center},
     data/.style={draw, rounded corners, fill=gray!15, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
@@ -185,7 +185,7 @@ RLHF（Reinforcement Learning from Human Feedback）是 LLM 对齐的经典方�
     \draw[arrow, dashed, gray] (-3, -2) -- (-2, 2);
     \draw[arrow, dashed, gray] (2, -2) -- (4, 2);
 \end{tikzpicture}
-```
+</script>
 
 ### Stage 1: Supervised Fine-Tuning (SFT)
 
@@ -259,7 +259,7 @@ KL 正则项 $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ 至关重要：
    - 约束优化空间，避免策略崩溃
    - 提供正则化效果
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     arrow/.style={->, thick, >=stealth}
 ]
@@ -281,7 +281,7 @@ KL 正则项 $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ 至关重要：
     % beta 的作用
     \draw[dashed, gray] (0, 3.8) -- (2.5, 3.8) -- (2.5, 0);
 \end{tikzpicture}
-```
+</script>
 
 #### PPO 更新流程
 
@@ -402,7 +402,7 @@ $\beta \log Z(x)$ 项相消了！
 
 最大化偏好数据的 log-likelihood，用 $\pi_\theta$ 代替 $\pi^*$，得到 DPO Loss。
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, fill=blue!10, minimum width=3.5cm, minimum height=1cm, align=center},
     arrow/.style={->, thick, >=stealth}
@@ -416,7 +416,7 @@ $\beta \log Z(x)$ 项相消了！
     \draw[arrow] (opt) -- node[right, font=\small] {取对数} (reward);
     \draw[arrow] (reward) -- node[right, font=\small] {代入 BT 模型} (dpo);
 \end{tikzpicture}
-```
+</script>
 
 > **DPO 的核心洞察**：
 > 1. KL 正则 RL 问题有闭式解，最优策略是参考策略的指数重加权
@@ -472,7 +472,7 @@ DPO 的局限：
    - 只需 2 个模型（$\pi_\theta$ 和 $\pi_{\text{ref}}$）
    - 局限：无探索能力，难任务提升有限
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=2cm, align=center},
     arrow/.style={->, thick, >=stealth}
@@ -495,6 +495,6 @@ DPO 的局限：
 
     \draw[arrow] (rlhf) -- node[above, font=\small] {简化} (dpo);
 \end{tikzpicture}
-```
+</script>
 
 下一篇将介绍 GRPO、KL 估计器、PRM 以及 Long CoT RL 等更先进的方法，这些方法试图在保持 DPO 简洁性的同时恢复在线探索能力。

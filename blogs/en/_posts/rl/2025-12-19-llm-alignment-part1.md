@@ -35,7 +35,7 @@ Reinforcement learning provides a different perspective:
 - Define the reward function using human preferences
 - Optimize the policy by maximizing rewards
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
     arrow/.style={->, thick, >=stealth}
@@ -58,7 +58,7 @@ Reinforcement learning provides a different perspective:
     \node[font=\scriptsize, gray] at (5, -1) {Can answer Qs};
     \node[font=\scriptsize, gray] at (10, -1) {Act as humans expect};
 \end{tikzpicture}
-```
+</script>
 
 ## RL Modeling of LLM Alignment
 
@@ -73,7 +73,7 @@ Modeling the LLM alignment problem as an RL problem:
 > - **Trajectory** $\tau$: complete generation sequence $y = (y_1, y_2, \ldots, y_T)$
 > - **Reward** $r$: usually only given at the end of the sequence
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     state/.style={draw, rounded corners, fill=blue!15, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
     action/.style={circle, draw, fill=orange!20, minimum size=0.6cm, font=\scriptsize},
@@ -108,7 +108,7 @@ Modeling the LLM alignment problem as an RL problem:
     \node[font=\scriptsize, gray] at (1.75, 1.6) {$\pi_\theta(y_1|x)$};
     \node[font=\scriptsize, gray] at (5.25, 1.6) {$\pi_\theta(y_2|x,y_1)$};
 \end{tikzpicture}
-```
+</script>
 
 Characteristics of LLM RL:
 - **Huge action space**: Vocabulary typically has 100k+ tokens
@@ -137,7 +137,7 @@ RLHF (Reinforcement Learning from Human Feedback) is the classic approach to LLM
 
 ### RLHF Overall Architecture
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[scale=0.9, every node/.style={scale=0.9},
     box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center},
     data/.style={draw, rounded corners, fill=gray!15, minimum width=2cm, minimum height=0.8cm, align=center, font=\small},
@@ -185,7 +185,7 @@ RLHF (Reinforcement Learning from Human Feedback) is the classic approach to LLM
     \draw[arrow, dashed, gray] (-3, -2) -- (-2, 2);
     \draw[arrow, dashed, gray] (2, -2) -- (4, 2);
 \end{tikzpicture}
-```
+</script>
 
 ### Stage 1: Supervised Fine-Tuning (SFT)
 
@@ -259,7 +259,7 @@ The KL regularization term $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ is crucia
    - Constrain the optimization space, avoid policy collapse
    - Provide regularization effect
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     arrow/.style={->, thick, >=stealth}
 ]
@@ -281,7 +281,7 @@ The KL regularization term $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ is crucia
     % Beta's effect
     \draw[dashed, gray] (0, 3.8) -- (2.5, 3.8) -- (2.5, 0);
 \end{tikzpicture}
-```
+</script>
 
 #### PPO Update Process
 
@@ -402,7 +402,7 @@ The $\beta \log Z(x)$ terms cancel out!
 
 Maximize the log-likelihood of preference data, replace $\pi^*$ with $\pi_\theta$, and we get the DPO Loss.
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, fill=blue!10, minimum width=3.5cm, minimum height=1cm, align=center},
     arrow/.style={->, thick, >=stealth}
@@ -416,7 +416,7 @@ Maximize the log-likelihood of preference data, replace $\pi^*$ with $\pi_\theta
     \draw[arrow] (opt) -- node[right, font=\small] {Take log} (reward);
     \draw[arrow] (reward) -- node[right, font=\small] {Substitute into BT} (dpo);
 \end{tikzpicture}
-```
+</script>
 
 > **DPO's Core Insights**:
 > 1. The KL-regularized RL problem has a closed-form solution, the optimal policy is exponential reweighting of the reference policy
@@ -472,7 +472,7 @@ DPO limitations:
    - Only needs 2 models ($\pi_\theta$ and $\pi_{\text{ref}}$)
    - Limitations: No exploration ability, limited improvement on difficult tasks
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=2cm, align=center},
     arrow/.style={->, thick, >=stealth}
@@ -495,6 +495,6 @@ DPO limitations:
 
     \draw[arrow] (rlhf) -- node[above, font=\small] {Simplify} (dpo);
 \end{tikzpicture}
-```
+</script>
 
 The next article will introduce more advanced methods such as GRPO, KL estimators, PRM, and Long CoT RL, which attempt to restore online exploration capabilities while maintaining DPO's simplicity.

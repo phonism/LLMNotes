@@ -31,7 +31,7 @@ GRPO's approach: **Use group-relative rewards to replace the Critic**, achieving
 >
 > where $\bar{R} = \frac{1}{G}\sum_i R_i$ is the group mean, $\text{Std}(R)$ is the group standard deviation.
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     sample/.style={circle, draw, minimum size=0.6cm, font=\scriptsize},
     arrow/.style={->, thick, >=stealth}
@@ -68,7 +68,7 @@ GRPO's approach: **Use group-relative rewards to replace the Critic**, achieving
     % Explanation
     \node[font=\small, align=center] at (5, -3) {Group-relative comparison:\\boost above mean, suppress below mean};
 \end{tikzpicture}
-```
+</script>
 
 Advantages of group normalization:
 1. **No Critic needed**: Use group mean to replace value function estimation
@@ -255,7 +255,7 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
 >   - Input: $(x, y_{\leq t})$
 >   - Output: Correctness score up to step $t$
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     step/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.6cm, font=\small},
     arrow/.style={->, thick, >=stealth}
@@ -293,7 +293,7 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
         \node[font=\bfseries] at (3, 1.2) {PRM: Evaluates each step};
     \end{scope}
 \end{tikzpicture}
-```
+</script>
 
 ### Advantages of PRM
 
@@ -329,7 +329,7 @@ RL training for long Chain-of-Thought sequences (Long CoT) faces unique challeng
 
 3. **Sparse reward harder**: Only the final answer has feedback, signal must propagate thousands of steps
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}
     \begin{axis}[
         width=10cm, height=5cm,
@@ -347,7 +347,7 @@ RL training for long Chain-of-Thought sequences (Long CoT) faces unique challeng
         \addlegendentry{Sequence-level IS (linear)}
     \end{axis}
 \end{tikzpicture}
-```
+</script>
 
 ### GSPO: Sequence-level IS
 
@@ -456,7 +456,7 @@ Both factors can cause first-order approximation to fail:
    - Sequence-level IS replaces token-level IS
    - Kimi, DeepSeek practical techniques
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
     arrow/.style={->, thick, >=stealth}
@@ -477,7 +477,7 @@ Both factors can cause first-order approximation to fail:
     \node[font=\scriptsize, gray, align=center] at (8, -1) {No Critic\\Group normalization};
     \node[font=\scriptsize, gray, align=center] at (12, -1) {Sequence-level IS\\Variance control};
 \end{tikzpicture}
-```
+</script>
 
 ## Series Summary
 

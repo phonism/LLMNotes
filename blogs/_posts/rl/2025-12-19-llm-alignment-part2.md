@@ -31,7 +31,7 @@ GRPO 的思路：**用组内相对奖励代替 Critic**，实现"无 Critic 的�
 >
 > 其中 $\bar{R} = \frac{1}{G}\sum_i R_i$ 是组内均值，$\text{Std}(R)$ 是组内标准差。
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     sample/.style={circle, draw, minimum size=0.6cm, font=\scriptsize},
     arrow/.style={->, thick, >=stealth}
@@ -68,7 +68,7 @@ GRPO 的思路：**用组内相对奖励代替 Critic**，实现"无 Critic 的�
     % 说明
     \node[font=\small, align=center] at (5, -3) {组内相对比较：\\高于均值的增强，低于均值的抑制};
 \end{tikzpicture}
-```
+</script>
 
 组内标准化的优势：
 1. **无需 Critic**：用组内均值代替价值函数估计
@@ -257,7 +257,7 @@ PRM 提供过程级监督，将稀疏的终局奖励变成密集的步级奖励�
 >   - 输入：$(x, y_{\leq t})$
 >   - 输出：到第 $t$ 步为止的正确性分数
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     step/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.6cm, font=\small},
     arrow/.style={->, thick, >=stealth}
@@ -295,7 +295,7 @@ PRM 提供过程级监督，将稀疏的终局奖励变成密集的步级奖励�
         \node[font=\bfseries] at (3, 1.2) {PRM：评估每个步骤};
     \end{scope}
 \end{tikzpicture}
-```
+</script>
 
 ### PRM 的优势
 
@@ -331,7 +331,7 @@ $$r_t = \text{PRM}(x, y_{\leq t}) - \text{PRM}(x, y_{\leq t-1})$$
 
 3. **稀疏奖励更难**：只有最终答案有反馈，信号传播数千步
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}
     \begin{axis}[
         width=10cm, height=5cm,
@@ -349,7 +349,7 @@ $$r_t = \text{PRM}(x, y_{\leq t}) - \text{PRM}(x, y_{\leq t-1})$$
         \addlegendentry{Sequence-level IS（线性增长）}
     \end{axis}
 \end{tikzpicture}
-```
+</script>
 
 ### GSPO：序列级 IS
 
@@ -458,7 +458,7 @@ $$\frac{\pi_\theta(y)}{\mu(y)} = \underbrace{\frac{\pi_{\theta_{\text{old}}}(y)}
    - 序列级 IS 代替 token 级 IS
    - Kimi、DeepSeek 等实践技巧
 
-```tikz
+<script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
     arrow/.style={->, thick, >=stealth}
@@ -479,7 +479,7 @@ $$\frac{\pi_\theta(y)}{\mu(y)} = \underbrace{\frac{\pi_{\theta_{\text{old}}}(y)}
     \node[font=\scriptsize, gray, align=center] at (8, -1) {无 Critic\\组内标准化};
     \node[font=\scriptsize, gray, align=center] at (12, -1) {序列级 IS\\方差控制};
 \end{tikzpicture}
-```
+</script>
 
 ## 系列总结
 
