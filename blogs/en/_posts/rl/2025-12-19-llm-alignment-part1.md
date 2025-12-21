@@ -35,6 +35,7 @@ Reinforcement learning provides a different perspective:
 - Define the reward function using human preferences
 - Optimize the policy by maximizing rewards
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center},
@@ -59,6 +60,7 @@ Reinforcement learning provides a different perspective:
     \node[font=\scriptsize, gray] at (10, -1) {Act as humans expect};
 \end{tikzpicture}
 </script>
+</div>
 
 ## RL Modeling of LLM Alignment
 
@@ -73,6 +75,7 @@ Modeling the LLM alignment problem as an RL problem:
 > - **Trajectory** $\tau$: complete generation sequence $y = (y_1, y_2, \ldots, y_T)$
 > - **Reward** $r$: usually only given at the end of the sequence
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     state/.style={draw, rounded corners, fill=blue!15, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
@@ -109,6 +112,7 @@ Modeling the LLM alignment problem as an RL problem:
     \node[font=\scriptsize, gray] at (5.25, 1.6) {$\pi_\theta(y_2|x,y_1)$};
 \end{tikzpicture}
 </script>
+</div>
 
 Characteristics of LLM RL:
 - **Huge action space**: Vocabulary typically has 100k+ tokens
@@ -137,6 +141,7 @@ RLHF (Reinforcement Learning from Human Feedback) is the classic approach to LLM
 
 ### RLHF Overall Architecture
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[scale=0.9, every node/.style={scale=0.9},
     box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1cm, align=center},
@@ -186,6 +191,7 @@ RLHF (Reinforcement Learning from Human Feedback) is the classic approach to LLM
     \draw[arrow, dashed, gray] (2, -2) -- (4, 2);
 \end{tikzpicture}
 </script>
+</div>
 
 ### Stage 1: Supervised Fine-Tuning (SFT)
 
@@ -259,6 +265,7 @@ The KL regularization term $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ is crucia
    - Constrain the optimization space, avoid policy collapse
    - Provide regularization effect
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     arrow/.style={->, thick, >=stealth}
@@ -282,6 +289,7 @@ The KL regularization term $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ is crucia
     \draw[dashed, gray] (0, 3.8) -- (2.5, 3.8) -- (2.5, 0);
 \end{tikzpicture}
 </script>
+</div>
 
 #### PPO Update Process
 
@@ -402,6 +410,7 @@ The $\beta \log Z(x)$ terms cancel out!
 
 Maximize the log-likelihood of preference data, replace $\pi^*$ with $\pi_\theta$, and we get the DPO Loss.
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, fill=blue!10, minimum width=3.5cm, minimum height=1cm, align=center},
@@ -417,6 +426,7 @@ Maximize the log-likelihood of preference data, replace $\pi^*$ with $\pi_\theta
     \draw[arrow] (reward) -- node[right, font=\small] {Substitute into BT} (dpo);
 \end{tikzpicture}
 </script>
+</div>
 
 > **DPO's Core Insights**:
 > 1. The KL-regularized RL problem has a closed-form solution, the optimal policy is exponential reweighting of the reference policy
@@ -472,6 +482,7 @@ DPO limitations:
    - Only needs 2 models ($\pi_\theta$ and $\pi_{\text{ref}}$)
    - Limitations: No exploration ability, limited improvement on difficult tasks
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=2cm, align=center},
@@ -496,5 +507,6 @@ DPO limitations:
     \draw[arrow] (rlhf) -- node[above, font=\small] {Simplify} (dpo);
 \end{tikzpicture}
 </script>
+</div>
 
 The next article will introduce more advanced methods such as GRPO, KL estimators, PRM, and Long CoT RL, which attempt to restore online exploration capabilities while maintaining DPO's simplicity.

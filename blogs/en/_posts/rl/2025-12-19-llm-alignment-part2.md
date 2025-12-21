@@ -31,6 +31,7 @@ GRPO's approach: **Use group-relative rewards to replace the Critic**, achieving
 >
 > where $\bar{R} = \frac{1}{G}\sum_i R_i$ is the group mean, $\text{Std}(R)$ is the group standard deviation.
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     sample/.style={circle, draw, minimum size=0.6cm, font=\scriptsize},
@@ -69,6 +70,7 @@ GRPO's approach: **Use group-relative rewards to replace the Critic**, achieving
     \node[font=\small, align=center] at (5, -3) {Group-relative comparison:\\boost above mean, suppress below mean};
 \end{tikzpicture}
 </script>
+</div>
 
 Advantages of group normalization:
 1. **No Critic needed**: Use group mean to replace value function estimation
@@ -255,6 +257,7 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
 >   - Input: $(x, y_{\leq t})$
 >   - Output: Correctness score up to step $t$
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     step/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.6cm, font=\small},
@@ -294,6 +297,7 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
     \end{scope}
 \end{tikzpicture}
 </script>
+</div>
 
 ### Advantages of PRM
 
@@ -329,6 +333,7 @@ RL training for long Chain-of-Thought sequences (Long CoT) faces unique challeng
 
 3. **Sparse reward harder**: Only the final answer has feedback, signal must propagate thousands of steps
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}
     \begin{axis}[
@@ -348,6 +353,7 @@ RL training for long Chain-of-Thought sequences (Long CoT) faces unique challeng
     \end{axis}
 \end{tikzpicture}
 </script>
+</div>
 
 ### GSPO: Sequence-level IS
 
@@ -456,6 +462,7 @@ Both factors can cause first-order approximation to fail:
    - Sequence-level IS replaces token-level IS
    - Kimi, DeepSeek practical techniques
 
+<div class="tikz-container">
 <script type="text/tikz">
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
@@ -478,6 +485,7 @@ Both factors can cause first-order approximation to fail:
     \node[font=\scriptsize, gray, align=center] at (12, -1) {Sequence-level IS\\Variance control};
 \end{tikzpicture}
 </script>
+</div>
 
 ## Series Summary
 
