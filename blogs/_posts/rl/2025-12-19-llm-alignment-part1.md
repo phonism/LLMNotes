@@ -5,7 +5,7 @@ date: 2025-12-19 04:00:00
 author: Phonism
 tags: [RL, LLM, RLHF, DPO, Alignment]
 lang: zh
-translation: /llm-alignment-part1-en/
+translation: /en/llm-alignment-part1/
 ---
 
 本文是强化学习系列的第五篇，开始进入 LLM 与 RL 结合的领域。本篇介绍 LLM 对齐的 RL 建模、经典的 RLHF 三阶段方法，以及更简洁的 DPO 方法。

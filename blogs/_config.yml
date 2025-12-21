@@ -23,6 +23,13 @@ repository: phonism/LLMNotes
 permalink: /:title/
 show_excerpts: true
 
+# 默认配置
+defaults:
+  - scope:
+      path: "en/_posts"
+    values:
+      permalink: /en/:title/
+
 # 排除不需要的文件
 exclude:
   - README.md

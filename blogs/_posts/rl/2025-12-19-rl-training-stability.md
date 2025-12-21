@@ -5,7 +5,7 @@ date: 2025-12-19 02:00:00
 author: Phonism
 tags: [RL, RLHF, PPO, GRPO, GSPO, Training Stability]
 lang: zh
-translation: /rl-training-stability-en/
+translation: /en/rl-training-stability/
 ---
 
 ## 引言

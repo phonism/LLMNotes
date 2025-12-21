@@ -5,7 +5,7 @@ date: 2025-12-19 06:00:00
 author: Phonism
 tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
 lang: zh
-translation: /policy-based-rl-en/
+translation: /en/policy-based-rl/
 ---
 
 在上一篇文章中，我们介绍了 Value-Based 方法：先学习 $Q^*$，再通过 $\arg\max$ 导出策略。这种方法在离散动作空间中效果很好，但遇到以下问题时会遇到困难：
