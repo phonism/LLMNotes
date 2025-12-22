@@ -5,7 +5,7 @@ lang: zh
 translation: /en/
 ---
 
-{% assign posts = site.posts | where: "lang", "zh" | sort: "date" %}
+{% assign posts = site.posts | where: "lang", "zh" | sort: "date" | reverse %}
 
 ## 文章列表
 

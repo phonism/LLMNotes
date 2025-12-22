@@ -5,7 +5,7 @@ lang: en
 translation: /
 ---
 
-{% assign posts = site.posts | where: "lang", "en" | sort: "date" %}
+{% assign posts = site.posts | where: "lang", "en" | sort: "date" | reverse %}
 
 ## Posts
 

@@ -1,0 +1,40 @@
+\documentclass[tikz,border=5pt]{standalone}
+\usepackage{ctex}  % 中文支持
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usetikzlibrary{arrows.meta,positioning,shapes,calc,fit,backgrounds}
+
+% 统一配色（与博客 hacker 主题协调）
+\definecolor{agentblue}{RGB}{100,150,200}
+\definecolor{envgreen}{RGB}{100,180,100}
+\definecolor{accentgreen}{RGB}{181,232,83}
+\definecolor{darkbg}{RGB}{26,26,26}
+
+% 统一样式
+\tikzset{
+  % 基础盒子
+  box/.style={
+    draw=accentgreen,
+    rounded corners=4pt,
+    minimum width=2.5cm,
+    minimum height=1cm,
+    font=\sffamily
+  },
+  % Agent 样式
+  agent/.style={box, fill=agentblue!30},
+  % Environment 样式
+  env/.style={box, fill=envgreen!30},
+  % 策略样式
+  policy/.style={
+    draw=accentgreen,
+    fill=darkbg,
+    rounded corners=2pt,
+    font=\small\ttfamily,
+    text=accentgreen
+  },
+  % 箭头样式
+  arr/.style={-{Stealth[length=8pt]}, thick, accentgreen},
+  arrlab/.style={font=\small, text=black},
+}
+
+\begin{document}
