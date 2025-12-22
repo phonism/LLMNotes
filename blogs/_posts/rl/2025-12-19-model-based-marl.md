@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL 学习笔记（四）：MCTS 与 AlphaZero"
+title: "RL 学习笔记（四）：基于模型的方法与多智能体"
 date: 2025-12-19 06:00:00
 author: Qi Lu
 tags: [RL, Model-Based, MARL, MCTS, AlphaZero]
@@ -203,32 +203,32 @@ Dyna 是 Background Planning 的经典框架，由 Sutton 于 1991 年提出。�
 
 > 每步真实交互可生成 $n$ 步模拟
 
-**Dyna-Q 算法**：
-
-```
-输入: 规划步数 n，学习率 α，探索率 ε
-初始化 Q(s,a) ← 0，表格模型 Model(s,a) ← ∅
-
-对每个 episode:
-    初始化状态 s
-    while s 不是终止状态:
-        a ← ε-greedy(Q(s, ·))
-        执行 a，观察 r, s'
-
-        // 直接 RL 学习
-        Q(s,a) ← Q(s,a) + α[r + γ max_a' Q(s', a') - Q(s,a)]
-
-        // 更新模型
-        Model(s,a) ← (r, s')  // 确定性模型
-
-        // 规划：从模型中学习
-        for i = 1 to n:
-            随机选择之前访问过的状态-动作对 (s̃, ã)
-            (r̃, s̃') ← Model(s̃, ã)
-            Q(s̃,ã) ← Q(s̃,ã) + α[r̃ + γ max_a' Q(s̃', a') - Q(s̃,ã)]
-
-        s ← s'
-```
+<!-- tikz-source: rl-dyna-algorithm
+\begin{algorithm}[H]
+\caption{Dyna-Q}
+\KwInput{规划步数 $n$，学习率 $\alpha$，探索率 $\varepsilon$}
+初始化 $Q(s,a) \leftarrow 0$，表格模型 $\text{Model}(s,a) \leftarrow \emptyset$\;
+\ForEach{episode}{
+    初始化状态 $s$\;
+    \While{$s$ 不是终止状态}{
+        $a \leftarrow \varepsilon\text{-greedy}(Q(s, \cdot))$\;
+        执行 $a$，观察 $r, s'$\;
+        \tcp{直接 RL 学习}
+        $Q(s,a) \leftarrow Q(s,a) + \alpha[r + \gamma \max_{a'} Q(s', a') - Q(s,a)]$\;
+        \tcp{更新模型}
+        $\text{Model}(s,a) \leftarrow (r, s')$\;
+        \tcp{规划：从模型中学习}
+        \For{$i = 1$ \KwTo $n$}{
+            随机选择之前访问过的状态-动作对 $(\tilde{s}, \tilde{a})$\;
+            $(\tilde{r}, \tilde{s}') \leftarrow \text{Model}(\tilde{s}, \tilde{a})$\;
+            $Q(\tilde{s},\tilde{a}) \leftarrow Q(\tilde{s},\tilde{a}) + \alpha[\tilde{r} + \gamma \max_{a'} Q(\tilde{s}', a') - Q(\tilde{s},\tilde{a})]$\;
+        }
+        $s \leftarrow s'$\;
+    }
+}
+\end{algorithm}
+-->
+![Dyna-Q 算法]({{ site.baseurl }}/assets/figures/rl-dyna-algorithm.svg)
 
 **Dyna 的核心优势**：
 1. **样本效率提升**：每次真实交互可产生 n 次模拟学习
@@ -357,35 +357,37 @@ UCB 的直觉理解：
 
 ### MCTS 算法
 
-```
-输入: 当前状态 s₀，搜索预算 B（迭代次数），探索系数 c
-输出: 最优动作 a*
-
-初始化根节点 root = s₀，N(root) = 0
-
-for i = 1 to B:
-    // Selection
-    node ← root
-    while node 已完全扩展 且 不是终止状态:
-        a ← argmax_a UCB(node, a)
-        node ← child(node, a)
-
-    // Expansion
-    if node 不是终止状态:
-        选择一个未扩展的动作 a
-        node ← 扩展子节点 child(node, a)
-
-    // Evaluation
-    v ← Evaluate(node)  // Rollout 或价值网络
-
-    // Backup
-    while node ≠ null:
-        N(node) ← N(node) + 1
-        Q(node) ← Q(node) + (v - Q(node)) / N(node)
-        node ← parent(node)
-
-return argmax_a N(root, a)  // 选择访问次数最多的动作
-```
+<!-- tikz-source: rl-mcts-algorithm
+\begin{algorithm}[H]
+\caption{Monte Carlo Tree Search (MCTS)}
+\KwInput{当前状态 $s_0$，搜索预算 $B$，探索系数 $c$}
+\KwOutput{最优动作 $a^*$}
+初始化根节点 $\text{root} = s_0$，$N(\text{root}) = 0$\;
+\For{$i = 1$ \KwTo $B$}{
+    \tcp{Selection}
+    $\text{node} \leftarrow \text{root}$\;
+    \While{node 已完全扩展 且 不是终止状态}{
+        $a \leftarrow \arg\max_a \text{UCB}(\text{node}, a)$\;
+        $\text{node} \leftarrow \text{child}(\text{node}, a)$\;
+    }
+    \tcp{Expansion}
+    \If{node 不是终止状态}{
+        选择一个未扩展的动作 $a$\;
+        $\text{node} \leftarrow \text{child}(\text{node}, a)$\;
+    }
+    \tcp{Evaluation}
+    $v \leftarrow \text{Evaluate}(\text{node})$\;
+    \tcp{Backup}
+    \While{$\text{node} \neq \text{null}$}{
+        $N(\text{node}) \leftarrow N(\text{node}) + 1$\;
+        $Q(\text{node}) \leftarrow Q(\text{node}) + \frac{v - Q(\text{node})}{N(\text{node})}$\;
+        $\text{node} \leftarrow \text{parent}(\text{node})$\;
+    }
+}
+\Return{$\arg\max_a N(\text{root}, a)$}\;
+\end{algorithm}
+-->
+![MCTS 算法]({{ site.baseurl }}/assets/figures/rl-mcts-algorithm.svg)
 
 > **重要**：MCTS 最终选择动作的标准：
 > - 训练/搜索时：用 UCB（平衡探索-利用）
@@ -504,26 +506,29 @@ AlphaZero 的训练是一个**自我增强**的循环：
 
 > **正向循环**：更好的网络 → 更好的搜索 → 更好的训练数据 → 更好的网络
 
-**AlphaZero 训练算法**：
-
-```
-初始化网络参数 θ（随机初始化）
-
-repeat 直到收敛:
-    // Self-Play 生成数据
-    for 每局对弈:
-        for 每步 t:
-            用当前网络 + MCTS 搜索，得到 π_MCTS(a|s_t)
-            按 π_MCTS 采样动作 a_t
-            记录 (s_t, π_MCTS)
-
-        游戏结束，得到胜负 z ∈ {-1, +1}
-        将 (s_t, π_MCTS, z) 加入训练数据
-
-    // 网络训练
-    从训练数据中采样 batch
-    最小化损失：L(θ) = (z - v_θ(s))² - π_MCTS^T log p_θ(s) + c‖θ‖²
-```
+<!-- tikz-source: rl-alphazero-algorithm
+\begin{algorithm}[H]
+\caption{AlphaZero}
+\KwInput{网络参数 $\theta$，MCTS 模拟次数 $N$}
+随机初始化网络参数 $\theta$\;
+\While{未收敛}{
+    \tcp{Self-Play 生成数据}
+    \ForEach{对弈}{
+        \For{每步 $t$}{
+            用当前网络 + MCTS 搜索，得到 $\pi_{\text{MCTS}}(a|s_t)$\;
+            按 $\pi_{\text{MCTS}}$ 采样动作 $a_t$\;
+            记录 $(s_t, \pi_{\text{MCTS}})$\;
+        }
+        游戏结束，得到胜负 $z \in \{-1, +1\}$\;
+        将 $(s_t, \pi_{\text{MCTS}}, z)$ 加入训练数据\;
+    }
+    \tcp{网络训练}
+    从训练数据中采样 batch\;
+    最小化损失：$L(\theta) = (z - v_\theta(s))^2 - \pi_{\text{MCTS}}^\top \log p_\theta(s) + c\|\theta\|^2$\;
+}
+\end{algorithm}
+-->
+![AlphaZero 算法]({{ site.baseurl }}/assets/figures/rl-alphazero-algorithm.svg)
 
 其中损失函数各项含义：
 - **$(z - v_\theta(s))^2$**：价值损失，让价值预测接近游戏结果

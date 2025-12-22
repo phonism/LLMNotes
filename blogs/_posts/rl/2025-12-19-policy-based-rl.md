@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL 学习笔记（三）：REINFORCE 与 PPO"
+title: "RL 学习笔记（三）：基于策略的强化学习"
 date: 2025-12-19 05:00:00
 author: Qi Lu
 tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
@@ -108,29 +108,17 @@ $$\nabla_\theta \log p(\tau|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\t
 REINFORCE 是最简单的 Policy Gradient 算法，直接使用蒙特卡洛采样来估计梯度。
 
 <!-- tikz-source: rl-reinforce
-\begin{tikzpicture}[scale=0.8]
-    % Title
-    \node[font=\bfseries] at (0,4) {REINFORCE};
-    \draw[thick] (-5,3.7) -- (5,3.7);
-
-    % Main loop
-    \draw[rounded corners, thick, blue!50] (-4.8,3.2) rectangle (4.8,-2.2);
-    \node[anchor=west, blue!70] at (-4.5,2.9) {\textbf{For each episode:}};
-
-    \node[anchor=west, font=\small] at (-4.2,2.2) {Sample trajectory $\tau = (s_0, a_0, r_0, \ldots, s_T)$ from $\pi_\theta$};
-
-    % Inner loop
-    \draw[rounded corners, thick, green!50!black] (-4.5,1.6) rectangle (4.5,0.4);
-    \node[anchor=west, green!60!black, font=\small] at (-4.2,1.3) {\textbf{For} $t = 0, 1, \ldots, T$\textbf{:}};
-    \node[anchor=west, font=\small] at (-4,0.7) {Compute $G_t = \sum_{k=0}^{T-t} \gamma^k r_{t+k}$};
-
-    % Update
-    \node[anchor=west, font=\small] at (-4.2,-0.2) {Update: $\theta \leftarrow \theta + \alpha \sum_t \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot G_t$};
-
-    % Key insight box
-    \draw[rounded corners, thick, orange!70] (-4.5,-1) rectangle (4.5,-1.9);
-    \node[font=\small] at (0,-1.45) {Monte Carlo: use actual returns $G_t$};
-\end{tikzpicture}
+\begin{algorithm}[H]
+\caption{REINFORCE}
+\ForEach{episode}{
+    从 $\pi_\theta$ 采样轨迹 $\tau = (s_0, a_0, r_0, \ldots, s_T)$\;
+    \For{$t = 0, 1, \ldots, T$}{
+        计算回报 $G_t = \sum_{k=0}^{T-t} \gamma^k r_{t+k}$\;
+    }
+    更新：$\theta \leftarrow \theta + \alpha \sum_t \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot G_t$\;
+}
+\tcp{Monte Carlo: 使用实际回报 $G_t$}
+\end{algorithm}
 -->
 ![REINFORCE Algorithm]({{ site.baseurl }}/assets/figures/rl-reinforce.svg)
 
@@ -195,9 +183,9 @@ $$\nabla_\theta J(\theta) = \mathbb{E} \left[ \sum_t \nabla_\theta \log \pi_\the
 
 ### 5.2 Advantage 的估计方法
 
-1. **Monte Carlo 估计**：$\hat{A}_t^{\text{MC}} = G_t - \hat{V}(s_t)$（无偏但高方差）
+1. **Monte Carlo 估计**：$\hat{A}\_t^{\text{MC}} = G\_t - \hat{V}(s\_t)$（无偏但高方差）
 
-2. **TD 估计**（1-step）：$\hat{A}_t^{\text{TD}} = r_t + \gamma \hat{V}(s_{t+1}) - \hat{V}(s_t) = \delta_t$（低方差但有偏）
+2. **TD 估计**（1-step）：$\hat{A}\_t^{\text{TD}} = r\_t + \gamma \hat{V}(s\_{t+1}) - \hat{V}(s\_t) = \delta\_t$（低方差但有偏）
 
 3. **n-step 估计**：介于两者之间
 
@@ -370,37 +358,25 @@ $$L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\pi_\theta)$$
 ### 8.4 PPO 完整算法
 
 <!-- tikz-source: rl-ppo-algorithm
-\begin{tikzpicture}[scale=0.7]
-    % Title
-    \node[font=\bfseries] at (0,7.5) {Proximal Policy Optimization (PPO)};
-    \draw[thick] (-7,7.2) -- (7,7.2);
-
-    % Outer loop
-    \draw[rounded corners, thick, blue!50] (-6.8,6.8) rectangle (6.8,-4.5);
-    \node[anchor=west, blue!70] at (-6.5,6.5) {\textbf{For iteration} $= 1, 2, \ldots$\textbf{:}};
-
-    % Data collection phase
-    \node[anchor=west, font=\small] at (-6.2,5.8) {\textbf{Data Collection:}};
-    \node[anchor=west, font=\small] at (-5.8,5.1) {Collect $N$ trajectories using $\pi_\theta$};
-    \node[anchor=west, font=\small] at (-5.8,4.4) {Compute GAE: $\hat{A}_t$ using $\hat{V}_\phi$};
-    \node[anchor=west, font=\small] at (-5.8,3.7) {Compute returns: $\hat{R}_t = \hat{A}_t + \hat{V}_\phi(s_t)$};
-    \node[anchor=west, font=\small] at (-5.8,3.0) {Store $\pi_{\text{old}} = \pi_\theta$ (fixed)};
-
-    % Inner loop
-    \draw[rounded corners, thick, green!50!black] (-6.5,2.3) rectangle (6.5,-4);
-    \node[anchor=west, green!60!black, font=\small] at (-6.2,2) {\textbf{Policy Update: For} $k = 1, \ldots, K$\textbf{:}};
-
-    \node[anchor=west, font=\small] at (-5.8,1.3) {Compute importance ratio: $\rho_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{\text{old}}(a_t|s_t)}$};
-    \node[anchor=west, font=\small] at (-5.8,0.5) {$L^{\text{CLIP}} = \mathbb{E}[\min(\rho_t \hat{A}_t, \text{clip}(\rho_t, 1\!-\!\epsilon, 1\!+\!\epsilon)\hat{A}_t)]$};
-    \node[anchor=west, font=\small] at (-5.8,-0.3) {$L^{\text{Value}} = \mathbb{E}[(\hat{V}_\phi(s_t) - \hat{R}_t)^2]$};
-    \node[anchor=west, font=\small] at (-5.8,-1.1) {$L^{\text{Entropy}} = -\mathbb{E}[\log \pi_\theta(a_t|s_t)]$};
-
-    % Total objective box
-    \draw[rounded corners, thick, orange!70, fill=orange!10] (-5.5,-1.7) rectangle (6,-2.7);
-    \node[font=\small] at (0.25,-2.2) {$L = L^{\text{CLIP}} - c_1 L^{\text{Value}} + c_2 L^{\text{Entropy}}$};
-
-    \node[anchor=west, font=\small] at (-5.8,-3.4) {Gradient ascent on $\theta$, gradient descent on $\phi$};
-\end{tikzpicture}
+\begin{algorithm}[H]
+\caption{Proximal Policy Optimization (PPO)}
+\For{iteration $= 1, 2, \ldots$}{
+    \tcp{数据收集}
+    用 $\pi_\theta$ 收集 $N$ 条轨迹\;
+    用 $\hat{V}_\phi$ 计算 GAE：$\hat{A}_t$\;
+    计算回报：$\hat{R}_t = \hat{A}_t + \hat{V}_\phi(s_t)$\;
+    保存 $\pi_{\text{old}} = \pi_\theta$（固定）\;
+    \tcp{策略更新}
+    \For{$k = 1, \ldots, K$}{
+        计算重要性比率：$\rho_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{\text{old}}(a_t|s_t)}$\;
+        $L^{\text{CLIP}} = \mathbb{E}[\min(\rho_t \hat{A}_t, \text{clip}(\rho_t, 1-\epsilon, 1+\epsilon)\hat{A}_t)]$\;
+        $L^{\text{Value}} = \mathbb{E}[(\hat{V}_\phi(s_t) - \hat{R}_t)^2]$\;
+        $L^{\text{Entropy}} = -\mathbb{E}[\log \pi_\theta(a_t|s_t)]$\;
+        总目标：$L = L^{\text{CLIP}} - c_1 L^{\text{Value}} + c_2 L^{\text{Entropy}}$\;
+        对 $\theta$ 梯度上升，对 $\phi$ 梯度下降\;
+    }
+}
+\end{algorithm}
 -->
 ![PPO Algorithm]({{ site.baseurl }}/assets/figures/rl-ppo-algorithm.svg)
 

@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL Notes (5): RLHF and DPO"
+title: "RL Notes (5): LLM Alignment (Part 1)"
 date: 2025-12-19 07:00:00
 author: Qi Lu
 tags: [RL, LLM, RLHF, DPO, Alignment]
@@ -291,27 +291,28 @@ The KL regularization term $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ is crucia
 
 Specific steps of PPO in RLHF:
 
-```
-Input: SFT model π_ref, Reward Model r_φ, KL coefficient β
-Initialize π_θ ← π_ref, Critic V_ψ
-
-for each iteration:
-    // Sampling
-    Sample x ∼ D from prompt distribution
-    Generate response with current policy y ∼ π_θ(·|x)
-
-    // Compute reward
-    Compute RM reward: r^RM = r_φ(x, y)
-    Compute KL penalty: r^KL_t = -β log [π_θ(y_t|x, y_{<t}) / π_ref(y_t|x, y_{<t})]
-    Total reward: r_t = r^KL_t + 𝟙_{t=T} · r^RM
-
-    // GAE computation
-    Compute advantage Â_t using Critic V_ψ
-
-    // PPO update
-    Update π_θ with PPO-Clip objective
-    Update V_ψ with TD target
-```
+<!-- tikz-source: rl-ppo-rlhf-algorithm-en
+\begin{algorithm}[H]
+\caption{PPO-RLHF}
+\KwIn{SFT model $\pi_{\text{ref}}$, Reward Model $r_\phi$, KL coefficient $\beta$}
+Initialize $\pi_\theta \leftarrow \pi_{\text{ref}}$, Critic $V_\psi$\;
+\ForEach{iteration}{
+    \tcp{Sampling}
+    Sample $x \sim \mathcal{D}$ from prompt distribution\;
+    Generate response with current policy $y \sim \pi_\theta(\cdot|x)$\;
+    \tcp{Compute reward}
+    Compute RM reward: $r^{\text{RM}} = r_\phi(x, y)$\;
+    Compute KL penalty: $r^{\text{KL}}_t = -\beta \log \frac{\pi_\theta(y_t|x, y_{<t})}{\pi_{\text{ref}}(y_t|x, y_{<t})}$\;
+    Total reward: $r_t = r^{\text{KL}}_t + \mathbb{1}_{t=T} \cdot r^{\text{RM}}$\;
+    \tcp{GAE computation}
+    Compute advantage $\hat{A}_t$ using Critic $V_\psi$\;
+    \tcp{PPO update}
+    Update $\pi_\theta$ with PPO-Clip objective\;
+    Update $V_\psi$ with TD target\;
+}
+\end{algorithm}
+-->
+![PPO-RLHF Algorithm]({{ site.baseurl }}/assets/figures/rl-ppo-rlhf-algorithm-en.svg)
 
 > **Important Note**: Models needed for RLHF:
 > 1. $\pi_\theta$: policy being trained (Active Model)
@@ -373,7 +374,7 @@ The KL-regularized RL problem has a closed-form solution:
 
 > **Optimal Policy Lemma for KL-regularized RL**
 >
-> The optimal solution to the objective $\max_\pi \mathbb{E}_{y \sim \pi}[r(y)] - \beta \cdot \text{KL}(\pi \| \pi_{\text{ref}})$ is:
+> The optimal solution to the objective $\max\_\pi \mathbb{E}\_{y \sim \pi}[r(y)] - \beta \cdot \text{KL}(\pi \| \pi\_{\text{ref}})$ is:
 >
 > $$\pi^*(y|x) = \frac{1}{Z(x)} \pi_{\text{ref}}(y|x) \exp\left( \frac{r(x,y)}{\beta} \right)$$
 
@@ -440,8 +441,8 @@ DPO Loss can be written as:
 $$L_{\text{DPO}} = -\mathbb{E} \left[ \log \sigma(\hat{r}_\theta(x, y_w) - \hat{r}_\theta(x, y_l)) \right]$$
 
 Intuition:
-- $\hat{r}_\theta(x, y_w) > \hat{r}_\theta(x, y_l)$: $y_w$ has higher implicit reward, loss decreases
-- Training process increases $y_w$'s probability relative to $\pi_{\text{ref}}$, decreases $y_l$'s probability
+- $\hat{r}\_\theta(x, y\_w) > \hat{r}\_\theta(x, y\_l)$: $y\_w$ has higher implicit reward, loss decreases
+- Training process increases $y\_w$'s probability relative to $\pi\_{\text{ref}}$, decreases $y\_l$'s probability
 - $\beta$ controls the scale of "how much to deviate from the reference policy"
 
 ### DPO vs RLHF Comparison

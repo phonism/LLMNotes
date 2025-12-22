@@ -42,7 +42,7 @@ Vision Transformer applies the Transformer architecture to image processing. Its
 
 $$\mathbf{z}_0 = [\mathbf{x}_\text{class}; \mathbf{E}\mathbf{x}_1; \mathbf{E}\mathbf{x}_2; ...; \mathbf{E}\mathbf{x}_N] + \mathbf{E}_\text{pos}$$
 
-where $\mathbf{x}_i \in \mathbb{R}^{P^2 \cdot C}$ is the flattened vector of the $i$-th image patch, $\mathbf{E}$ is the patch embedding matrix, and $\mathbf{E}_\text{pos}$ is the positional encoding.
+where $\mathbf{x}\_{i} \in \mathbb{R}^{P^2 \cdot C}$ is the flattened vector of the $i$-th image patch, $\mathbf{E}$ is the patch embedding matrix, and $\mathbf{E}\_{\text{pos}}$ is the positional encoding.
 
 #### CLIP and Contrastive Learning
 

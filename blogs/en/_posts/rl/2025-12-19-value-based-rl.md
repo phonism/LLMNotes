@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL Notes (2): Bellman Equations and DQN"
+title: "RL Notes (2): Value-Based RL"
 date: 2025-12-19 04:00:00
 author: Qi Lu
 tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
@@ -82,11 +82,11 @@ $$Q^\pi(s,a) = R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) \sum_{a' \in 
 
 Optimal value functions satisfy the Bellman Optimality Equation. Unlike the Expectation version, here we take the **maximum** over actions instead of expectation.
 
-**Theorem (Bellman Optimality Equation for $V^*$)**:
+**Theorem (Bellman Optimality Equation for $V^{\*}$)**:
 
 $$V^*(s) = \max_{a \in \mathcal{A}} \left[ R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) V^*(s') \right]$$
 
-**Theorem (Bellman Optimality Equation for $Q^*$)**:
+**Theorem (Bellman Optimality Equation for $Q^{\*}$)**:
 
 $$Q^*(s,a) = R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) \max_{a' \in \mathcal{A}} Q^*(s',a')$$
 
@@ -289,7 +289,7 @@ $$Q(S_t, A_t) \leftarrow Q(S_t, A_t) + \alpha \left( r_t + \gamma \max_{a'} Q(S_
 
 Key difference: SARSA uses $Q(S_{t+1}, A_{t+1})$ (actually sampled action), Q-Learning uses $\max_{a'} Q(S_{t+1}, a')$ (optimal action).
 
-**Theorem (Q-Learning Convergence)**: Q-Learning converges to $Q^*$ under the following conditions:
+**Theorem (Q-Learning Convergence)**: Q-Learning converges to $Q^{\*}$ under the following conditions:
 1. All state-action pairs are visited infinitely often
 2. Learning rate satisfies Robbins-Monro conditions: $\sum_t \alpha_t = \infty$, $\sum_t \alpha_t^2 < \infty$
 
@@ -379,36 +379,27 @@ A variant is **Soft Update**: $\theta^- \leftarrow \tau \theta + (1 - \tau) \the
 
 ### 6.5 DQN Algorithm
 
-<!-- tikz-source: rl-dqn-algorithm
-\begin{tikzpicture}[scale=0.75]
-    % Title
-    \node[font=\bfseries] at (0,6.5) {Deep Q-Network (DQN)};
-    \draw[thick] (-6,6.2) -- (6,6.2);
-
-    % Initialization
-    \node[anchor=west] at (-5.5,5.5) {Initialize Replay Buffer $\mathcal{D}$};
-    \node[anchor=west] at (-5.5,4.8) {Initialize Q-network $\theta$ randomly};
-    \node[anchor=west] at (-5.5,4.1) {Initialize Target network $\theta^- \leftarrow \theta$};
-
-    % Outer loop
-    \draw[rounded corners, thick, blue!50] (-5.8,3.5) rectangle (5.8,-4.2);
-    \node[anchor=west, blue!70] at (-5.5,3.2) {\textbf{For each episode:}};
-    \node[anchor=west] at (-5,2.5) {Initialize state $s_1$};
-
-    % Inner loop
-    \draw[rounded corners, thick, green!50!black] (-4.8,2) rectangle (5.5,-3.8);
-    \node[anchor=west, green!60!black] at (-4.5,1.7) {\textbf{For} $t = 1, 2, \ldots, T$\textbf{:}};
-
-    \node[anchor=west, font=\small] at (-4.2,1.0) {$\epsilon$-greedy: $a = \arg\max_a Q(s,a;\theta)$};
-    \node[anchor=west, font=\small] at (-4.2,0.3) {Execute $a$, observe $r, s'$};
-    \node[anchor=west, font=\small] at (-4.2,-0.4) {Store $(s,a,r,s')$ in $\mathcal{D}$};
-    \node[anchor=west, font=\small] at (-4.2,-1.1) {Sample mini-batch from $\mathcal{D}$};
-    \node[anchor=west, font=\small] at (-4.2,-1.8) {TD target: $y = r + \gamma \max_{a'} Q(s',a';\theta^-)$};
-    \node[anchor=west, font=\small] at (-4.2,-2.5) {Gradient descent on $(y - Q(s,a;\theta))^2$};
-    \node[anchor=west, font=\small] at (-4.2,-3.2) {Every $C$ steps: $\theta^- \leftarrow \theta$};
-\end{tikzpicture}
+<!-- tikz-source: rl-dqn-algorithm-en
+\begin{algorithm}[H]
+\caption{Deep Q-Network (DQN)}
+Initialize Replay Buffer $\mathcal{D}$\;
+Randomly initialize Q-network parameters $\theta$\;
+Initialize Target network $\theta^- \leftarrow \theta$\;
+\ForEach{episode}{
+    Initialize state $s_1$\;
+    \For{$t = 1, 2, \ldots, T$}{
+        $\varepsilon$-greedy action selection: $a = \arg\max_a Q(s,a;\theta)$\;
+        Execute $a$, observe $r, s'$\;
+        Store $(s,a,r,s')$ in $\mathcal{D}$\;
+        Sample mini-batch from $\mathcal{D}$\;
+        Compute TD target: $y = r + \gamma \max_{a'} Q(s',a';\theta^-)$\;
+        Gradient descent to minimize $(y - Q(s,a;\theta))^2$\;
+        Every $C$ steps: $\theta^- \leftarrow \theta$\;
+    }
+}
+\end{algorithm}
 -->
-![DQN Algorithm]({{ site.baseurl }}/assets/figures/rl-dqn-algorithm.svg)
+![DQN Algorithm]({{ site.baseurl }}/assets/figures/rl-dqn-algorithm-en.svg)
 
 > **DQN's two key techniques solve deep RL stability problems**:
 > 1. **Experience Replay**: Addresses sample correlation, improves data efficiency

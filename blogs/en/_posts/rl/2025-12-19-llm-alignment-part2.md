@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL Notes (6): GRPO and Long CoT RL"
+title: "RL Notes (6): LLM Alignment (Part 2)"
 date: 2025-12-19 08:00:00
 author: Qi Lu
 tags: [RL, LLM, GRPO, PRM, Long-CoT, Alignment]
@@ -122,7 +122,7 @@ In the LLM scenario, $p = \pi_\theta$, $q = \pi_{\text{ref}}$, sampling from $\p
 > $$k_1 = -\log r = \log \frac{\pi_\theta(y|x)}{\pi_{\text{ref}}(y|x)}$$
 
 Properties:
-- **Unbiased**: $\mathbb{E}_{y \sim \pi_\theta}[k_1] = \text{KL}(\pi_\theta \| \pi_{\text{ref}})$
+- **Unbiased**: $\mathbb{E}\_{y \sim \pi\_\theta}[k\_1] = \text{KL}(\pi\_\theta \| \pi\_{\text{ref}})$
 - **High variance**: When $\pi_\theta$ and $\pi_{\text{ref}}$ differ significantly, variance is very large
 
 Usage: Usually put in reward
@@ -158,7 +158,7 @@ $$\begin{align}
 &= \text{KL}(\pi_\theta \| \pi_{\text{ref}})
 \end{align}$$
 
-where $\mathbb{E}_{y \sim \pi_\theta}\left[\frac{\pi_{\text{ref}}(y)}{\pi_\theta(y)}\right] = \sum_y \pi_\theta(y) \cdot \frac{\pi_{\text{ref}}(y)}{\pi_\theta(y)} = \sum_y \pi_{\text{ref}}(y) = 1$.
+where $\mathbb{E}\_{y \sim \pi\_\theta}\left[\frac{\pi\_{\text{ref}}(y)}{\pi\_\theta(y)}\right] = \sum\_y \pi\_\theta(y) \cdot \frac{\pi\_{\text{ref}}(y)}{\pi\_\theta(y)} = \sum\_y \pi\_{\text{ref}}(y) = 1$.
 
 Low variance: The $(r-1)$ term is a control variate with zero expectation, negatively correlated with $\log r$, reducing variance.
 

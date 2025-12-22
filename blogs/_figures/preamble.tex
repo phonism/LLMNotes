@@ -1,11 +1,23 @@
-\documentclass[tikz,border=5pt]{standalone}
+\documentclass[border=5pt,varwidth=20cm]{standalone}
 \usepackage{ctex}  % 中文支持
 \usepackage{amsmath,amssymb}
 \usepackage{xcolor}
+\usepackage{tikz}
 \usepackage{pgfplots}  % for plots
 \usepackage{graphicx}  % for \scalebox
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}  % 算法伪代码
 \pgfplotsset{compat=1.18}
 \usetikzlibrary{arrows.meta,positioning,shapes,calc,fit,backgrounds}
+
+% algorithm2e 中文设置
+\SetAlgorithmName{算法}{算法}{算法列表}
+\SetKwInput{KwInput}{输入}
+\SetKwInput{KwOutput}{输出}
+
+% algorithm2e 字体加粗
+\SetAlFnt{\large\bfseries}
+\SetAlCapFnt{\large\bfseries}
+\SetAlCapNameFnt{\large\bfseries}
 
 % 统一配色（与博客 hacker 主题协调）
 \definecolor{agentblue}{RGB}{100,150,200}

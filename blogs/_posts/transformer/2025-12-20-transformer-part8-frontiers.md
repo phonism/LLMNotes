@@ -46,7 +46,7 @@ Vision Transformer 将 Transformer 架构应用于图像处理。其核心思想
 
 $$\mathbf{z}_0 = [\mathbf{x}_\text{class}; \mathbf{E}\mathbf{x}_1; \mathbf{E}\mathbf{x}_2; ...; \mathbf{E}\mathbf{x}_N] + \mathbf{E}_\text{pos}$$
 
-其中 $\mathbf{x}_i \in \mathbb{R}^{P^2 \cdot C}$ 是第 $i$ 个图像 patch 的展平向量，$\mathbf{E}$ 是 patch embedding 矩阵，$\mathbf{E}_\text{pos}$ 是位置编码。
+其中 $\mathbf{x}_{i} \in \mathbb{R}^{P^2 \cdot C}$ 是第 $i$ 个图像 patch 的展平向量，$\mathbf{E}$ 是 patch embedding 矩阵，$\mathbf{E}\_{\text{pos}}$ 是位置编码。
 
 #### CLIP 与对比学习
 

@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL 学习笔记（二）：Bellman 方程与 DQN"
+title: "RL 学习笔记（二）：基于价值的强化学习"
 date: 2025-12-19 04:00:00
 author: Qi Lu
 tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
@@ -84,11 +84,11 @@ $$Q^\pi(s,a) = R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) \sum_{a' \in 
 
 最优价值函数满足 Bellman Optimality Equation。与 Expectation 版本不同，这里对动作求**最大值**而非期望。
 
-**定理 (Bellman Optimality Equation for $V^*$)**：
+**定理 (Bellman Optimality Equation for $V^{\*}$)**：
 
 $$V^*(s) = \max_{a \in \mathcal{A}} \left[ R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) V^*(s') \right]$$
 
-**定理 (Bellman Optimality Equation for $Q^*$)**：
+**定理 (Bellman Optimality Equation for $Q^{\*}$)**：
 
 $$Q^*(s,a) = R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) \max_{a' \in \mathcal{A}} Q^*(s',a')$$
 
@@ -291,7 +291,7 @@ $$Q(S_t, A_t) \leftarrow Q(S_t, A_t) + \alpha \left( r_t + \gamma \max_{a'} Q(S_
 
 关键区别：SARSA 使用 $Q(S_{t+1}, A_{t+1})$（实际采样的动作），Q-Learning 使用 $\max_{a'} Q(S_{t+1}, a')$（最优动作）。
 
-**定理 (Q-Learning 收敛性)**：在满足以下条件时，Q-Learning 收敛到 $Q^*$：
+**定理 (Q-Learning 收敛性)**：在满足以下条件时，Q-Learning 收敛到 $Q^{\*}$：
 1. 所有状态-动作对被无限次访问
 2. 学习率满足 Robbins-Monro 条件：$\sum_t \alpha_t = \infty$，$\sum_t \alpha_t^2 < \infty$
 
@@ -382,33 +382,24 @@ Target Network 的作用：
 ### 6.5 DQN 算法
 
 <!-- tikz-source: rl-dqn-algorithm
-\begin{tikzpicture}[scale=0.75]
-    % Title
-    \node[font=\bfseries] at (0,6.5) {Deep Q-Network (DQN)};
-    \draw[thick] (-6,6.2) -- (6,6.2);
-
-    % Initialization
-    \node[anchor=west] at (-5.5,5.5) {Initialize Replay Buffer $\mathcal{D}$};
-    \node[anchor=west] at (-5.5,4.8) {Initialize Q-network $\theta$ randomly};
-    \node[anchor=west] at (-5.5,4.1) {Initialize Target network $\theta^- \leftarrow \theta$};
-
-    % Outer loop
-    \draw[rounded corners, thick, blue!50] (-5.8,3.5) rectangle (5.8,-4.2);
-    \node[anchor=west, blue!70] at (-5.5,3.2) {\textbf{For each episode:}};
-    \node[anchor=west] at (-5,2.5) {Initialize state $s_1$};
-
-    % Inner loop
-    \draw[rounded corners, thick, green!50!black] (-4.8,2) rectangle (5.5,-3.8);
-    \node[anchor=west, green!60!black] at (-4.5,1.7) {\textbf{For} $t = 1, 2, \ldots, T$\textbf{:}};
-
-    \node[anchor=west, font=\small] at (-4.2,1.0) {$\epsilon$-greedy: $a = \arg\max_a Q(s,a;\theta)$};
-    \node[anchor=west, font=\small] at (-4.2,0.3) {Execute $a$, observe $r, s'$};
-    \node[anchor=west, font=\small] at (-4.2,-0.4) {Store $(s,a,r,s')$ in $\mathcal{D}$};
-    \node[anchor=west, font=\small] at (-4.2,-1.1) {Sample mini-batch from $\mathcal{D}$};
-    \node[anchor=west, font=\small] at (-4.2,-1.8) {TD target: $y = r + \gamma \max_{a'} Q(s',a';\theta^-)$};
-    \node[anchor=west, font=\small] at (-4.2,-2.5) {Gradient descent on $(y - Q(s,a;\theta))^2$};
-    \node[anchor=west, font=\small] at (-4.2,-3.2) {Every $C$ steps: $\theta^- \leftarrow \theta$};
-\end{tikzpicture}
+\begin{algorithm}[H]
+\caption{Deep Q-Network (DQN)}
+初始化 Replay Buffer $\mathcal{D}$\;
+随机初始化 Q 网络参数 $\theta$\;
+初始化 Target 网络 $\theta^- \leftarrow \theta$\;
+\ForEach{episode}{
+    初始化状态 $s_1$\;
+    \For{$t = 1, 2, \ldots, T$}{
+        $\varepsilon$-greedy 选择动作：$a = \arg\max_a Q(s,a;\theta)$\;
+        执行 $a$，观察 $r, s'$\;
+        存储 $(s,a,r,s')$ 到 $\mathcal{D}$\;
+        从 $\mathcal{D}$ 采样 mini-batch\;
+        计算 TD target：$y = r + \gamma \max_{a'} Q(s',a';\theta^-)$\;
+        梯度下降最小化 $(y - Q(s,a;\theta))^2$\;
+        每 $C$ 步：$\theta^- \leftarrow \theta$\;
+    }
+}
+\end{algorithm}
 -->
 ![DQN Algorithm]({{ site.baseurl }}/assets/figures/rl-dqn-algorithm.svg)
 

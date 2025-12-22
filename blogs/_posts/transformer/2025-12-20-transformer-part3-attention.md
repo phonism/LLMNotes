@@ -70,23 +70,28 @@ FlashAttention 将 $Q, K, V$ 分成大小为 $B_r \times d$ 和 $B_c \times d$ �
 
 **FlashAttention 前向传播算法**：
 
-```
-输入: Q, K, V ∈ R^{N×d}，块大小 B_r, B_c
-初始化 O = 0, ℓ = 0, m = -∞（均为 N 维向量）
-
-For j = 1 to ⌈N/B_c⌉:
-    从 HBM 加载 K_j, V_j ∈ R^{B_c×d} 到 SRAM
-    For i = 1 to ⌈N/B_r⌉:
-        从 HBM 加载 Q_i, O_i, ℓ_i, m_i 到 SRAM
-        在 SRAM 中计算 S_ij = Q_i K_j^T ∈ R^{B_r×B_c}
-        计算 m_ij = rowmax(S_ij), P̃_ij = exp(S_ij - m_ij)
-        计算 ℓ_ij = rowsum(P̃_ij)
-        更新 m_i^new, ℓ_i^new（Online Softmax 更新）
-        更新 O_i = diag(ℓ_i^new)^{-1}(diag(ℓ_i)e^{m_i - m_i^new}O_i + e^{m_ij - m_i^new}P̃_ij V_j)
-        将 O_i, ℓ_i^new, m_i^new 写回 HBM
-
-返回 O
-```
+<!-- tikz-source: transformer-flashattention-algorithm
+\begin{algorithm}[H]
+\caption{FlashAttention 前向传播}
+\KwInput{$Q, K, V \in \mathbb{R}^{N \times d}$，块大小 $B_r, B_c$}
+\KwOutput{$O \in \mathbb{R}^{N \times d}$}
+初始化 $O = 0$, $\ell = 0$, $m = -\infty$（均为 $N$ 维向量）\;
+\For{$j = 1$ \KwTo $\lceil N/B_c \rceil$}{
+    从 HBM 加载 $K_j, V_j \in \mathbb{R}^{B_c \times d}$ 到 SRAM\;
+    \For{$i = 1$ \KwTo $\lceil N/B_r \rceil$}{
+        从 HBM 加载 $Q_i, O_i, \ell_i, m_i$ 到 SRAM\;
+        在 SRAM 中计算 $S_{ij} = Q_i K_j^\top \in \mathbb{R}^{B_r \times B_c}$\;
+        计算 $m_{ij} = \text{rowmax}(S_{ij})$, $\tilde{P}_{ij} = \exp(S_{ij} - m_{ij})$\;
+        计算 $\ell_{ij} = \text{rowsum}(\tilde{P}_{ij})$\;
+        更新 $m_i^{\text{new}}, \ell_i^{\text{new}}$（Online Softmax 更新）\;
+        更新 $O_i = \text{diag}(\ell_i^{\text{new}})^{-1}(\text{diag}(\ell_i)e^{m_i - m_i^{\text{new}}}O_i + e^{m_{ij} - m_i^{\text{new}}}\tilde{P}_{ij} V_j)$\;
+        将 $O_i, \ell_i^{\text{new}}, m_i^{\text{new}}$ 写回 HBM\;
+    }
+}
+\Return{$O$}
+\end{algorithm}
+-->
+![FlashAttention 前向传播算法]({{ site.baseurl }}/assets/figures/transformer-flashattention-algorithm.svg)
 
 #### 反向传播与重计算
 

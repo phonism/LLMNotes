@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL Notes (4): MCTS and AlphaZero"
+title: "RL Notes (4): Model-Based Methods & MARL"
 date: 2025-12-19 06:00:00
 author: Qi Lu
 tags: [RL, Model-Based, MARL, MCTS, AlphaZero]
@@ -28,7 +28,7 @@ RL methods are divided into two major categories based on whether they use an en
 
 > **Model-Free vs Model-Based**
 > - **Model-Free**: Does not learn or use an environment model, directly learns value functions or policies from real experience
-> - **Model-Based**: Learns or utilizes environment model $\hat{P}(s'|s,a)$, $\hat{R}(s,a)$, performs planning within the model
+> - **Model-Based**: Learns or utilizes environment model $\hat{P}(s'\|s,a)$, $\hat{R}(s,a)$, performs planning within the model
 
 <!-- tikz-source: rl-mf-vs-mb-en
 \begin{tikzpicture}[
@@ -69,7 +69,7 @@ RL methods are divided into two major categories based on whether they use an en
 ### Definition of World Model
 
 > **World Model** is an estimate of environment dynamics, including:
-> - **State transition model**: $\hat{P}(s'|s,a) \approx P(s'|s,a)$
+> - **State transition model**: $\hat{P}(s'\|s,a) \approx P(s'\|s,a)$
 > - **Reward model**: $\hat{R}(s,a) \approx R(s,a)$
 >
 > With a World Model, the agent can simulate action consequences "in its mind" without actually executing them.
@@ -201,32 +201,32 @@ Dyna is a classic framework for Background Planning, proposed by Sutton in 1991.
 
 > Each real interaction generates $n$ simulated steps
 
-**Dyna-Q Algorithm**:
-
-```
-Input: Planning steps n, learning rate α, exploration rate ε
-Initialize Q(s,a) ← 0, tabular model Model(s,a) ← ∅
-
-For each episode:
-    Initialize state s
-    while s is not terminal:
-        a ← ε-greedy(Q(s, ·))
-        Execute a, observe r, s'
-
-        // Direct RL learning
-        Q(s,a) ← Q(s,a) + α[r + γ max_a' Q(s', a') - Q(s,a)]
-
-        // Update model
-        Model(s,a) ← (r, s')  // Deterministic model
-
-        // Planning: learn from model
-        for i = 1 to n:
-            Randomly select previously visited state-action pair (s̃, ã)
-            (r̃, s̃') ← Model(s̃, ã)
-            Q(s̃,ã) ← Q(s̃,ã) + α[r̃ + γ max_a' Q(s̃', a') - Q(s̃,ã)]
-
-        s ← s'
-```
+<!-- tikz-source: rl-dyna-algorithm-en
+\begin{algorithm}[H]
+\caption{Dyna-Q}
+\KwIn{Planning steps $n$, learning rate $\alpha$, exploration rate $\varepsilon$}
+Initialize $Q(s,a) \leftarrow 0$, tabular model $\text{Model}(s,a) \leftarrow \emptyset$\;
+\ForEach{episode}{
+    Initialize state $s$\;
+    \While{$s$ is not terminal}{
+        $a \leftarrow \varepsilon\text{-greedy}(Q(s, \cdot))$\;
+        Execute $a$, observe $r, s'$\;
+        \tcp{Direct RL learning}
+        $Q(s,a) \leftarrow Q(s,a) + \alpha[r + \gamma \max_{a'} Q(s', a') - Q(s,a)]$\;
+        \tcp{Update model}
+        $\text{Model}(s,a) \leftarrow (r, s')$\;
+        \tcp{Planning: learn from model}
+        \For{$i = 1$ \KwTo $n$}{
+            Randomly select previously visited $(\tilde{s}, \tilde{a})$\;
+            $(\tilde{r}, \tilde{s}') \leftarrow \text{Model}(\tilde{s}, \tilde{a})$\;
+            $Q(\tilde{s},\tilde{a}) \leftarrow Q(\tilde{s},\tilde{a}) + \alpha[\tilde{r} + \gamma \max_{a'} Q(\tilde{s}', a') - Q(\tilde{s},\tilde{a})]$\;
+        }
+        $s \leftarrow s'$\;
+    }
+}
+\end{algorithm}
+-->
+![Dyna-Q Algorithm]({{ site.baseurl }}/assets/figures/rl-dyna-algorithm-en.svg)
 
 **Dyna's Core Advantages**:
 1. **Improved sample efficiency**: Each real interaction can produce n simulated learning steps
@@ -355,35 +355,37 @@ Intuitive understanding of UCB:
 
 ### MCTS Algorithm
 
-```
-Input: Current state s₀, search budget B (iteration count), exploration coefficient c
-Output: Optimal action a*
-
-Initialize root node = s₀, N(root) = 0
-
-for i = 1 to B:
-    // Selection
-    node ← root
-    while node is fully expanded and not terminal:
-        a ← argmax_a UCB(node, a)
-        node ← child(node, a)
-
-    // Expansion
-    if node is not terminal:
-        Select an unexpanded action a
-        node ← expand child node child(node, a)
-
-    // Evaluation
-    v ← Evaluate(node)  // Rollout or value network
-
-    // Backup
-    while node ≠ null:
-        N(node) ← N(node) + 1
-        Q(node) ← Q(node) + (v - Q(node)) / N(node)
-        node ← parent(node)
-
-return argmax_a N(root, a)  // Select action with most visits
-```
+<!-- tikz-source: rl-mcts-algorithm-en
+\begin{algorithm}[H]
+\caption{Monte Carlo Tree Search (MCTS)}
+\KwInput{Current state $s_0$, search budget $B$, exploration coefficient $c$}
+\KwOutput{Optimal action $a^*$}
+Initialize root node $\text{root} = s_0$, $N(\text{root}) = 0$\;
+\For{$i = 1$ \KwTo $B$}{
+    \tcp{Selection}
+    $\text{node} \leftarrow \text{root}$\;
+    \While{node is fully expanded and not terminal}{
+        $a \leftarrow \arg\max_a \text{UCB}(\text{node}, a)$\;
+        $\text{node} \leftarrow \text{child}(\text{node}, a)$\;
+    }
+    \tcp{Expansion}
+    \If{node is not terminal}{
+        Select an unexpanded action $a$\;
+        $\text{node} \leftarrow \text{child}(\text{node}, a)$\;
+    }
+    \tcp{Evaluation}
+    $v \leftarrow \text{Evaluate}(\text{node})$\;
+    \tcp{Backup}
+    \While{$\text{node} \neq \text{null}$}{
+        $N(\text{node}) \leftarrow N(\text{node}) + 1$\;
+        $Q(\text{node}) \leftarrow Q(\text{node}) + \frac{v - Q(\text{node})}{N(\text{node})}$\;
+        $\text{node} \leftarrow \text{parent}(\text{node})$\;
+    }
+}
+\Return{$\arg\max_a N(\text{root}, a)$}\;
+\end{algorithm}
+-->
+![MCTS Algorithm]({{ site.baseurl }}/assets/figures/rl-mcts-algorithm-en.svg)
 
 > **Important**: MCTS final action selection criterion:
 > - During training/search: Use UCB (balance exploration-exploitation)
@@ -429,14 +431,14 @@ AlphaGo defeated world champion Lee Sedol 4:1 in 2016. Its architecture includes
 -->
 ![AlphaGo Architecture]({{ site.baseurl }}/assets/figures/rl-alphago-architecture-en.svg)
 
-1. **Policy Network** $p_\theta(a|s)$:
+1. **Policy Network** $p_\theta(a\|s)$:
    - Input: Board state (multi-channel features)
    - Output: Probability of placing a stone at each position
    - Training: First supervised learning on human game records, then reinforcement with Policy Gradient through self-play
 
 2. **Value Network** $v_\phi(s)$:
    - Input: Board state
-   - Output: Win rate estimate for current position $v_\phi(s) \approx \mathbb{E}[z|s]$, where $z \in \{-1, +1\}$
+   - Output: Win rate estimate for current position $v_\phi(s) \approx \mathbb{E}[z\|s]$, where $z \in \\{-1, +1\\}$
    - Training: Supervised learning on $(s, z)$ data generated from self-play
 
 3. **Improved MCTS**:
@@ -502,26 +504,29 @@ AlphaZero's training is a **self-reinforcing** loop:
 
 > **Positive loop**: Better network → better search → better training data → better network
 
-**AlphaZero Training Algorithm**:
-
-```
-Initialize network parameters θ (random initialization)
-
-repeat until convergence:
-    // Self-Play to generate data
-    for each game:
-        for each step t:
-            Use current network + MCTS search to get π_MCTS(a|s_t)
-            Sample action a_t from π_MCTS
-            Record (s_t, π_MCTS)
-
-        Game ends, get win/loss z ∈ {-1, +1}
-        Add (s_t, π_MCTS, z) to training data
-
-    // Network training
-    Sample batch from training data
-    Minimize loss: L(θ) = (z - v_θ(s))² - π_MCTS^T log p_θ(s) + c‖θ‖²
-```
+<!-- tikz-source: rl-alphazero-algorithm-en
+\begin{algorithm}[H]
+\caption{AlphaZero}
+\KwInput{Network parameters $\theta$, MCTS simulations $N$}
+Randomly initialize network parameters $\theta$\;
+\While{not converged}{
+    \tcp{Self-Play to generate data}
+    \ForEach{game}{
+        \For{each step $t$}{
+            Use current network + MCTS search to get $\pi_{\text{MCTS}}(a|s_t)$\;
+            Sample action $a_t$ from $\pi_{\text{MCTS}}$\;
+            Record $(s_t, \pi_{\text{MCTS}})$\;
+        }
+        Game ends, get win/loss $z \in \{-1, +1\}$\;
+        Add $(s_t, \pi_{\text{MCTS}}, z)$ to training data\;
+    }
+    \tcp{Network training}
+    Sample batch from training data\;
+    Minimize loss: $L(\theta) = (z - v_\theta(s))^2 - \pi_{\text{MCTS}}^\top \log p_\theta(s) + c\|\theta\|^2$\;
+}
+\end{algorithm}
+-->
+![AlphaZero Algorithm]({{ site.baseurl }}/assets/figures/rl-alphazero-algorithm-en.svg)
 
 Where each loss term means:
 - **$(z - v_\theta(s))^2$**: Value loss, making value prediction approach game outcome
@@ -597,7 +602,7 @@ Multi-agent scenarios mainly fall into two categories:
 
 > **Nash Equilibrium**
 >
-> A strategy combination $(\pi_1^*, \pi_2^*, \ldots, \pi_n^*)$ is a Nash equilibrium if and only if no player has an incentive to unilaterally change their strategy:
+> A strategy combination $(\pi\_1^{\*}, \pi\_2^{\*}, \ldots, \pi\_n^{\*})$ is a Nash equilibrium if and only if no player has an incentive to unilaterally change their strategy:
 >
 > $$\forall i, \forall \pi_i: \quad u_i(\pi_i^*, \pi_{-i}^*) \geq u_i(\pi_i, \pi_{-i}^*)$$
 >

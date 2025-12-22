@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL 学习笔记（五）：RLHF 与 DPO"
+title: "RL 学习笔记（五）：LLM 对齐（上）"
 date: 2025-12-19 07:00:00
 author: Qi Lu
 tags: [RL, LLM, RLHF, DPO, Alignment]
@@ -293,27 +293,28 @@ KL 正则项 $\text{KL}(\pi_\theta \| \pi_{\text{ref}})$ 至关重要：
 
 RLHF 中 PPO 的具体步骤：
 
-```
-输入: SFT 模型 π_ref，Reward Model r_φ，KL 系数 β
-初始化 π_θ ← π_ref，Critic V_ψ
-
-for each iteration:
-    // 采样
-    从 prompt 分布采样 x ∼ D
-    用当前策略生成回复 y ∼ π_θ(·|x)
-
-    // 计算奖励
-    计算 RM 奖励：r^RM = r_φ(x, y)
-    计算 KL 惩罚：r^KL_t = -β log [π_θ(y_t|x, y_{<t}) / π_ref(y_t|x, y_{<t})]
-    总奖励：r_t = r^KL_t + 𝟙_{t=T} · r^RM
-
-    // GAE 计算
-    用 Critic V_ψ 计算 advantage Â_t
-
-    // PPO 更新
-    用 PPO-Clip 目标更新 π_θ
-    用 TD 目标更新 V_ψ
-```
+<!-- tikz-source: rl-ppo-rlhf-algorithm
+\begin{algorithm}[H]
+\caption{PPO-RLHF}
+\KwInput{SFT 模型 $\pi_{\text{ref}}$，Reward Model $r_\phi$，KL 系数 $\beta$}
+初始化 $\pi_\theta \leftarrow \pi_{\text{ref}}$，Critic $V_\psi$\;
+\ForEach{iteration}{
+    \tcp{采样}
+    从 prompt 分布采样 $x \sim \mathcal{D}$\;
+    用当前策略生成回复 $y \sim \pi_\theta(\cdot|x)$\;
+    \tcp{计算奖励}
+    计算 RM 奖励：$r^{\text{RM}} = r_\phi(x, y)$\;
+    计算 KL 惩罚：$r^{\text{KL}}_t = -\beta \log \frac{\pi_\theta(y_t|x, y_{<t})}{\pi_{\text{ref}}(y_t|x, y_{<t})}$\;
+    总奖励：$r_t = r^{\text{KL}}_t + \mathbb{1}_{t=T} \cdot r^{\text{RM}}$\;
+    \tcp{GAE 计算}
+    用 Critic $V_\psi$ 计算 advantage $\hat{A}_t$\;
+    \tcp{PPO 更新}
+    用 PPO-Clip 目标更新 $\pi_\theta$\;
+    用 TD 目标更新 $V_\psi$\;
+}
+\end{algorithm}
+-->
+![PPO-RLHF 算法]({{ site.baseurl }}/assets/figures/rl-ppo-rlhf-algorithm.svg)
 
 > **重要提示**：RLHF 需要维护的模型：
 > 1. $\pi_\theta$：正在训练的策略（Active Model）
@@ -375,7 +376,7 @@ KL 正则 RL 问题有闭式解：
 
 > **KL 正则 RL 的最优策略引理**
 >
-> 目标 $\max_\pi \mathbb{E}_{y \sim \pi}[r(y)] - \beta \cdot \text{KL}(\pi \| \pi_{\text{ref}})$ 的最优解为：
+> 目标 $\max\_\pi \mathbb{E}\_{y \sim \pi}[r(y)] - \beta \cdot \text{KL}(\pi \| \pi\_{\text{ref}})$ 的最优解为：
 >
 > $$\pi^*(y|x) = \frac{1}{Z(x)} \pi_{\text{ref}}(y|x) \exp\left( \frac{r(x,y)}{\beta} \right)$$
 
@@ -442,8 +443,8 @@ DPO Loss 可以写成：
 $$L_{\text{DPO}} = -\mathbb{E} \left[ \log \sigma(\hat{r}_\theta(x, y_w) - \hat{r}_\theta(x, y_l)) \right]$$
 
 直觉：
-- $\hat{r}_\theta(x, y_w) > \hat{r}_\theta(x, y_l)$：$y_w$ 的隐式奖励更高，loss 变小
-- 训练过程提高 $y_w$ 相对于 $\pi_{\text{ref}}$ 的概率，压低 $y_l$ 的概率
+- $\hat{r}\_\theta(x, y\_w) > \hat{r}\_\theta(x, y\_l)$：$y\_w$ 的隐式奖励更高，loss 变小
+- 训练过程提高 $y\_w$ 相对于 $\pi\_{\text{ref}}$ 的概率，压低 $y\_l$ 的概率
 - $\beta$ 控制"相对于参考策略偏离多少"的尺度
 
 ### DPO vs RLHF 对比

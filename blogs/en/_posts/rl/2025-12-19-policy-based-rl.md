@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL Notes (3): REINFORCE and PPO"
+title: "RL Notes (3): Policy-Based RL"
 date: 2025-12-19 05:00:00
 author: Qi Lu
 tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
@@ -14,7 +14,7 @@ In the previous article, we introduced Value-Based methods: first learn $Q^*$, t
 >
 > **If the optimal policy is stochastic (such as rock-paper-scissors), how can we represent it with a deterministic policy?**
 
-Policy-Based methods provide a more direct approach: **directly parameterize the policy $\pi_\theta(a|s)$ and maximize expected return through gradient ascent**.
+Policy-Based methods provide a more direct approach: **directly parameterize the policy $\pi_\theta(a\|s)$ and maximize expected return through gradient ascent**.
 
 ## 1. Why Do We Need Policy-Based Methods?
 
@@ -27,7 +27,7 @@ Policy-Based methods provide a more direct approach: **directly parameterize the
 
 ### 1.2 Parameterized Policies
 
-Policy-Based methods directly parameterize the policy $\pi_\theta(a|s)$:
+Policy-Based methods directly parameterize the policy $\pi_\theta(a\|s)$:
 
 $$J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ G_0 \right] = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T} \gamma^t r_t \right]$$
 
@@ -55,9 +55,9 @@ The key trick for computing $\nabla_\theta J(\theta)$ is the **Log-Derivative Tr
 
 $$\nabla_\theta p(x|\theta) = p(x|\theta) \nabla_\theta \log p(x|\theta)$$
 
-**Proof**: By the derivative rule for logarithms, $\nabla_\theta \log p(x|\theta) = \frac{\nabla_\theta p(x|\theta)}{p(x|\theta)}$, multiplying both sides by $p(x|\theta)$ gives the result.
+**Proof**: By the derivative rule for logarithms, $\nabla_\theta \log p(x\|\theta) = \frac{\nabla_\theta p(x\|\theta)}{p(x\|\theta)}$, multiplying both sides by $p(x\|\theta)$ gives the result.
 
-> The elegance of the Log-Derivative Trick: It converts the derivative of $p(x|\theta)$ into the derivative of $\log p(x|\theta)$, which is often easier to compute, especially when $p$ is in product form.
+> The elegance of the Log-Derivative Trick: It converts the derivative of $p(x\|\theta)$ into the derivative of $\log p(x\|\theta)$, which is often easier to compute, especially when $p$ is in product form.
 
 ### 2.2 Policy Gradient Theorem
 
@@ -77,15 +77,15 @@ $$\begin{aligned}
 &= \mathbb{E}_{\tau \sim \pi_\theta} \left[ \nabla_\theta \log p(\tau|\theta) \cdot R(\tau) \right]
 \end{aligned}$$
 
-**Step 2**: Expand $\nabla_\theta \log p(\tau|\theta)$
+**Step 2**: Expand $\nabla_\theta \log p(\tau\|\theta)$
 
-Recall the trajectory probability decomposition: $p(\tau|\theta) = p(s_0) \prod_{t} \pi_\theta(a_t|s_t) P(s_{t+1}|s_t,a_t)$
+Recall the trajectory probability decomposition: $p(\tau\|\theta) = p(s_0) \prod_{t} \pi_\theta(a_t\|s_t) P(s_{t+1}\|s_t,a_t)$
 
 Taking the logarithm and computing the gradient:
 
 $$\nabla_\theta \log p(\tau|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t)$$
 
-> **Key Observation**: $p(s_0)$ is the environment's initial state distribution, and $P(s_{t+1}|s_t,a_t)$ is the environment's dynamics model, both of which are independent of the policy parameters $\theta$, so their gradients are zero!
+> **Key Observation**: $p(s_0)$ is the environment's initial state distribution, and $P(s_{t+1}\|s_t,a_t)$ is the environment's dynamics model, both of which are independent of the policy parameters $\theta$, so their gradients are zero!
 >
 > This means: **Even without knowing the environment dynamics $P$, we can still compute the Policy Gradient**—this is the fundamental reason why Policy Gradient methods can be Model-Free.
 
@@ -94,7 +94,7 @@ $$\nabla_\theta \log p(\tau|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\t
 Action $a_t$ only affects future rewards, not past rewards. Therefore, we can replace the full return $R(\tau)$ with reward-to-go $G_t$.
 
 > **Intuitive Understanding of the Policy Gradient Theorem**:
-> - $\nabla_\theta \log \pi_\theta(a_t|s_t)$ is the direction that "increases the probability of action $a_t$"
+> - $\nabla_\theta \log \pi_\theta(a_t\|s_t)$ is the direction that "increases the probability of action $a_t$"
 > - $G_t$ is the cumulative reward obtained after that action
 > - If $G_t > 0$: Update in the gradient direction, increase the probability of $a_t$
 > - If $G_t < 0$: Update in the opposite direction, decrease the probability of $a_t$
@@ -105,32 +105,20 @@ Action $a_t$ only affects future rewards, not past rewards. Therefore, we can re
 
 REINFORCE is the simplest Policy Gradient algorithm, using Monte Carlo sampling directly to estimate the gradient.
 
-<!-- tikz-source: rl-reinforce
-\begin{tikzpicture}[scale=0.8]
-    % Title
-    \node[font=\bfseries] at (0,4) {REINFORCE};
-    \draw[thick] (-5,3.7) -- (5,3.7);
-
-    % Main loop
-    \draw[rounded corners, thick, blue!50] (-4.8,3.2) rectangle (4.8,-2.2);
-    \node[anchor=west, blue!70] at (-4.5,2.9) {\textbf{For each episode:}};
-
-    \node[anchor=west, font=\small] at (-4.2,2.2) {Sample trajectory $\tau = (s_0, a_0, r_0, \ldots, s_T)$ from $\pi_\theta$};
-
-    % Inner loop
-    \draw[rounded corners, thick, green!50!black] (-4.5,1.6) rectangle (4.5,0.4);
-    \node[anchor=west, green!60!black, font=\small] at (-4.2,1.3) {\textbf{For} $t = 0, 1, \ldots, T$\textbf{:}};
-    \node[anchor=west, font=\small] at (-4,0.7) {Compute $G_t = \sum_{k=0}^{T-t} \gamma^k r_{t+k}$};
-
-    % Update
-    \node[anchor=west, font=\small] at (-4.2,-0.2) {Update: $\theta \leftarrow \theta + \alpha \sum_t \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot G_t$};
-
-    % Key insight box
-    \draw[rounded corners, thick, orange!70] (-4.5,-1) rectangle (4.5,-1.9);
-    \node[font=\small] at (0,-1.45) {Monte Carlo: use actual returns $G_t$};
-\end{tikzpicture}
+<!-- tikz-source: rl-reinforce-en
+\begin{algorithm}[H]
+\caption{REINFORCE}
+\ForEach{episode}{
+    Sample trajectory $\tau = (s_0, a_0, r_0, \ldots, s_T)$ from $\pi_\theta$\;
+    \For{$t = 0, 1, \ldots, T$}{
+        Compute return $G_t = \sum_{k=0}^{T-t} \gamma^k r_{t+k}$\;
+    }
+    Update: $\theta \leftarrow \theta + \alpha \sum_t \nabla_\theta \log \pi_\theta(a_t\|s_t) \cdot G_t$\;
+}
+\tcp{Monte Carlo: use actual returns $G_t$}
+\end{algorithm}
 -->
-![REINFORCE Algorithm]({{ site.baseurl }}/assets/figures/rl-reinforce.svg)
+![REINFORCE Algorithm]({{ site.baseurl }}/assets/figures/rl-reinforce-en.svg)
 
 **REINFORCE is an unbiased estimator**: $\mathbb{E}[\hat{g}] = \nabla_\theta J(\theta)$
 
@@ -193,9 +181,9 @@ $$\nabla_\theta J(\theta) = \mathbb{E} \left[ \sum_t \nabla_\theta \log \pi_\the
 
 ### 5.2 Methods for Estimating Advantage
 
-1. **Monte Carlo estimate**: $\hat{A}_t^{\text{MC}} = G_t - \hat{V}(s_t)$ (unbiased but high variance)
+1. **Monte Carlo estimate**: $\hat{A}\_t^{\text{MC}} = G\_t - \hat{V}(s\_t)$ (unbiased but high variance)
 
-2. **TD estimate** (1-step): $\hat{A}_t^{\text{TD}} = r_t + \gamma \hat{V}(s_{t+1}) - \hat{V}(s_t) = \delta_t$ (low variance but biased)
+2. **TD estimate** (1-step): $\hat{A}\_t^{\text{TD}} = r\_t + \gamma \hat{V}(s\_{t+1}) - \hat{V}(s\_t) = \delta\_t$ (low variance but biased)
 
 3. **n-step estimate**: Between the two
 
@@ -204,7 +192,7 @@ $$\nabla_\theta J(\theta) = \mathbb{E} \left[ \sum_t \nabla_\theta \log \pi_\the
 ### 5.3 Actor-Critic Architecture
 
 To estimate $\hat{V}(s)$, we introduce a **Critic** network. Actor-Critic methods simultaneously learn:
-- **Actor**: Policy network $\pi_\theta(a|s)$, outputs action distribution
+- **Actor**: Policy network $\pi_\theta(a\|s)$, outputs action distribution
 - **Critic**: Value network $\hat{V}_\phi(s)$, estimates state value
 
 <!-- tikz-source: rl-actor-critic
@@ -363,44 +351,32 @@ To encourage exploration, PPO typically also adds an entropy bonus:
 
 $$L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\pi_\theta)$$
 
-where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a|s)]$ is the entropy of the policy.
+where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a\|s)]$ is the entropy of the policy.
 
 ### 8.4 Complete PPO Algorithm
 
-<!-- tikz-source: rl-ppo-algorithm
-\begin{tikzpicture}[scale=0.7]
-    % Title
-    \node[font=\bfseries] at (0,7.5) {Proximal Policy Optimization (PPO)};
-    \draw[thick] (-7,7.2) -- (7,7.2);
-
-    % Outer loop
-    \draw[rounded corners, thick, blue!50] (-6.8,6.8) rectangle (6.8,-4.5);
-    \node[anchor=west, blue!70] at (-6.5,6.5) {\textbf{For iteration} $= 1, 2, \ldots$\textbf{:}};
-
-    % Data collection phase
-    \node[anchor=west, font=\small] at (-6.2,5.8) {\textbf{Data Collection:}};
-    \node[anchor=west, font=\small] at (-5.8,5.1) {Collect $N$ trajectories using $\pi_\theta$};
-    \node[anchor=west, font=\small] at (-5.8,4.4) {Compute GAE: $\hat{A}_t$ using $\hat{V}_\phi$};
-    \node[anchor=west, font=\small] at (-5.8,3.7) {Compute returns: $\hat{R}_t = \hat{A}_t + \hat{V}_\phi(s_t)$};
-    \node[anchor=west, font=\small] at (-5.8,3.0) {Store $\pi_{\text{old}} = \pi_\theta$ (fixed)};
-
-    % Inner loop
-    \draw[rounded corners, thick, green!50!black] (-6.5,2.3) rectangle (6.5,-4);
-    \node[anchor=west, green!60!black, font=\small] at (-6.2,2) {\textbf{Policy Update: For} $k = 1, \ldots, K$\textbf{:}};
-
-    \node[anchor=west, font=\small] at (-5.8,1.3) {Compute importance ratio: $\rho_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{\text{old}}(a_t|s_t)}$};
-    \node[anchor=west, font=\small] at (-5.8,0.5) {$L^{\text{CLIP}} = \mathbb{E}[\min(\rho_t \hat{A}_t, \text{clip}(\rho_t, 1\!-\!\epsilon, 1\!+\!\epsilon)\hat{A}_t)]$};
-    \node[anchor=west, font=\small] at (-5.8,-0.3) {$L^{\text{Value}} = \mathbb{E}[(\hat{V}_\phi(s_t) - \hat{R}_t)^2]$};
-    \node[anchor=west, font=\small] at (-5.8,-1.1) {$L^{\text{Entropy}} = -\mathbb{E}[\log \pi_\theta(a_t|s_t)]$};
-
-    % Total objective box
-    \draw[rounded corners, thick, orange!70, fill=orange!10] (-5.5,-1.7) rectangle (6,-2.7);
-    \node[font=\small] at (0.25,-2.2) {$L = L^{\text{CLIP}} - c_1 L^{\text{Value}} + c_2 L^{\text{Entropy}}$};
-
-    \node[anchor=west, font=\small] at (-5.8,-3.4) {Gradient ascent on $\theta$, gradient descent on $\phi$};
-\end{tikzpicture}
+<!-- tikz-source: rl-ppo-algorithm-en
+\begin{algorithm}[H]
+\caption{Proximal Policy Optimization (PPO)}
+\For{iteration $= 1, 2, \ldots$}{
+    \tcp{Data Collection}
+    Collect $N$ trajectories using $\pi_\theta$\;
+    Compute GAE: $\hat{A}_t$ using $\hat{V}_\phi$\;
+    Compute returns: $\hat{R}_t = \hat{A}_t + \hat{V}_\phi(s_t)$\;
+    Store $\pi_{\text{old}} = \pi_\theta$ (fixed)\;
+    \tcp{Policy Update}
+    \For{$k = 1, \ldots, K$}{
+        Compute importance ratio: $\rho_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{\text{old}}(a_t|s_t)}$\;
+        $L^{\text{CLIP}} = \mathbb{E}[\min(\rho_t \hat{A}_t, \text{clip}(\rho_t, 1-\epsilon, 1+\epsilon)\hat{A}_t)]$\;
+        $L^{\text{Value}} = \mathbb{E}[(\hat{V}_\phi(s_t) - \hat{R}_t)^2]$\;
+        $L^{\text{Entropy}} = -\mathbb{E}[\log \pi_\theta(a_t|s_t)]$\;
+        Total objective: $L = L^{\text{CLIP}} - c_1 L^{\text{Value}} + c_2 L^{\text{Entropy}}$\;
+        Gradient ascent on $\theta$, gradient descent on $\phi$\;
+    }
+}
+\end{algorithm}
 -->
-![PPO Algorithm]({{ site.baseurl }}/assets/figures/rl-ppo-algorithm.svg)
+![PPO Algorithm]({{ site.baseurl }}/assets/figures/rl-ppo-algorithm-en.svg)
 
 > **Reasons for PPO's Success**:
 > 1. **Simple and efficient**: Only needs first-order optimization, no Hessian computation required

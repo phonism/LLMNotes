@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "RL 学习笔记（六）：GRPO 与 Long CoT RL"
+title: "RL 学习笔记（六）：LLM 对齐（下）"
 date: 2025-12-19 08:00:00
 author: Qi Lu
 tags: [RL, LLM, GRPO, PRM, Long-CoT, Alignment]
@@ -124,7 +124,7 @@ $$\text{KL}(p \| q) = \mathbb{E}_{x \sim p}\left[ \log \frac{p(x)}{q(x)} \right]
 > $$k_1 = -\log r = \log \frac{\pi_\theta(y|x)}{\pi_{\text{ref}}(y|x)}$$
 
 性质：
-- **无偏**：$\mathbb{E}_{y \sim \pi_\theta}[k_1] = \text{KL}(\pi_\theta \| \pi_{\text{ref}})$
+- **无偏**：$\mathbb{E}\_{y \sim \pi\_\theta}[k\_1] = \text{KL}(\pi\_\theta \| \pi\_{\text{ref}})$
 - **高方差**：当 $\pi_\theta$ 和 $\pi_{\text{ref}}$ 差异大时，方差很大
 
 用法：通常放入 reward

@@ -68,23 +68,28 @@ FlashAttention divides $Q, K, V$ into blocks of size $B_r \times d$ and $B_c \ti
 
 **FlashAttention Forward Pass Algorithm**:
 
-```
-Input: Q, K, V ∈ R^{N×d}, block sizes B_r, B_c
-Initialize O = 0, ℓ = 0, m = -∞ (all N-dimensional vectors)
-
-For j = 1 to ⌈N/B_c⌉:
-    Load K_j, V_j ∈ R^{B_c×d} from HBM to SRAM
-    For i = 1 to ⌈N/B_r⌉:
-        Load Q_i, O_i, ℓ_i, m_i from HBM to SRAM
-        Compute S_ij = Q_i K_j^T ∈ R^{B_r×B_c} in SRAM
-        Compute m_ij = rowmax(S_ij), P̃_ij = exp(S_ij - m_ij)
-        Compute ℓ_ij = rowsum(P̃_ij)
-        Update m_i^new, ℓ_i^new (Online Softmax update)
-        Update O_i = diag(ℓ_i^new)^{-1}(diag(ℓ_i)e^{m_i - m_i^new}O_i + e^{m_ij - m_i^new}P̃_ij V_j)
-        Write O_i, ℓ_i^new, m_i^new back to HBM
-
-Return O
-```
+<!-- tikz-source: transformer-flashattention-algorithm-en
+\begin{algorithm}[H]
+\caption{FlashAttention Forward Pass}
+\KwIn{$Q, K, V \in \mathbb{R}^{N \times d}$, block sizes $B_r, B_c$}
+\KwOut{$O \in \mathbb{R}^{N \times d}$}
+Initialize $O = 0$, $\ell = 0$, $m = -\infty$ (all $N$-dimensional vectors)\;
+\For{$j = 1$ \KwTo $\lceil N/B_c \rceil$}{
+    Load $K_j, V_j \in \mathbb{R}^{B_c \times d}$ from HBM to SRAM\;
+    \For{$i = 1$ \KwTo $\lceil N/B_r \rceil$}{
+        Load $Q_i, O_i, \ell_i, m_i$ from HBM to SRAM\;
+        Compute $S_{ij} = Q_i K_j^\top \in \mathbb{R}^{B_r \times B_c}$ in SRAM\;
+        Compute $m_{ij} = \text{rowmax}(S_{ij})$, $\tilde{P}_{ij} = \exp(S_{ij} - m_{ij})$\;
+        Compute $\ell_{ij} = \text{rowsum}(\tilde{P}_{ij})$\;
+        Update $m_i^{\text{new}}, \ell_i^{\text{new}}$ (Online Softmax update)\;
+        Update $O_i = \text{diag}(\ell_i^{\text{new}})^{-1}(\text{diag}(\ell_i)e^{m_i - m_i^{\text{new}}}O_i + e^{m_{ij} - m_i^{\text{new}}}\tilde{P}_{ij} V_j)$\;
+        Write $O_i, \ell_i^{\text{new}}, m_i^{\text{new}}$ back to HBM\;
+    }
+}
+\Return{$O$}
+\end{algorithm}
+-->
+![FlashAttention Forward Pass Algorithm]({{ site.baseurl }}/assets/figures/transformer-flashattention-algorithm-en.svg)
 
 #### Backward Pass and Recomputation
 

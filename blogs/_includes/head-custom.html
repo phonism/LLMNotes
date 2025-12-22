@@ -1,7 +1,7 @@
 <!-- 立即应用主题，防止闪烁 -->
 <script>
   (function() {
-    var theme = localStorage.getItem('theme') || 'dark';
+    var theme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', theme);
   })();
 </script>
@@ -98,11 +98,49 @@
     color: var(--link-color) !important;
   }
 
-  [data-theme="light"] code,
-  [data-theme="light"] pre {
-    background: var(--code-bg) !important;
-    border-color: var(--border-color) !important;
+  [data-theme="light"] code {
+    background: #f5f5f5 !important;
+    border-color: #d0d0d0 !important;
+    color: #c7254e !important;
   }
+
+  [data-theme="light"] pre {
+    background: #fafafa !important;
+    border-color: #e0e0e0 !important;
+    border-left-color: #2d7d2d !important;
+  }
+
+  [data-theme="light"] pre code {
+    background: transparent !important;
+    border: none !important;
+    color: #383a42 !important;
+  }
+
+  /* 浅色模式语法高亮 - One Light 风格 */
+  [data-theme="light"] .highlight .k, [data-theme="light"] .highlight .kd,
+  [data-theme="light"] .highlight .kn, [data-theme="light"] .highlight .kp,
+  [data-theme="light"] .highlight .kr, [data-theme="light"] .highlight .kt { color: #a626a4 !important; }
+  [data-theme="light"] .highlight .n, [data-theme="light"] .highlight .nc,
+  [data-theme="light"] .highlight .nf, [data-theme="light"] .highlight .nn { color: #c18401 !important; }
+  [data-theme="light"] .highlight .s, [data-theme="light"] .highlight .s1,
+  [data-theme="light"] .highlight .s2, [data-theme="light"] .highlight .sb,
+  [data-theme="light"] .highlight .sc, [data-theme="light"] .highlight .sd,
+  [data-theme="light"] .highlight .se, [data-theme="light"] .highlight .sh,
+  [data-theme="light"] .highlight .si, [data-theme="light"] .highlight .sx,
+  [data-theme="light"] .highlight .sr, [data-theme="light"] .highlight .ss { color: #50a14f !important; }
+  [data-theme="light"] .highlight .m, [data-theme="light"] .highlight .mf,
+  [data-theme="light"] .highlight .mh, [data-theme="light"] .highlight .mi,
+  [data-theme="light"] .highlight .mo, [data-theme="light"] .highlight .il { color: #986801 !important; }
+  [data-theme="light"] .highlight .c, [data-theme="light"] .highlight .c1,
+  [data-theme="light"] .highlight .cm, [data-theme="light"] .highlight .cp,
+  [data-theme="light"] .highlight .cs { color: #a0a1a7 !important; font-style: italic; }
+  [data-theme="light"] .highlight .o, [data-theme="light"] .highlight .ow { color: #0184bc !important; }
+  [data-theme="light"] .highlight .p { color: #383a42 !important; }
+  [data-theme="light"] .highlight .nv, [data-theme="light"] .highlight .vi,
+  [data-theme="light"] .highlight .vg, [data-theme="light"] .highlight .vm { color: #e45649 !important; }
+  [data-theme="light"] .highlight .na { color: #986801 !important; }
+  [data-theme="light"] .highlight .nt { color: #e45649 !important; }
+  [data-theme="light"] .highlight .nb, [data-theme="light"] .highlight .bp { color: #0184bc !important; }
 
   [data-theme="light"] th {
     background: #d8d8d8 !important;
@@ -187,10 +225,20 @@
 
   h1, h2, h3, h4, h5, h6 {
     color: #b5e853;
+    font-weight: bold;
   }
 
   h1, h2, h3 {
     border-bottom: 1px dashed #b5e853;
+  }
+
+  /* h4/h5/h6 至少和正文一样大，通过加粗区分 */
+  h4 {
+    font-size: 1.1em;
+  }
+
+  h5, h6 {
+    font-size: 1em;
   }
 
   a {
@@ -214,7 +262,36 @@
     border: 1px solid #b5e853;
     border-left: 3px solid #b5e853;
     overflow-x: auto;
+    padding: 1em;
+    border-radius: 6px;
+    line-height: 1.5;
   }
+
+  pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: #abb2bf;
+  }
+
+  /* 语法高亮 - One Dark 风格 */
+  .highlight .k, .highlight .kd, .highlight .kn, .highlight .kp,
+  .highlight .kr, .highlight .kt { color: #c678dd; }  /* 关键字 - 紫色 */
+  .highlight .n, .highlight .nb, .highlight .nc, .highlight .no,
+  .highlight .nd, .highlight .ni, .highlight .ne, .highlight .nf,
+  .highlight .nl, .highlight .nn, .highlight .nx { color: #e5c07b; }  /* 名称 - 黄色 */
+  .highlight .s, .highlight .s1, .highlight .s2, .highlight .sb,
+  .highlight .sc, .highlight .sd, .highlight .se, .highlight .sh,
+  .highlight .si, .highlight .sx, .highlight .sr, .highlight .ss { color: #98c379; }  /* 字符串 - 绿色 */
+  .highlight .m, .highlight .mf, .highlight .mh, .highlight .mi,
+  .highlight .mo, .highlight .il { color: #d19a66; }  /* 数字 - 橙色 */
+  .highlight .c, .highlight .c1, .highlight .cm, .highlight .cp,
+  .highlight .cs { color: #5c6370; font-style: italic; }  /* 注释 - 灰色 */
+  .highlight .o, .highlight .ow { color: #56b6c2; }  /* 运算符 - 青色 */
+  .highlight .p { color: #abb2bf; }  /* 标点 */
+  .highlight .nv, .highlight .vi, .highlight .vg, .highlight .vm { color: #e06c75; }  /* 变量 - 红色 */
+  .highlight .na { color: #d19a66; }  /* 属性 - 橙色 */
+  .highlight .nt { color: #e06c75; }  /* 标签 - 红色 */
 
   blockquote {
     border-left: 3px solid #b5e853;
@@ -337,6 +414,42 @@
   [data-theme="light"] img[src*="/assets/figures/"] {
     filter: none;
   }
+
+  /* 回到顶部按钮 */
+  #back-to-top {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 44px;
+    height: 44px;
+    background: var(--code-bg);
+    border: 2px solid var(--accent-color);
+    color: var(--accent-color);
+    font-size: 20px;
+    font-weight: bold;
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: all 0.3s ease;
+    z-index: 999;
+  }
+
+  #back-to-top:hover {
+    opacity: 1;
+    background: var(--accent-color);
+    color: var(--bg-color);
+    transform: translateY(-3px);
+  }
+
+  @media (max-width: 480px) {
+    #back-to-top {
+      bottom: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+    }
+  }
 </style>
 
 <script>
@@ -348,6 +461,18 @@
     html.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
     updateButton(next);
+    updateGiscusTheme(next);
+  }
+
+  // 更新 Giscus 主题
+  function updateGiscusTheme(theme) {
+    const iframe = document.querySelector('iframe.giscus-frame');
+    if (iframe) {
+      iframe.contentWindow.postMessage(
+        { giscus: { setConfig: { theme: theme === 'light' ? 'light' : 'dark' } } },
+        'https://giscus.app'
+      );
+    }
   }
 
   function updateButton(theme) {
@@ -358,9 +483,15 @@
     }
   }
 
+  // 回到顶部
+  function scrollToTop() {
+    document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+    document.body.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   // 页面加载时恢复主题
   document.addEventListener('DOMContentLoaded', function() {
-    const saved = localStorage.getItem('theme') || 'dark';
+    const saved = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', saved);
     updateButton(saved);
 
