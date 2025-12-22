@@ -305,29 +305,20 @@
     filter: none;
   }
 
-  /* 本地编译的 SVG 图片样式 */
+  /* 本地编译的 SVG 图片深色模式适配 */
   img[src*="/assets/figures/"] {
+    filter: invert(1) hue-rotate(180deg);
     max-width: 100%;
     height: auto;
     display: block;
     margin: 1em auto;
     background: transparent;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
   }
 
-  /* 深色模式显示 -dark 版本，隐藏浅色版 */
-  img.figure-light {
-    display: none;
-  }
-  img.figure-dark {
-    display: block;
-  }
-
-  /* 浅色模式显示浅色版，隐藏 -dark 版本 */
-  [data-theme="light"] img.figure-light {
-    display: block;
-  }
-  [data-theme="light"] img.figure-dark {
-    display: none;
+  [data-theme="light"] img[src*="/assets/figures/"] {
+    filter: none;
   }
 </style>
 
@@ -374,26 +365,5 @@
       }
     });
 
-    // 为 SVG 图片添加深色版本支持
-    document.querySelectorAll('img[src*="/assets/figures/"]').forEach(function(img) {
-      const src = img.getAttribute('src');
-      // 跳过已经是 -dark 版本的图片
-      if (src.includes('-dark.svg')) return;
-      // 跳过已经处理过的图片
-      if (img.classList.contains('figure-light')) return;
-
-      // 标记浅色版图片
-      img.classList.add('figure-light');
-
-      // 创建深色版图片
-      const darkSrc = src.replace('.svg', '-dark.svg');
-      const darkImg = document.createElement('img');
-      darkImg.src = darkSrc;
-      darkImg.alt = img.alt;
-      darkImg.classList.add('figure-dark');
-
-      // 插入到浅色版后面
-      img.parentNode.insertBefore(darkImg, img.nextSibling);
-    });
   });
 </script>

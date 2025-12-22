@@ -1,7 +1,6 @@
 #!/bin/bash
 # TikZ 图表编译脚本
 # 从 Markdown 文件中提取 TikZ 源码并编译为 SVG
-# 同时生成浅色版和深色版
 #
 # 使用方法：
 #   cd blogs/_figures && ./build.sh          # 编译所有图
@@ -12,8 +11,7 @@ cd "$(dirname "$0")"
 
 POSTS_DIR="../_posts"
 OUTPUT_DIR="../assets/figures"
-PREAMBLE_LIGHT="preamble.tex"
-PREAMBLE_DARK="preamble-dark.tex"
+PREAMBLE="preamble.tex"
 TMP_DIR=".tmp"
 TARGET_NAME="$1"
 
@@ -33,7 +31,6 @@ check_deps() {
     log_error "xelatex 未安装"
     exit 1
   fi
-  # 优先使用 pdf2svg（更稳定）
   if command -v pdf2svg &> /dev/null; then
     PDF_TO_SVG="pdf2svg"
   elif command -v dvisvgm &> /dev/null; then
@@ -45,54 +42,39 @@ check_deps() {
   log_info "使用 $PDF_TO_SVG 转换 SVG"
 }
 
-# 编译单个图（生成浅色和深色两个版本）
+# 从临时文件编译图
 compile_figure_from_file() {
   local name="$1"
   local content_file="$2"
 
   log_info "编译: $name"
 
-  # 编译浅色版
-  compile_single "$name" "$content_file" "$PREAMBLE_LIGHT" ""
-
-  # 编译深色版
-  compile_single "$name" "$content_file" "$PREAMBLE_DARK" "-dark"
-}
-
-# 编译单个版本
-compile_single() {
-  local name="$1"
-  local content_file="$2"
-  local preamble="$3"
-  local suffix="$4"
-
-  local output_name="${name}${suffix}"
-  local tex_file="$TMP_DIR/$output_name.tex"
+  local tex_file="$TMP_DIR/$name.tex"
 
   # 合并 preamble + tikz code + end
-  cat "$preamble" > "$tex_file"
+  cat "$PREAMBLE" > "$tex_file"
   cat "$content_file" >> "$tex_file"
   echo '\end{document}' >> "$tex_file"
 
   # 编译
   pushd "$TMP_DIR" > /dev/null
-  if xelatex -interaction=nonstopmode "$output_name.tex" > /dev/null 2>&1; then
+  if xelatex -interaction=nonstopmode "$name.tex" > /dev/null 2>&1; then
     local svg_ok=0
     if [ "$PDF_TO_SVG" = "dvisvgm" ]; then
-      dvisvgm --pdf "$output_name.pdf" -o "$output_name.svg" 2>/dev/null && svg_ok=1
+      dvisvgm --pdf "$name.pdf" -o "$name.svg" 2>/dev/null && svg_ok=1
     else
-      pdf2svg "$output_name.pdf" "$output_name.svg" 2>/dev/null && svg_ok=1
+      pdf2svg "$name.pdf" "$name.svg" 2>/dev/null && svg_ok=1
     fi
 
     if [ "$svg_ok" -eq 1 ]; then
-      mv "$output_name.svg" "../../assets/figures/"
-      log_info "  -> $OUTPUT_DIR/$output_name.svg"
+      mv "$name.svg" "../../assets/figures/"
+      log_info "  -> $OUTPUT_DIR/$name.svg"
     else
-      log_error "  SVG 转换失败: $output_name"
+      log_error "  SVG 转换失败: $name"
     fi
   else
-    log_error "  xelatex 编译失败: $output_name"
-    log_warn "  查看: _figures/$TMP_DIR/$output_name.log"
+    log_error "  xelatex 编译失败: $name"
+    log_warn "  查看: _figures/$TMP_DIR/$name.log"
   fi
   popd > /dev/null
 }

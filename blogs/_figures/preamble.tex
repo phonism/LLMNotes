@@ -3,6 +3,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{xcolor}
 \usepackage{pgfplots}  % for plots
+\usepackage{graphicx}  % for \scalebox
 \pgfplotsset{compat=1.18}
 \usetikzlibrary{arrows.meta,positioning,shapes,calc,fit,backgrounds}
 
@@ -12,19 +13,18 @@
 \definecolor{accentgreen}{RGB}{181,232,83}
 \definecolor{darkbg}{RGB}{26,26,26}
 
-% 统一样式 - 加粗版本
+% 统一样式
 \tikzset{
-  % 全局默认：加粗线条和字体
-  every node/.append style={font=\sffamily\bfseries},
-  every path/.append style={line width=1.2pt},
+  % 全局放大 1.4 倍，让字体更清晰
+  every picture/.style={scale=1.4, transform shape},
   % 基础盒子
   box/.style={
     draw=accentgreen,
-    line width=1.5pt,
+    line width=1.2pt,
     rounded corners=4pt,
     minimum width=2.5cm,
     minimum height=1cm,
-    font=\sffamily\bfseries
+    font=\large\sffamily
   },
   % Agent 样式
   agent/.style={box, fill=agentblue!30},
@@ -33,15 +33,15 @@
   % 策略样式
   policy/.style={
     draw=accentgreen,
-    line width=1.5pt,
+    line width=1.2pt,
     fill=darkbg,
     rounded corners=2pt,
-    font=\small\ttfamily\bfseries,
+    font=\normalsize\ttfamily,
     text=accentgreen
   },
   % 箭头样式
-  arr/.style={-{Stealth[length=10pt, width=8pt]}, line width=1.5pt, accentgreen},
-  arrlab/.style={font=\small\bfseries, text=black},
+  arr/.style={-{Stealth[length=8pt]}, line width=1.2pt, accentgreen},
+  arrlab/.style={font=\normalsize, text=black},
 }
 
 \begin{document}
