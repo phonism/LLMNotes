@@ -12,15 +12,19 @@
 \definecolor{accentgreen}{RGB}{181,232,83}
 \definecolor{darkbg}{RGB}{26,26,26}
 
-% 统一样式
+% 统一样式 - 加粗版本
 \tikzset{
+  % 全局默认：加粗线条和字体
+  every node/.append style={font=\sffamily\bfseries},
+  every path/.append style={line width=1.2pt},
   % 基础盒子
   box/.style={
     draw=accentgreen,
+    line width=1.5pt,
     rounded corners=4pt,
     minimum width=2.5cm,
     minimum height=1cm,
-    font=\sffamily
+    font=\sffamily\bfseries
   },
   % Agent 样式
   agent/.style={box, fill=agentblue!30},
@@ -29,14 +33,15 @@
   % 策略样式
   policy/.style={
     draw=accentgreen,
+    line width=1.5pt,
     fill=darkbg,
     rounded corners=2pt,
-    font=\small\ttfamily,
+    font=\small\ttfamily\bfseries,
     text=accentgreen
   },
   % 箭头样式
-  arr/.style={-{Stealth[length=8pt]}, thick, accentgreen},
-  arrlab/.style={font=\small, text=black},
+  arr/.style={-{Stealth[length=10pt, width=8pt]}, line width=1.5pt, accentgreen},
+  arrlab/.style={font=\small\bfseries, text=black},
 }
 
 \begin{document}
