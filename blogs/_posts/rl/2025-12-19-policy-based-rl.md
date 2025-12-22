@@ -105,8 +105,7 @@ $$\nabla_\theta \log p(\tau|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\t
 
 REINFORCE 是最简单的 Policy Gradient 算法，直接使用蒙特卡洛采样来估计梯度。
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-reinforce
 \begin{tikzpicture}[scale=0.8]
     % Title
     \node[font=\bfseries] at (0,4) {REINFORCE};
@@ -130,8 +129,8 @@ REINFORCE 是最简单的 Policy Gradient 算法，直接使用蒙特卡洛采�
     \draw[rounded corners, thick, orange!70] (-4.5,-1) rectangle (4.5,-1.9);
     \node[font=\small] at (0,-1.45) {Monte Carlo: use actual returns $G_t$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![REINFORCE Algorithm]({{ site.baseurl }}/assets/figures/rl-reinforce.svg)
 
 **REINFORCE 是无偏估计**：$\mathbb{E}[\hat{g}] = \nabla_\theta J(\theta)$
 
@@ -208,8 +207,7 @@ $$\nabla_\theta J(\theta) = \mathbb{E} \left[ \sum_t \nabla_\theta \log \pi_\the
 - **Actor**：策略网络 $\pi_\theta(a\|s)$，输出动作分布
 - **Critic**：价值网络 $\hat{V}_\phi(s)$，估计状态价值
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-actor-critic
 \begin{tikzpicture}[scale=0.85]
     % Actor box
     \draw[rounded corners, fill=blue!15, thick] (-2,2) rectangle (2,3.5);
@@ -246,8 +244,8 @@ $$\nabla_\theta J(\theta) = \mathbb{E} \left[ \sum_t \nabla_\theta \log \pi_\the
     % Update arrow
     \node[below] at (0,-1.5) {\small Update Actor with $\nabla_\theta \log \pi_\theta \cdot \hat{A}_t$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![Actor-Critic Architecture]({{ site.baseurl }}/assets/figures/rl-actor-critic.svg)
 
 **A2C (Advantage Actor-Critic)** 的核心更新规则：
 
@@ -369,8 +367,7 @@ $$L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\pi_\theta)$$
 
 ### 8.4 PPO 完整算法
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-ppo-algorithm
 \begin{tikzpicture}[scale=0.7]
     % Title
     \node[font=\bfseries] at (0,7.5) {Proximal Policy Optimization (PPO)};
@@ -402,8 +399,8 @@ $$L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\pi_\theta)$$
 
     \node[anchor=west, font=\small] at (-5.8,-3.4) {Gradient ascent on $\theta$, gradient descent on $\phi$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![PPO Algorithm]({{ site.baseurl }}/assets/figures/rl-ppo-algorithm.svg)
 
 > **PPO 的成功原因**：
 > 1. **简单高效**：只需一阶优化，不需要计算 Hessian
@@ -440,12 +437,23 @@ $$L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\pi_\theta)$$
    - TRPO：KL 约束优化，实现复杂
    - PPO：clip 机制，简单高效，是实践中的首选
 
-<div class="mermaid">
-graph LR
-    R["REINFORCE<br/><small>无偏高方差</small>"] -->|"+Baseline"| B["+ Baseline<br/><small>降低方差</small>"]
-    B -->|"+Critic"| AC["Actor-Critic<br/><small>学习 Critic</small>"]
-    AC -->|"+GAE"| GAE["+ GAE<br/><small>λ 权衡</small>"]
-    GAE -->|"+Clip"| PPO["PPO<br/><small>稳定高效</small>"]
-</div>
+<!-- tikz-source: rl-pg-evolution
+\begin{tikzpicture}[
+    node/.style={draw, rounded corners, fill=blue!15, minimum width=2cm, minimum height=1.2cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[node, fill=red!20] (r) at (0, 0) {REINFORCE\\{\footnotesize 无偏高方差}};
+    \node[node, fill=orange!20] (b) at (3.5, 0) {+ Baseline\\{\footnotesize 降低方差}};
+    \node[node, fill=yellow!30] (ac) at (7, 0) {Actor-Critic\\{\footnotesize 学习 Critic}};
+    \node[node, fill=green!20] (gae) at (10.5, 0) {+ GAE\\{\footnotesize $\lambda$ 权衡}};
+    \node[node, fill=purple!20] (ppo) at (14, 0) {PPO\\{\footnotesize 稳定高效}};
+
+    \draw[arrow] (r) -- node[above, font=\footnotesize] {+Baseline} (b);
+    \draw[arrow] (b) -- node[above, font=\footnotesize] {+Critic} (ac);
+    \draw[arrow] (ac) -- node[above, font=\footnotesize] {+GAE} (gae);
+    \draw[arrow] (gae) -- node[above, font=\footnotesize] {+Clip} (ppo);
+\end{tikzpicture}
+-->
+![Policy Gradient 演进]({{ site.baseurl }}/assets/figures/rl-pg-evolution.svg)
 
 下一篇文章将介绍 Model-Based RL 与多智能体学习，包括 MCTS 和 AlphaGo/Zero。

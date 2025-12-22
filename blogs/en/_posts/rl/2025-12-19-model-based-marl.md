@@ -30,17 +30,30 @@ RL methods are divided into two major categories based on whether they use an en
 > - **Model-Free**: Does not learn or use an environment model, directly learns value functions or policies from real experience
 > - **Model-Based**: Learns or utilizes environment model $\hat{P}(s'|s,a)$, $\hat{R}(s,a)$, performs planning within the model
 
-<div class="mermaid">
-flowchart TB
-    subgraph MF["**Model-Free** (Low sample efficiency)"]
-        ENV1["Real Environment"] -->|"Many samples"| POLICY1["Policy/Value Function"]
-    end
-    subgraph MB["**Model-Based** (High sample efficiency)"]
-        ENV2["Real Environment"] -->|"Few samples"| MODEL["World Model"]
-        MODEL -->|"Simulation"| POLICY2["Policy/Value Function"]
-        ENV2 -.->|"Correction"| POLICY2
-    end
-</div>
+<!-- tikz-source: rl-mf-vs-mb-en
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.4cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Model-Free
+    \draw[rounded corners, thick, red!30, fill=red!5] (-5.5, -0.5) rectangle (-0.5, 2);
+    \node[font=\bfseries\small, red!70] at (-3, 1.7) {Model-Free (Low efficiency)};
+    \node[box, fill=blue!20] (env1) at (-4.5, 0.5) {Real Environment};
+    \node[box, fill=green!20] (policy1) at (-1.5, 0.5) {Policy/Value};
+    \draw[arrow] (env1) -- node[above, font=\footnotesize] {Many samples} (policy1);
+
+    % Model-Based
+    \draw[rounded corners, thick, green!40, fill=green!5] (0.5, -1.5) rectangle (7.5, 2);
+    \node[font=\bfseries\small, green!60!black] at (4, 1.7) {Model-Based (High efficiency)};
+    \node[box, fill=blue!20] (env2) at (1.5, 0.5) {Real Environment};
+    \node[box, fill=orange!20] (model) at (4, 0.5) {World Model};
+    \node[box, fill=green!20] (policy2) at (6.5, 0.5) {Policy/Value};
+    \draw[arrow] (env2) -- node[above, font=\footnotesize] {Few samples} (model);
+    \draw[arrow, very thick] (model) -- node[above, font=\footnotesize] {Simulation} (policy2);
+    \draw[arrow, dashed] (env2) to[bend right=40] node[below, font=\footnotesize] {Correction} (policy2);
+\end{tikzpicture}
+-->
+![Model-Free vs Model-Based]({{ site.baseurl }}/assets/figures/rl-mf-vs-mb-en.svg)
 
 | Property | Model-Free | Model-Based |
 |------|------------|-------------|
@@ -95,21 +108,38 @@ $$z_{t+1} = f_\theta(z_t, a_t), \quad z_t = \text{Encoder}(s_t)$$
 
 The key issue with Model Bias is **error compounding**:
 
-<div class="mermaid">
-flowchart LR
-    subgraph Real["Real trajectory (solid)"]
-        S0((s₀)) -->|a₀| S1((s₁))
-        S1 -->|a₁| S2((s₂))
-        S2 -->|a₂| S3((s₃))
-        S3 -->|a₃| S4((s₄))
-    end
-    subgraph Pred["Predicted trajectory (dashed) — error accumulates"]
-        S0 -.->|a₀| H1((ŝ₁))
-        H1 -.->|a₁| H2((ŝ₂))
-        H2 -.->|a₂| H3((ŝ₃))
-        H3 -.->|a₃| H4((ŝ₄))
-    end
-</div>
+<!-- tikz-source: rl-model-error-en
+\begin{tikzpicture}[
+    state/.style={draw, circle, minimum size=0.8cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Real trajectory
+    \node[state, fill=blue!20] (s0) at (0, 0) {$s_0$};
+    \node[state, fill=blue!20] (s1) at (2, 0) {$s_1$};
+    \node[state, fill=blue!20] (s2) at (4, 0) {$s_2$};
+    \node[state, fill=blue!20] (s3) at (6, 0) {$s_3$};
+    \node[state, fill=blue!20] (s4) at (8, 0) {$s_4$};
+
+    \draw[arrow] (s0) -- node[above, font=\footnotesize] {$a_0$} (s1);
+    \draw[arrow] (s1) -- node[above, font=\footnotesize] {$a_1$} (s2);
+    \draw[arrow] (s2) -- node[above, font=\footnotesize] {$a_2$} (s3);
+    \draw[arrow] (s3) -- node[above, font=\footnotesize] {$a_3$} (s4);
+    \node[above, font=\small] at (4, 0.7) {Real trajectory (solid)};
+
+    % Predicted trajectory
+    \node[state, fill=red!20] (h1) at (2, -2) {$\hat{s}_1$};
+    \node[state, fill=red!20] (h2) at (4, -2.3) {$\hat{s}_2$};
+    \node[state, fill=red!20] (h3) at (6, -2.7) {$\hat{s}_3$};
+    \node[state, fill=red!20] (h4) at (8, -3.2) {$\hat{s}_4$};
+
+    \draw[arrow, dashed, red!70] (s0) -- node[left, font=\footnotesize] {$a_0$} (h1);
+    \draw[arrow, dashed, red!70] (h1) -- node[above, font=\footnotesize] {$a_1$} (h2);
+    \draw[arrow, dashed, red!70] (h2) -- node[above, font=\footnotesize] {$a_2$} (h3);
+    \draw[arrow, dashed, red!70] (h3) -- node[above, font=\footnotesize] {$a_3$} (h4);
+    \node[below, font=\small, red!70] at (5, -3.6) {Predicted trajectory (dashed) --- error accumulates};
+\end{tikzpicture}
+-->
+![Model Bias Error Compounding]({{ site.baseurl }}/assets/figures/rl-model-error-en.svg)
 
 Error $\epsilon_t$ increases with steps: $\epsilon_1 < \epsilon_2 < \epsilon_3 < \epsilon_4$
 
@@ -133,28 +163,41 @@ With an environment model, the next step is to utilize the model for **planning*
 > - **Background Planning**: Outside of interaction with the real environment, use the model to generate simulated experience to train the policy
 > - **Decision-time Planning**: When a decision needs to be made, use the model for forward search to select the optimal action
 
-<div class="mermaid">
-flowchart LR
-    subgraph BG["**Training-time Planning** Background Planning"]
-        BG1["Offline simulation<br/>Train policy network<br/>Example: Dyna"]
-    end
-    subgraph DT["**Decision-time Planning**"]
-        DT1["Online search<br/>No training<br/>Example: MCTS"]
-    end
-</div>
+<!-- tikz-source: rl-planning-types-en
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=4cm, minimum height=2cm, align=center, font=\small}
+]
+    \node[box, fill=orange!15] (bg) at (0, 0) {Offline simulation\\Train policy network\\Example: Dyna};
+    \node[font=\bfseries\small, orange!70] at (0, 1.5) {Background Planning};
+
+    \node[box, fill=green!15] (dt) at (7, 0) {Online search\\No training\\Example: MCTS};
+    \node[font=\bfseries\small, green!60!black] at (7, 1.5) {Decision-time Planning};
+\end{tikzpicture}
+-->
+![Planning Types]({{ site.baseurl }}/assets/figures/rl-planning-types-en.svg)
 
 ### Dyna Architecture
 
 Dyna is a classic framework for Background Planning, proposed by Sutton in 1991. Its core idea is: **after each real interaction, use the model to generate multiple simulated experiences to accelerate learning**.
 
-<div class="mermaid">
-flowchart TB
-    ENV["Real Environment"] -->|"Learn Model"| MODEL["World Model P̂, R̂"]
-    ENV -->|"Real exp"| EXP["Experience Buffer (s,a,r,s')"]
-    EXP -->|"Direct RL"| POLICY["Policy/Value Q(s,a)"]
-    MODEL ==>|"Simulated exp (n times)"| POLICY
-    POLICY -.->|"Action"| ENV
-</div>
+<!-- tikz-source: rl-dyna-architecture-en
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (env) at (0, 2) {Real Environment};
+    \node[box, fill=orange!20] (model) at (5.5, 2) {World Model $\hat{P}, \hat{R}$};
+    \node[box, fill=yellow!20] (exp) at (0, 0) {Experience Buffer};
+    \node[box, fill=green!20] (policy) at (5.5, 0) {Policy/Value $Q(s,a)$};
+
+    \draw[arrow] (env) -- node[above, font=\footnotesize] {Learn Model} (model);
+    \draw[arrow] (env) -- node[left, font=\footnotesize] {Real exp} (exp);
+    \draw[arrow] (exp) -- node[above, font=\footnotesize] {Direct RL} (policy);
+    \draw[arrow, very thick, green!60!black] (model) -- node[right, font=\footnotesize] {Simulated (n times)} (policy);
+    \draw[arrow, dashed] (policy) to[bend left=30] node[right, font=\footnotesize] {Action} (env);
+\end{tikzpicture}
+-->
+![Dyna Architecture]({{ site.baseurl }}/assets/figures/rl-dyna-architecture-en.svg)
 
 > Each real interaction generates $n$ simulated steps
 
@@ -220,33 +263,60 @@ The goal of MCTS is to estimate the value of each action in the current state wi
 
 Each iteration of MCTS includes four steps:
 
-<div class="mermaid">
-flowchart LR
-    subgraph S1["1. Selection"]
-        direction TB
-        R1((root)) ==>|UCB| A1((node))
-        R1 --> B1((node))
-        A1 ==>|UCB| C1((leaf))
-    end
-    subgraph S2["2. Expansion"]
-        direction TB
-        R2((root)) --> A2((node))
-        A2 --> C2((node))
-        A2 -.->|new| NEW((new))
-    end
-    subgraph S3["3. Evaluation"]
-        direction TB
-        R3((root)) --> A3((node))
-        A3 --> C3((eval))
-        C3 -.->|"rollout/v(s)"| V["v=?"]
-    end
-    subgraph S4["4. Backup"]
-        direction TB
-        R4((↑)) --> A4((↑))
-        A4 --> C4((v))
-    end
-    S1 --> S2 --> S3 --> S4
-</div>
+<!-- tikz-source: rl-mcts-steps-en
+\begin{tikzpicture}[
+    node/.style={draw, circle, minimum size=0.6cm, font=\footnotesize},
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=3cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Step 1: Selection
+    \draw[rounded corners, thick, blue!30, fill=blue!5] (-0.5, -2.5) rectangle (2.5, 1.5);
+    \node[font=\bfseries\small, blue!70] at (1, 1.2) {1. Selection};
+    \node[node, fill=orange!30] (r1) at (1, 0.5) {root};
+    \node[node, fill=green!30] (a1) at (0.3, -0.5) {};
+    \node[node] (b1) at (1.7, -0.5) {};
+    \node[node, fill=green!30] (c1) at (0.3, -1.5) {leaf};
+    \draw[arrow, thick, green!60!black] (r1) -- node[left, font=\tiny] {UCB} (a1);
+    \draw[arrow] (r1) -- (b1);
+    \draw[arrow, thick, green!60!black] (a1) -- node[left, font=\tiny] {UCB} (c1);
+
+    % Step 2: Expansion
+    \draw[rounded corners, thick, orange!30, fill=orange!5] (3, -2.5) rectangle (6, 1.5);
+    \node[font=\bfseries\small, orange!70] at (4.5, 1.2) {2. Expansion};
+    \node[node] (r2) at (4.5, 0.5) {root};
+    \node[node] (a2) at (4.5, -0.5) {};
+    \node[node] (c2) at (4, -1.5) {};
+    \node[node, fill=yellow!50, dashed] (new) at (5, -1.5) {new};
+    \draw[arrow] (r2) -- (a2);
+    \draw[arrow] (a2) -- (c2);
+    \draw[arrow, dashed, orange!70] (a2) -- (new);
+
+    % Step 3: Evaluation
+    \draw[rounded corners, thick, green!30, fill=green!5] (6.5, -2.5) rectangle (9.5, 1.5);
+    \node[font=\bfseries\small, green!60!black] at (8, 1.2) {3. Evaluation};
+    \node[node] (r3) at (8, 0.5) {root};
+    \node[node] (a3) at (8, -0.5) {};
+    \node[node, fill=purple!30] (c3) at (8, -1.5) {eval};
+    \draw[arrow] (r3) -- (a3);
+    \draw[arrow] (a3) -- (c3);
+    \node[font=\footnotesize, purple!70] at (8, -2.1) {rollout / $v(s)$};
+
+    % Step 4: Backup
+    \draw[rounded corners, thick, purple!30, fill=purple!5] (10, -2.5) rectangle (13, 1.5);
+    \node[font=\bfseries\small, purple!70] at (11.5, 1.2) {4. Backup};
+    \node[node, fill=purple!20] (r4) at (11.5, 0.5) {$\uparrow$};
+    \node[node, fill=purple!20] (a4) at (11.5, -0.5) {$\uparrow$};
+    \node[node, fill=purple!30] (c4) at (11.5, -1.5) {$v$};
+    \draw[arrow, purple!70] (c4) -- (a4);
+    \draw[arrow, purple!70] (a4) -- (r4);
+
+    % Arrows between steps
+    \draw[arrow, very thick] (2.5, -0.5) -- (3, -0.5);
+    \draw[arrow, very thick] (6, -0.5) -- (6.5, -0.5);
+    \draw[arrow, very thick] (9.5, -0.5) -- (10, -0.5);
+\end{tikzpicture}
+-->
+![MCTS Four Steps]({{ site.baseurl }}/assets/figures/rl-mcts-steps-en.svg)
 
 - **Selection**: Select by UCB along tree
 - **Expansion**: Expand new child node
@@ -339,14 +409,25 @@ Traditional Go AI used exhaustive search + hand-crafted evaluation functions, re
 
 AlphaGo defeated world champion Lee Sedol 4:1 in 2016. Its architecture includes:
 
-<div class="mermaid">
-flowchart TB
-    INPUT["Board State 19×19"] --> PN["Policy Network p(a|s)<br/><small>Supervised(human games)+RL tuning</small>"]
-    INPUT --> VN["Value Network v(s)<br/><small>Supervised(self-play result prediction)</small>"]
-    PN -->|"Guide selection"| MCTS["MCTS Search"]
-    VN -->|"Evaluate leaf"| MCTS
-    MCTS --> OUTPUT["Final Action"]
-</div>
+<!-- tikz-source: rl-alphago-architecture-en
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=1.2cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (input) at (0, 0) {Board State $19 \times 19$};
+    \node[box, fill=orange!20] (pn) at (-3, -2.5) {Policy Network $p(a|s)$\\{\footnotesize Supervised+RL tuning}};
+    \node[box, fill=green!20] (vn) at (3, -2.5) {Value Network $v(s)$\\{\footnotesize Self-play prediction}};
+    \node[box, fill=purple!20] (mcts) at (0, -5) {MCTS Search};
+    \node[box, fill=yellow!30] (output) at (0, -7.5) {Final Action};
+
+    \draw[arrow] (input) -- (pn);
+    \draw[arrow] (input) -- (vn);
+    \draw[arrow] (pn) -- node[left, font=\footnotesize] {Guide selection} (mcts);
+    \draw[arrow] (vn) -- node[right, font=\footnotesize] {Evaluate leaf} (mcts);
+    \draw[arrow] (mcts) -- (output);
+\end{tikzpicture}
+-->
+![AlphaGo Architecture]({{ site.baseurl }}/assets/figures/rl-alphago-architecture-en.svg)
 
 1. **Policy Network** $p_\theta(a|s)$:
    - Input: Board state (multi-channel features)
@@ -380,12 +461,22 @@ AlphaZero in 2017 significantly simplified AlphaGo's design while achieving even
 | Training time | Months | **Hours** |
 | Applicable games | Only Go | **Go, Chess, Shogi** |
 
-<div class="mermaid">
-flowchart TB
-    INPUT["Board State s"] --> NET["ResNet (Unified Network)"]
-    NET --> POLICY["p(a|s) Policy Head"]
-    NET --> VALUE["v(s) Value Head"]
-</div>
+<!-- tikz-source: rl-alphazero-network-en
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (input) at (0, 0) {Board State $s$};
+    \node[box, fill=orange!30] (net) at (0, -1.5) {ResNet (Unified Network)};
+    \node[box, fill=green!20] (policy) at (-2.5, -3) {$p(a|s)$ Policy Head};
+    \node[box, fill=purple!20] (value) at (2.5, -3) {$v(s)$ Value Head};
+
+    \draw[arrow] (input) -- (net);
+    \draw[arrow] (net) -- (policy);
+    \draw[arrow] (net) -- (value);
+\end{tikzpicture}
+-->
+![AlphaZero Network]({{ site.baseurl }}/assets/figures/rl-alphazero-network-en.svg)
 
 > Single network outputs both policy and value. Shared representation, fewer params, more efficient.
 
@@ -393,12 +484,21 @@ flowchart TB
 
 AlphaZero's training is a **self-reinforcing** loop:
 
-<div class="mermaid">
-flowchart LR
-    SELFPLAY["Self-Play<br/>Generate game data"] -->|"(s, π_MCTS, z)"| TRAIN["Network Training<br/>Learn from search"]
-    TRAIN -->|"Update θ"| NETWORK["Neural Network<br/>(p, v)"]
-    NETWORK -->|"Guide search"| SELFPLAY
-</div>
+<!-- tikz-source: rl-alphazero-loop-en
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1.2cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (selfplay) at (0, 0) {Self-Play\\Generate game data};
+    \node[box, fill=orange!20] (train) at (5, 0) {Network Training\\Learn from search};
+    \node[box, fill=green!20] (network) at (2.5, -2.5) {Neural Network\\$(p, v)$};
+
+    \draw[arrow] (selfplay) -- node[above, font=\footnotesize] {$(s, \pi_{\text{MCTS}}, z)$} (train);
+    \draw[arrow] (train) -- node[right, font=\footnotesize] {Update $\theta$} (network);
+    \draw[arrow] (network) -- node[left, font=\footnotesize] {Guide search} (selfplay);
+\end{tikzpicture}
+-->
+![AlphaZero Training Loop]({{ site.baseurl }}/assets/figures/rl-alphazero-loop-en.svg)
 
 > **Positive loop**: Better network → better search → better training data → better network
 
@@ -530,14 +630,25 @@ Self-Play is a powerful method for training game AI, and is one of the keys to A
 
 > **Self-Play**: The agent plays against itself (or its historical versions), learning to improve its strategy from game experience.
 
-<div class="mermaid">
-flowchart TB
-    CURRENT["Current Policy π"] --> GAME["Game Play"]
-    OPPONENT["Opponent π or π'"] --> GAME
-    POOL["Opponent Pool"] -.-> OPPONENT
-    GAME --> EXP["Experience (s,a,r,s')"]
-    EXP -->|"Update"| CURRENT
-</div>
+<!-- tikz-source: rl-self-play-en
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (current) at (0, 2) {Current Policy $\pi$};
+    \node[box, fill=orange!20] (opponent) at (5, 2) {Opponent $\pi$ or $\pi'$};
+    \node[box, fill=yellow!20] (pool) at (5, 4) {Opponent Pool};
+    \node[box, fill=green!30] (game) at (2.5, 0) {Game Play};
+    \node[box, fill=purple!20] (exp) at (2.5, -2) {Experience $(s,a,r,s')$};
+
+    \draw[arrow] (current) -- (game);
+    \draw[arrow] (opponent) -- (game);
+    \draw[arrow, dashed] (pool) -- (opponent);
+    \draw[arrow] (game) -- (exp);
+    \draw[arrow] (exp) to[bend right=40] node[left, font=\footnotesize] {Update} (current);
+\end{tikzpicture}
+-->
+![Self-Play]({{ site.baseurl }}/assets/figures/rl-self-play-en.svg)
 
 ### Advantages of Self-Play
 
@@ -594,21 +705,41 @@ flowchart TB
    - Nash equilibrium: Stable strategy combination
    - Self-Play: Effective method for training game AI
 
-<div class="mermaid">
-flowchart TB
-    RL["RL Methods"] --> MF["Model-Free"]
-    RL --> MB["Model-Based"]
+<!-- tikz-source: rl-methods-taxonomy-en
+\begin{tikzpicture}[
+    node/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Root
+    \node[node, fill=orange!30] (rl) at (0, 0) {RL Methods};
 
-    MF --> VB["Value-Based<br/><small>DQN</small>"]
-    MF --> PB["Policy-Based<br/><small>REINFORCE</small>"]
-    MF --> AC["Actor-Critic<br/><small>PPO, SAC</small>"]
+    % Level 1
+    \node[node, fill=red!20] (mf) at (-4, -1.5) {Model-Free};
+    \node[node, fill=green!20] (mb) at (4, -1.5) {Model-Based};
+    \draw[arrow] (rl) -- (mf);
+    \draw[arrow] (rl) -- (mb);
 
-    MB --> BG["Background Planning<br/><small>Dyna</small>"]
-    MB --> DT["Decision-time Planning<br/><small>MCTS</small>"]
+    % Model-Free branches
+    \node[node, fill=blue!15] (vb) at (-6, -3.5) {Value-Based\\{\footnotesize DQN}};
+    \node[node, fill=blue!15] (pb) at (-4, -3.5) {Policy-Based\\{\footnotesize REINFORCE}};
+    \node[node, fill=blue!15] (ac) at (-2, -3.5) {Actor-Critic\\{\footnotesize PPO, SAC}};
+    \draw[arrow] (mf) -- (vb);
+    \draw[arrow] (mf) -- (pb);
+    \draw[arrow] (mf) -- (ac);
 
-    AC -.-> AZ["**AlphaZero**"]
-    DT -.-> AZ
-</div>
+    % Model-Based branches
+    \node[node, fill=yellow!20] (bg) at (3, -3.5) {Background Planning\\{\footnotesize Dyna}};
+    \node[node, fill=yellow!20] (dt) at (6, -3.5) {Decision-time Planning\\{\footnotesize MCTS}};
+    \draw[arrow] (mb) -- (bg);
+    \draw[arrow] (mb) -- (dt);
+
+    % AlphaZero
+    \node[node, fill=purple!30, font=\bfseries\small] (az) at (2, -5.5) {AlphaZero};
+    \draw[arrow, dashed, purple!70] (ac) to[bend right=15] (az);
+    \draw[arrow, dashed, purple!70] (dt) to[bend left=15] (az);
+\end{tikzpicture}
+-->
+![RL Methods Taxonomy]({{ site.baseurl }}/assets/figures/rl-methods-taxonomy-en.svg)
 
 > **AlphaZero = MCTS + Policy Network + Value Network + Self-Play**
 

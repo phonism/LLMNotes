@@ -375,24 +375,55 @@ Reason: Gating on final output can **holistically suppress** contribution of ent
 
 Key finding from StreamingLLM: When using sliding window attention, once initial tokens are moved out of the window, model output **completely collapses**. But simply retaining the first 4 tokens largely recovers performance.
 
-<div class="mermaid">
-graph LR
-    subgraph shallow["Shallow Attention (diagonal)"]
-        A1["■□□□□"]
-        A2["□■□□□"]
-        A3["□□■□□"]
-        A4["□□□■□"]
-        A5["□□□□■"]
-    end
-    subgraph deep["Deep Attention (Sink)"]
-        B1["■□□□□"]
-        B2["■□■□□"]
-        B3["■□□■□"]
-        B4["■□□□■"]
-        B5["■□□□□"]
-    end
-    shallow --> |"vs"| deep
-</div>
+<!-- tikz-source: transformer-attention-sink-en
+\begin{tikzpicture}[scale=0.6]
+    % Shallow Attention (Diagonal)
+    \draw[rounded corners, thick, blue!30, fill=blue!5] (-0.5, -5.5) rectangle (5.5, 1);
+    \node[font=\bfseries\small, blue!70] at (2.5, 0.5) {Shallow Attention (Diagonal)};
+
+    \foreach \i in {0,...,4} {
+        \foreach \j in {0,...,4} {
+            \pgfmathtruncatemacro{\diag}{\i==\j ? 1 : 0}
+            \ifnum\diag=1
+                \fill[blue!60] (\j, -\i-1) rectangle (\j+1, -\i);
+            \else
+                \fill[gray!20] (\j, -\i-1) rectangle (\j+1, -\i);
+            \fi
+            \draw[gray!50] (\j, -\i-1) rectangle (\j+1, -\i);
+        }
+    }
+
+    % Arrow
+    \draw[->, very thick] (6, -2.5) -- (7.5, -2.5);
+    \node at (6.75, -1.8) {vs};
+
+    % Deep Attention (Sink)
+    \draw[rounded corners, thick, red!30, fill=red!5] (8, -5.5) rectangle (14, 1);
+    \node[font=\bfseries\small, red!70] at (11, 0.5) {Deep Attention (Sink)};
+
+    \foreach \i in {0,...,4} {
+        \foreach \j in {0,...,4} {
+            \pgfmathtruncatemacro{\sink}{\j==0 ? 1 : 0}
+            \pgfmathtruncatemacro{\diag}{\i==\j ? 1 : 0}
+            \ifnum\sink=1
+                \fill[red!60] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+            \else
+                \ifnum\diag=1
+                    \fill[blue!40] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+                \else
+                    \fill[gray!20] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+                \fi
+            \fi
+            \draw[gray!50] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+        }
+    }
+
+    % Legend
+    \node[font=\footnotesize] at (2.5, -6.3) {Each token attends to itself};
+    \node[font=\footnotesize] at (11, -6.3) {All tokens attend to first token};
+\end{tikzpicture}
+-->
+![Attention Sink Visualization]({{ site.baseurl }}/assets/figures/transformer-attention-sink-en.svg)
 
 > **Figure Explanation**: Left shows shallow attention mainly concentrated on diagonal (each token attends to itself); right shows deep attention with Sink phenomenon in first column (all tokens attend to first token).
 

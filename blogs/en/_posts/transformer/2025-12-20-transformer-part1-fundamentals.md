@@ -90,8 +90,7 @@ $$I_{\text{critical}} = \frac{\text{Peak FLOPs/s}}{\text{Memory Bandwidth}}$$
 - When $I < I_{\text{critical}}$, the program is **Memory-bound**
 - When $I > I_{\text{critical}}$, the program is **Compute-bound**
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: transformer-roofline-en
 \begin{tikzpicture}[scale=0.9]
     % Axes
     \draw[->] (0,0) -- (8,0) node[right] {Arithmetic Intensity (FLOPs/Byte)};
@@ -107,8 +106,8 @@ $$I_{\text{critical}} = \frac{\text{Peak FLOPs/s}}{\text{Memory Bandwidth}}$$
     % Labels
     \node[left] at (0,4) {Peak FLOPs/s};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![Roofline Model]({{ site.baseurl }}/assets/figures/transformer-roofline-en.svg)
 
 ### 2.4 Mainstream AI Accelerator Specs
 

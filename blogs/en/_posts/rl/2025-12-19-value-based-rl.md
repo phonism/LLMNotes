@@ -25,11 +25,20 @@ $$\pi^*(s) = \arg\max_a Q^*(s,a)$$
 
 This is the theoretical foundation of Value-Based methods—instead of learning the policy directly, we obtain it indirectly by learning the value function.
 
-<div class="mermaid">
-graph TB
-    VBM["Value-Based Methods<br/>DP, MC, TD<br/>Q-Learning, DQN"] --> VF["Value Function<br/>V* or Q*"]
-    VF -->|"argmax"| OP["Optimal Policy<br/>π*"]
-</div>
+<!-- tikz-source: rl-value-based-flow-en
+\begin{tikzpicture}[
+    node/.style={draw, rounded corners, fill=blue!15, minimum width=3cm, minimum height=1.2cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[node, fill=orange!20] (vbm) at (0, 0) {Value-Based Methods\\DP, MC, TD\\Q-Learning, DQN};
+    \node[node, fill=green!20] (vf) at (0, -2.5) {Value Function\\$V^*$ or $Q^*$};
+    \node[node, fill=purple!20] (op) at (0, -5) {Optimal Policy\\$\pi^*$};
+
+    \draw[arrow] (vbm) -- (vf);
+    \draw[arrow] (vf) -- node[right, font=\footnotesize] {argmax} (op);
+\end{tikzpicture}
+-->
+![Value-Based Methods Flow]({{ site.baseurl }}/assets/figures/rl-value-based-flow-en.svg)
 
 ## 2. Bellman Equations
 
@@ -132,14 +141,29 @@ $$\pi'(s) = \arg\max_a Q^\pi(s,a) = \arg\max_a \left[ R(s,a) + \gamma \sum_{s'} 
 
 Alternate between Policy Evaluation and Policy Improvement:
 
-<div class="mermaid">
-graph LR
-    P0["π₀"] -->|"Eval"| V0["V^π₀"]
-    V0 -->|"Improve"| P1["π₁"]
-    P1 -->|"Eval"| V1["V^π₁"]
-    V1 -->|"Improve"| P2["π₂"]
-    P2 -->|"..."| END["π*"]
-</div>
+<!-- tikz-source: rl-policy-iteration-en
+\begin{tikzpicture}[
+    policy/.style={draw, circle, fill=blue!20, minimum size=1cm, font=\small},
+    value/.style={draw, rounded corners, fill=green!20, minimum width=1.2cm, minimum height=0.8cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[policy] (p0) at (0, 0) {$\pi_0$};
+    \node[value] (v0) at (2, 0) {$V^{\pi_0}$};
+    \node[policy] (p1) at (4, 0) {$\pi_1$};
+    \node[value] (v1) at (6, 0) {$V^{\pi_1}$};
+    \node[policy] (p2) at (8, 0) {$\pi_2$};
+    \node at (9.5, 0) {$\cdots$};
+    \node[policy, fill=orange!30] (pstar) at (11, 0) {$\pi^*$};
+
+    \draw[arrow] (p0) -- node[above, font=\footnotesize] {Eval} (v0);
+    \draw[arrow] (v0) -- node[above, font=\footnotesize] {Improve} (p1);
+    \draw[arrow] (p1) -- node[above, font=\footnotesize] {Eval} (v1);
+    \draw[arrow] (v1) -- node[above, font=\footnotesize] {Improve} (p2);
+    \draw[arrow] (p2) -- (9,0);
+    \draw[arrow] (10,0) -- (pstar);
+\end{tikzpicture}
+-->
+![Policy Iteration]({{ site.baseurl }}/assets/figures/rl-policy-iteration-en.svg)
 
 For finite MDPs, Policy Iteration converges to optimal policy $\pi^*$ in finite steps.
 
@@ -310,8 +334,7 @@ where $\mathcal{D}$ is the Replay Buffer, $\theta^-$ is the Target Network param
 
 Store transitions $(s_t, a_t, r_t, s_{t+1})$ in Replay Buffer $\mathcal{D}$, randomly sample mini-batches from $\mathcal{D}$ for training.
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-replay-buffer
 \begin{tikzpicture}[scale=0.8]
     % Buffer box
     \draw[thick, rounded corners, fill=blue!10] (-5,-0.8) rectangle (5,0.8);
@@ -336,8 +359,8 @@ Store transitions $(s_t, a_t, r_t, s_{t+1})$ in Replay Buffer $\mathcal{D}$, ran
     % Mini-batch
     \node at (0,-2.5) {Random sample mini-batch};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![Replay Buffer]({{ site.baseurl }}/assets/figures/rl-replay-buffer.svg)
 
 Benefits of Experience Replay:
 1. **Break sample correlation**: Random sampling provides more independent samples
@@ -356,8 +379,7 @@ A variant is **Soft Update**: $\theta^- \leftarrow \tau \theta + (1 - \tau) \the
 
 ### 6.5 DQN Algorithm
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-dqn-algorithm
 \begin{tikzpicture}[scale=0.75]
     % Title
     \node[font=\bfseries] at (0,6.5) {Deep Q-Network (DQN)};
@@ -385,8 +407,8 @@ A variant is **Soft Update**: $\theta^- \leftarrow \tau \theta + (1 - \tau) \the
     \node[anchor=west, font=\small] at (-4.2,-2.5) {Gradient descent on $(y - Q(s,a;\theta))^2$};
     \node[anchor=west, font=\small] at (-4.2,-3.2) {Every $C$ steps: $\theta^- \leftarrow \theta$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![DQN Algorithm]({{ site.baseurl }}/assets/figures/rl-dqn-algorithm.svg)
 
 > **DQN's two key techniques solve deep RL stability problems**:
 > 1. **Experience Replay**: Addresses sample correlation, improves data efficiency

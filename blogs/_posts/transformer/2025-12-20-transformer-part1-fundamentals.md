@@ -90,8 +90,7 @@ $$I_{\text{critical}} = \frac{\text{Peak FLOPs/s}}{\text{Memory Bandwidth}}$$
 - 当 $I < I_{\text{critical}}$ 时，程序是 **Memory-bound**
 - 当 $I > I_{\text{critical}}$ 时，程序是 **Compute-bound**
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: transformer-roofline
 \begin{tikzpicture}[scale=0.9]
     % Axes
     \draw[->] (0,0) -- (8,0) node[right] {Arithmetic Intensity (FLOPs/Byte)};
@@ -107,8 +106,8 @@ $$I_{\text{critical}} = \frac{\text{Peak FLOPs/s}}{\text{Memory Bandwidth}}$$
     % Labels
     \node[left] at (0,4) {Peak FLOPs/s};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![Roofline 模型]({{ site.baseurl }}/assets/figures/transformer-roofline.svg)
 
 ### 2.4 主流 AI 加速器规格
 

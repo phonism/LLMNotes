@@ -25,11 +25,20 @@ $$\pi^*(s) = \arg\max_a Q^*(s,a)$$
 
 这是 Value-Based 方法的理论基础——不直接学习策略，而是通过学习价值函数间接得到策略。
 
-<div class="mermaid">
-graph TB
-    VBM["Value-Based Methods<br/>DP, MC, TD<br/>Q-Learning, DQN"] --> VF["Value Function<br/>V* or Q*"]
-    VF -->|"argmax"| OP["Optimal Policy<br/>π*"]
-</div>
+<!-- tikz-source: rl-value-based-flow
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!15, minimum width=3cm, minimum height=1cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (vbm) at (0, 0) {Value-Based Methods\\DP, MC, TD\\Q-Learning, DQN};
+    \node[box, fill=green!20] (vf) at (5, 0) {Value Function\\$V^*$ or $Q^*$};
+    \node[box, fill=orange!20] (op) at (10, 0) {Optimal Policy\\$\pi^*$};
+
+    \draw[arrow] (vbm) -- (vf);
+    \draw[arrow] (vf) -- node[above, font=\small] {argmax} (op);
+\end{tikzpicture}
+-->
+![Value-Based 方法流程]({{ site.baseurl }}/assets/figures/rl-value-based-flow.svg)
 
 ## 2. Bellman 方程
 
@@ -132,14 +141,29 @@ $$\pi'(s) = \arg\max_a Q^\pi(s,a) = \arg\max_a \left[ R(s,a) + \gamma \sum_{s'} 
 
 交替进行 Policy Evaluation 和 Policy Improvement：
 
-<div class="mermaid">
-graph LR
-    P0["π₀"] -->|"Eval"| V0["V^π₀"]
-    V0 -->|"Improve"| P1["π₁"]
-    P1 -->|"Eval"| V1["V^π₁"]
-    V1 -->|"Improve"| P2["π₂"]
-    P2 -->|"..."| END["π*"]
-</div>
+<!-- tikz-source: rl-policy-iteration
+\begin{tikzpicture}[
+    policy/.style={circle, draw, fill=blue!20, minimum size=0.8cm, font=\small},
+    value/.style={circle, draw, fill=green!20, minimum size=0.8cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[policy] (p0) at (0, 0) {$\pi_0$};
+    \node[value] (v0) at (2, 0) {$V^{\pi_0}$};
+    \node[policy] (p1) at (4, 0) {$\pi_1$};
+    \node[value] (v1) at (6, 0) {$V^{\pi_1}$};
+    \node[policy] (p2) at (8, 0) {$\pi_2$};
+    \node[font=\small] at (9.5, 0) {$\cdots$};
+    \node[policy, fill=orange!30] (pstar) at (11, 0) {$\pi^*$};
+
+    \draw[arrow] (p0) -- node[above, font=\scriptsize] {Eval} (v0);
+    \draw[arrow] (v0) -- node[above, font=\scriptsize] {Improve} (p1);
+    \draw[arrow] (p1) -- node[above, font=\scriptsize] {Eval} (v1);
+    \draw[arrow] (v1) -- node[above, font=\scriptsize] {Improve} (p2);
+    \draw[arrow] (p2) -- (9, 0);
+    \draw[arrow] (10, 0) -- (pstar);
+\end{tikzpicture}
+-->
+![Policy Iteration]({{ site.baseurl }}/assets/figures/rl-policy-iteration.svg)
 
 对于有限 MDP，Policy Iteration 在有限步内收敛到最优策略 $\pi^*$。
 
@@ -310,8 +334,7 @@ $$\mathcal{L}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( \
 
 将转移 $(s_t, a_t, r_t, s_{t+1})$ 存入 Replay Buffer $\mathcal{D}$，训练时从 $\mathcal{D}$ 中均匀随机采样 mini-batch。
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-replay-buffer
 \begin{tikzpicture}[scale=0.8]
     % Buffer box
     \draw[thick, rounded corners, fill=blue!10] (-5,-0.8) rectangle (5,0.8);
@@ -336,8 +359,8 @@ $$\mathcal{L}(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}} \left[ \left( \
     % Mini-batch
     \node at (0,-2.5) {Random sample mini-batch};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![Replay Buffer]({{ site.baseurl }}/assets/figures/rl-replay-buffer.svg)
 
 Experience Replay 的好处：
 1. **打破样本相关性**：随机采样提供更独立的样本
@@ -356,8 +379,7 @@ Target Network 的作用：
 
 ### 6.5 DQN 算法
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-dqn-algorithm
 \begin{tikzpicture}[scale=0.75]
     % Title
     \node[font=\bfseries] at (0,6.5) {Deep Q-Network (DQN)};
@@ -385,8 +407,8 @@ Target Network 的作用：
     \node[anchor=west, font=\small] at (-4.2,-2.5) {Gradient descent on $(y - Q(s,a;\theta))^2$};
     \node[anchor=west, font=\small] at (-4.2,-3.2) {Every $C$ steps: $\theta^- \leftarrow \theta$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![DQN Algorithm]({{ site.baseurl }}/assets/figures/rl-dqn-algorithm.svg)
 
 > **DQN 的两个关键技巧解决了深度 RL 的稳定性问题**：
 > 1. **Experience Replay**：解决样本相关性问题，提高数据效率

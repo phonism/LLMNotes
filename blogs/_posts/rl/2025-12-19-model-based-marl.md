@@ -30,17 +30,30 @@ Model-Based RL 的核心思想正是：**学习或利用环境模型，通过规
 > - **Model-Free**：不学习或使用环境模型，直接从真实经验中学习价值函数或策略
 > - **Model-Based**：学习或利用环境模型 $\hat{P}(s'\|s,a)$, $\hat{R}(s,a)$，在模型中进行规划
 
-<div class="mermaid">
-flowchart TB
-    subgraph MF["**Model-Free** (样本效率低)"]
-        ENV1["真实环境"] -->|"大量真实经验"| POLICY1["策略/价值函数"]
-    end
-    subgraph MB["**Model-Based** (样本效率高)"]
-        ENV2["真实环境"] -->|"少量经验"| MODEL["环境模型"]
-        MODEL -->|"大量模拟"| POLICY2["策略/价值函数"]
-        ENV2 -.->|"校正"| POLICY2
-    end
-</div>
+<!-- tikz-source: rl-mf-vs-mb
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Model-Free
+    \draw[rounded corners, thick, red!30, fill=red!5] (-5.5, -0.5) rectangle (-0.5, 2);
+    \node[font=\bfseries\small, red!70] at (-3, 1.7) {Model-Free（样本效率低）};
+    \node[box, fill=blue!20] (env1) at (-4.5, 0.5) {真实环境};
+    \node[box, fill=green!20] (policy1) at (-1.5, 0.5) {策略/价值函数};
+    \draw[arrow] (env1) -- node[above, font=\footnotesize] {大量真实经验} (policy1);
+
+    % Model-Based
+    \draw[rounded corners, thick, green!40, fill=green!5] (0.5, -1.5) rectangle (7.5, 2);
+    \node[font=\bfseries\small, green!60!black] at (4, 1.7) {Model-Based（样本效率高）};
+    \node[box, fill=blue!20] (env2) at (1.5, 0.5) {真实环境};
+    \node[box, fill=orange!20] (model) at (4, 0.5) {环境模型};
+    \node[box, fill=green!20] (policy2) at (6.5, 0.5) {策略/价值函数};
+    \draw[arrow] (env2) -- node[above, font=\footnotesize] {少量经验} (model);
+    \draw[arrow, very thick] (model) -- node[above, font=\footnotesize] {大量模拟} (policy2);
+    \draw[arrow, dashed] (env2) to[bend right=40] node[below, font=\footnotesize] {校正} (policy2);
+\end{tikzpicture}
+-->
+![Model-Free vs Model-Based]({{ site.baseurl }}/assets/figures/rl-mf-vs-mb.svg)
 
 | 特性 | Model-Free | Model-Based |
 |------|------------|-------------|
@@ -95,21 +108,38 @@ $$z_{t+1} = f_\theta(z_t, a_t), \quad z_t = \text{Encoder}(s_t)$$
 
 Model Bias 的关键问题是**误差累积**（Error Compounding）：
 
-<div class="mermaid">
-flowchart LR
-    subgraph Real["真实轨迹（实线）"]
-        S0((s₀)) -->|a₀| S1((s₁))
-        S1 -->|a₁| S2((s₂))
-        S2 -->|a₂| S3((s₃))
-        S3 -->|a₃| S4((s₄))
-    end
-    subgraph Pred["预测轨迹（虚线）—— 误差逐步累积"]
-        S0 -.->|a₀| H1((ŝ₁))
-        H1 -.->|a₁| H2((ŝ₂))
-        H2 -.->|a₂| H3((ŝ₃))
-        H3 -.->|a₃| H4((ŝ₄))
-    end
-</div>
+<!-- tikz-source: rl-model-error
+\begin{tikzpicture}[
+    state/.style={draw, circle, minimum size=0.8cm, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Real trajectory
+    \node[state, fill=blue!20] (s0) at (0, 0) {$s_0$};
+    \node[state, fill=blue!20] (s1) at (2, 0) {$s_1$};
+    \node[state, fill=blue!20] (s2) at (4, 0) {$s_2$};
+    \node[state, fill=blue!20] (s3) at (6, 0) {$s_3$};
+    \node[state, fill=blue!20] (s4) at (8, 0) {$s_4$};
+
+    \draw[arrow] (s0) -- node[above, font=\footnotesize] {$a_0$} (s1);
+    \draw[arrow] (s1) -- node[above, font=\footnotesize] {$a_1$} (s2);
+    \draw[arrow] (s2) -- node[above, font=\footnotesize] {$a_2$} (s3);
+    \draw[arrow] (s3) -- node[above, font=\footnotesize] {$a_3$} (s4);
+    \node[above, font=\small] at (4, 0.7) {真实轨迹（实线）};
+
+    % Predicted trajectory
+    \node[state, fill=red!20] (h1) at (2, -2) {$\hat{s}_1$};
+    \node[state, fill=red!20] (h2) at (4, -2.3) {$\hat{s}_2$};
+    \node[state, fill=red!20] (h3) at (6, -2.7) {$\hat{s}_3$};
+    \node[state, fill=red!20] (h4) at (8, -3.2) {$\hat{s}_4$};
+
+    \draw[arrow, dashed, red!70] (s0) -- node[left, font=\footnotesize] {$a_0$} (h1);
+    \draw[arrow, dashed, red!70] (h1) -- node[above, font=\footnotesize] {$a_1$} (h2);
+    \draw[arrow, dashed, red!70] (h2) -- node[above, font=\footnotesize] {$a_2$} (h3);
+    \draw[arrow, dashed, red!70] (h3) -- node[above, font=\footnotesize] {$a_3$} (h4);
+    \node[below, font=\small, red!70] at (5, -3.6) {预测轨迹（虚线）—— 误差逐步累积};
+\end{tikzpicture}
+-->
+![Model Bias Error Compounding]({{ site.baseurl }}/assets/figures/rl-model-error.svg)
 
 误差 $\epsilon_t$ 随步数增加：$\epsilon_1 < \epsilon_2 < \epsilon_3 < \epsilon_4$
 
@@ -133,28 +163,41 @@ flowchart LR
 > - **Background Planning**：在与真实环境交互之外，利用模型生成模拟经验来训练策略
 > - **Decision-time Planning**：在需要做决策时，利用模型进行前向搜索，选择最优动作
 
-<div class="mermaid">
-flowchart LR
-    subgraph BG["**训练时规划** Background Planning"]
-        BG1["离线生成经验<br/>训练策略网络<br/>代表：Dyna"]
-    end
-    subgraph DT["**决策时规划** Decision-time Planning"]
-        DT1["在线搜索决策<br/>不训练网络<br/>代表：MCTS"]
-    end
-</div>
+<!-- tikz-source: rl-planning-types
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, fill=blue!10, minimum width=4cm, minimum height=2cm, align=center, font=\small}
+]
+    \node[box, fill=orange!15] (bg) at (0, 0) {离线生成经验\\训练策略网络\\代表：Dyna};
+    \node[font=\bfseries\small, orange!70] at (0, 1.5) {训练时规划 Background Planning};
+
+    \node[box, fill=green!15] (dt) at (7, 0) {在线搜索决策\\不训练网络\\代表：MCTS};
+    \node[font=\bfseries\small, green!60!black] at (7, 1.5) {决策时规划 Decision-time Planning};
+\end{tikzpicture}
+-->
+![Planning Types]({{ site.baseurl }}/assets/figures/rl-planning-types.svg)
 
 ### Dyna 架构
 
 Dyna 是 Background Planning 的经典框架，由 Sutton 于 1991 年提出。其核心思想是：**每次真实交互后，用模型生成多次模拟经验来加速学习**。
 
-<div class="mermaid">
-flowchart TB
-    ENV["真实环境"] -->|"学习模型"| MODEL["环境模型 P̂, R̂"]
-    ENV -->|"真实经验"| EXP["经验缓存 (s,a,r,s')"]
-    EXP -->|"直接学习"| POLICY["策略/价值函数 Q(s,a)"]
-    MODEL ==>|"模拟经验 (n次)"| POLICY
-    POLICY -.->|"动作"| ENV
-</div>
+<!-- tikz-source: rl-dyna-architecture
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (env) at (0, 2) {真实环境};
+    \node[box, fill=orange!20] (model) at (5, 2) {环境模型 $\hat{P}, \hat{R}$};
+    \node[box, fill=yellow!20] (exp) at (0, 0) {经验缓存 $(s,a,r,s')$};
+    \node[box, fill=green!20] (policy) at (5, 0) {策略/价值函数 $Q(s,a)$};
+
+    \draw[arrow] (env) -- node[above, font=\footnotesize] {学习模型} (model);
+    \draw[arrow] (env) -- node[left, font=\footnotesize] {真实经验} (exp);
+    \draw[arrow] (exp) -- node[above, font=\footnotesize] {直接学习} (policy);
+    \draw[arrow, very thick, green!60!black] (model) -- node[right, font=\footnotesize] {模拟经验 (n次)} (policy);
+    \draw[arrow, dashed] (policy) to[bend left=30] node[right, font=\footnotesize] {动作} (env);
+\end{tikzpicture}
+-->
+![Dyna Architecture]({{ site.baseurl }}/assets/figures/rl-dyna-architecture.svg)
 
 > 每步真实交互可生成 $n$ 步模拟
 
@@ -220,33 +263,60 @@ MCTS 的目标是在有限的计算预算内，估计当前状态下各动作的
 
 MCTS 的每次迭代包含四个步骤：
 
-<div class="mermaid">
-flowchart LR
-    subgraph S1["1. Selection"]
-        direction TB
-        R1((root)) ==>|UCB| A1((node))
-        R1 --> B1((node))
-        A1 ==>|UCB| C1((leaf))
-    end
-    subgraph S2["2. Expansion"]
-        direction TB
-        R2((root)) --> A2((node))
-        A2 --> C2((node))
-        A2 -.->|new| NEW((new))
-    end
-    subgraph S3["3. Evaluation"]
-        direction TB
-        R3((root)) --> A3((node))
-        A3 --> C3((eval))
-        C3 -.->|"rollout/v(s)"| V["v=?"]
-    end
-    subgraph S4["4. Backup"]
-        direction TB
-        R4((↑)) --> A4((↑))
-        A4 --> C4((v))
-    end
-    S1 --> S2 --> S3 --> S4
-</div>
+<!-- tikz-source: rl-mcts-steps
+\begin{tikzpicture}[
+    node/.style={draw, circle, minimum size=0.6cm, font=\footnotesize},
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=3cm, align=center},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Step 1: Selection
+    \draw[rounded corners, thick, blue!30, fill=blue!5] (-0.5, -2.5) rectangle (2.5, 1.5);
+    \node[font=\bfseries\small, blue!70] at (1, 1.2) {1. Selection};
+    \node[node, fill=orange!30] (r1) at (1, 0.5) {root};
+    \node[node, fill=green!30] (a1) at (0.3, -0.5) {};
+    \node[node] (b1) at (1.7, -0.5) {};
+    \node[node, fill=green!30] (c1) at (0.3, -1.5) {leaf};
+    \draw[arrow, thick, green!60!black] (r1) -- node[left, font=\tiny] {UCB} (a1);
+    \draw[arrow] (r1) -- (b1);
+    \draw[arrow, thick, green!60!black] (a1) -- node[left, font=\tiny] {UCB} (c1);
+
+    % Step 2: Expansion
+    \draw[rounded corners, thick, orange!30, fill=orange!5] (3, -2.5) rectangle (6, 1.5);
+    \node[font=\bfseries\small, orange!70] at (4.5, 1.2) {2. Expansion};
+    \node[node] (r2) at (4.5, 0.5) {root};
+    \node[node] (a2) at (4.5, -0.5) {};
+    \node[node] (c2) at (4, -1.5) {};
+    \node[node, fill=yellow!50, dashed] (new) at (5, -1.5) {new};
+    \draw[arrow] (r2) -- (a2);
+    \draw[arrow] (a2) -- (c2);
+    \draw[arrow, dashed, orange!70] (a2) -- (new);
+
+    % Step 3: Evaluation
+    \draw[rounded corners, thick, green!30, fill=green!5] (6.5, -2.5) rectangle (9.5, 1.5);
+    \node[font=\bfseries\small, green!60!black] at (8, 1.2) {3. Evaluation};
+    \node[node] (r3) at (8, 0.5) {root};
+    \node[node] (a3) at (8, -0.5) {};
+    \node[node, fill=purple!30] (c3) at (8, -1.5) {eval};
+    \draw[arrow] (r3) -- (a3);
+    \draw[arrow] (a3) -- (c3);
+    \node[font=\footnotesize, purple!70] at (8, -2.1) {rollout / $v(s)$};
+
+    % Step 4: Backup
+    \draw[rounded corners, thick, purple!30, fill=purple!5] (10, -2.5) rectangle (13, 1.5);
+    \node[font=\bfseries\small, purple!70] at (11.5, 1.2) {4. Backup};
+    \node[node, fill=purple!20] (r4) at (11.5, 0.5) {$\uparrow$};
+    \node[node, fill=purple!20] (a4) at (11.5, -0.5) {$\uparrow$};
+    \node[node, fill=purple!30] (c4) at (11.5, -1.5) {$v$};
+    \draw[arrow, purple!70] (c4) -- (a4);
+    \draw[arrow, purple!70] (a4) -- (r4);
+
+    % Arrows between steps
+    \draw[arrow, very thick] (2.5, -0.5) -- (3, -0.5);
+    \draw[arrow, very thick] (6, -0.5) -- (6.5, -0.5);
+    \draw[arrow, very thick] (9.5, -0.5) -- (10, -0.5);
+\end{tikzpicture}
+-->
+![MCTS Four Steps]({{ site.baseurl }}/assets/figures/rl-mcts-steps.svg)
 
 - **Selection**：沿树用 UCB 选择子节点
 - **Expansion**：扩展一个新子节点
@@ -339,14 +409,25 @@ AlphaGo 和 AlphaZero 是 MCTS + 深度学习 + Self-Play 的里程碑式成果�
 
 AlphaGo 在 2016 年以 4:1 击败世界冠军李世石，其架构包括：
 
-<div class="mermaid">
-flowchart TB
-    INPUT["棋盘状态 19×19"] --> PN["Policy Network p(a|s)<br/><small>监督学习(人类棋谱)+RL微调</small>"]
-    INPUT --> VN["Value Network v(s)<br/><small>监督学习(自我对弈结果预测)</small>"]
-    PN -->|"指导选择"| MCTS["MCTS 搜索"]
-    VN -->|"评估叶节点"| MCTS
-    MCTS --> OUTPUT["最终动作"]
-</div>
+<!-- tikz-source: rl-alphago-architecture
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3.5cm, minimum height=1.2cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (input) at (0, 0) {棋盘状态 $19 \times 19$};
+    \node[box, fill=orange!20] (pn) at (-3, -2.5) {Policy Network $p(a|s)$\\{\footnotesize 监督学习+RL微调}};
+    \node[box, fill=green!20] (vn) at (3, -2.5) {Value Network $v(s)$\\{\footnotesize 自我对弈结果预测}};
+    \node[box, fill=purple!20] (mcts) at (0, -5) {MCTS 搜索};
+    \node[box, fill=yellow!30] (output) at (0, -7.5) {最终动作};
+
+    \draw[arrow] (input) -- (pn);
+    \draw[arrow] (input) -- (vn);
+    \draw[arrow] (pn) -- node[left, font=\footnotesize] {指导选择} (mcts);
+    \draw[arrow] (vn) -- node[right, font=\footnotesize] {评估叶节点} (mcts);
+    \draw[arrow] (mcts) -- (output);
+\end{tikzpicture}
+-->
+![AlphaGo Architecture]({{ site.baseurl }}/assets/figures/rl-alphago-architecture.svg)
 
 1. **Policy Network** $p_\theta(a\|s)$：
    - 输入：棋盘状态（多通道特征）
@@ -380,12 +461,22 @@ AlphaZero 在 2017 年大幅简化了 AlphaGo 的设计，却取得了更强的�
 | 训练时间 | 数月 | **数小时** |
 | 适用游戏 | 仅围棋 | **围棋、国际象棋、将棋** |
 
-<div class="mermaid">
-flowchart TB
-    INPUT["棋盘状态 s"] --> NET["ResNet（统一网络）"]
-    NET --> POLICY["p(a|s) 策略头"]
-    NET --> VALUE["v(s) 价值头"]
-</div>
+<!-- tikz-source: rl-alphazero-network
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (input) at (0, 0) {棋盘状态 $s$};
+    \node[box, fill=orange!30] (net) at (0, -1.5) {ResNet（统一网络）};
+    \node[box, fill=green!20] (policy) at (-2.5, -3) {$p(a|s)$ 策略头};
+    \node[box, fill=purple!20] (value) at (2.5, -3) {$v(s)$ 价值头};
+
+    \draw[arrow] (input) -- (net);
+    \draw[arrow] (net) -- (policy);
+    \draw[arrow] (net) -- (value);
+\end{tikzpicture}
+-->
+![AlphaZero Network]({{ site.baseurl }}/assets/figures/rl-alphazero-network.svg)
 
 > 单个网络同时输出策略分布和价值估计，共享底层表示，参数更少，训练更高效
 
@@ -393,12 +484,21 @@ flowchart TB
 
 AlphaZero 的训练是一个**自我增强**的循环：
 
-<div class="mermaid">
-flowchart LR
-    SELFPLAY["Self-Play<br/>生成对弈数据"] -->|"(s, π_MCTS, z)"| TRAIN["网络训练<br/>学习搜索结果"]
-    TRAIN -->|"更新 θ"| NETWORK["神经网络<br/>(p, v)"]
-    NETWORK -->|"指导搜索"| SELFPLAY
-</div>
+<!-- tikz-source: rl-alphazero-loop
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1.2cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (selfplay) at (0, 0) {Self-Play\\生成对弈数据};
+    \node[box, fill=orange!20] (train) at (5, 0) {网络训练\\学习搜索结果};
+    \node[box, fill=green!20] (network) at (2.5, -2.5) {神经网络\\$(p, v)$};
+
+    \draw[arrow] (selfplay) -- node[above, font=\footnotesize] {$(s, \pi_{\text{MCTS}}, z)$} (train);
+    \draw[arrow] (train) -- node[right, font=\footnotesize] {更新 $\theta$} (network);
+    \draw[arrow] (network) -- node[left, font=\footnotesize] {指导搜索} (selfplay);
+\end{tikzpicture}
+-->
+![AlphaZero Training Loop]({{ site.baseurl }}/assets/figures/rl-alphazero-loop.svg)
 
 > **正向循环**：更好的网络 → 更好的搜索 → 更好的训练数据 → 更好的网络
 
@@ -530,14 +630,25 @@ Self-Play 是训练博弈 AI 的强大方法，也是 AlphaGo/AlphaZero 成功�
 
 > **Self-Play**：Agent 与自己（或自己的历史版本）进行对弈，从对弈经验中学习改进策略。
 
-<div class="mermaid">
-flowchart TB
-    CURRENT["当前策略 π"] --> GAME["对弈"]
-    OPPONENT["对手 π 或 π'"] --> GAME
-    POOL["历史对手池"] -.-> OPPONENT
-    GAME --> EXP["对弈经验 (s,a,r,s')"]
-    EXP -->|"更新"| CURRENT
-</div>
+<!-- tikz-source: rl-self-play
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[box, fill=blue!20] (current) at (0, 2) {当前策略 $\pi$};
+    \node[box, fill=orange!20] (opponent) at (5, 2) {对手 $\pi$ 或 $\pi'$};
+    \node[box, fill=yellow!20] (pool) at (5, 4) {历史对手池};
+    \node[box, fill=green!30] (game) at (2.5, 0) {对弈};
+    \node[box, fill=purple!20] (exp) at (2.5, -2) {对弈经验 $(s,a,r,s')$};
+
+    \draw[arrow] (current) -- (game);
+    \draw[arrow] (opponent) -- (game);
+    \draw[arrow, dashed] (pool) -- (opponent);
+    \draw[arrow] (game) -- (exp);
+    \draw[arrow] (exp) to[bend right=40] node[left, font=\footnotesize] {更新} (current);
+\end{tikzpicture}
+-->
+![Self-Play]({{ site.baseurl }}/assets/figures/rl-self-play.svg)
 
 ### Self-Play 的优势
 
@@ -594,21 +705,41 @@ flowchart TB
    - Nash 均衡：稳定的策略组合
    - Self-Play：训练博弈 AI 的有效方法
 
-<div class="mermaid">
-flowchart TB
-    RL["RL 方法"] --> MF["Model-Free"]
-    RL --> MB["Model-Based"]
+<!-- tikz-source: rl-methods-taxonomy
+\begin{tikzpicture}[
+    node/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.9cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Root
+    \node[node, fill=orange!30] (rl) at (0, 0) {RL 方法};
 
-    MF --> VB["Value-Based<br/><small>DQN</small>"]
-    MF --> PB["Policy-Based<br/><small>REINFORCE</small>"]
-    MF --> AC["Actor-Critic<br/><small>PPO, SAC</small>"]
+    % Level 1
+    \node[node, fill=red!20] (mf) at (-4, -1.5) {Model-Free};
+    \node[node, fill=green!20] (mb) at (4, -1.5) {Model-Based};
+    \draw[arrow] (rl) -- (mf);
+    \draw[arrow] (rl) -- (mb);
 
-    MB --> BG["Background Planning<br/><small>Dyna</small>"]
-    MB --> DT["Decision-time Planning<br/><small>MCTS</small>"]
+    % Model-Free branches
+    \node[node, fill=blue!15] (vb) at (-6, -3.5) {Value-Based\\{\footnotesize DQN}};
+    \node[node, fill=blue!15] (pb) at (-4, -3.5) {Policy-Based\\{\footnotesize REINFORCE}};
+    \node[node, fill=blue!15] (ac) at (-2, -3.5) {Actor-Critic\\{\footnotesize PPO, SAC}};
+    \draw[arrow] (mf) -- (vb);
+    \draw[arrow] (mf) -- (pb);
+    \draw[arrow] (mf) -- (ac);
 
-    AC -.-> AZ["**AlphaZero**"]
-    DT -.-> AZ
-</div>
+    % Model-Based branches
+    \node[node, fill=yellow!20] (bg) at (3, -3.5) {Background Planning\\{\footnotesize Dyna}};
+    \node[node, fill=yellow!20] (dt) at (6, -3.5) {Decision-time Planning\\{\footnotesize MCTS}};
+    \draw[arrow] (mb) -- (bg);
+    \draw[arrow] (mb) -- (dt);
+
+    % AlphaZero
+    \node[node, fill=purple!30, font=\bfseries\small] (az) at (2, -5.5) {AlphaZero};
+    \draw[arrow, dashed, purple!70] (ac) to[bend right=15] (az);
+    \draw[arrow, dashed, purple!70] (dt) to[bend left=15] (az);
+\end{tikzpicture}
+-->
+![RL Methods Taxonomy]({{ site.baseurl }}/assets/figures/rl-methods-taxonomy.svg)
 
 > **AlphaZero = MCTS + Policy Network + Value Network + Self-Play**
 

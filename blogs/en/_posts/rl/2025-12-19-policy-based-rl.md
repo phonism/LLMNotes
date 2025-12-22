@@ -105,8 +105,7 @@ Action $a_t$ only affects future rewards, not past rewards. Therefore, we can re
 
 REINFORCE is the simplest Policy Gradient algorithm, using Monte Carlo sampling directly to estimate the gradient.
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-reinforce
 \begin{tikzpicture}[scale=0.8]
     % Title
     \node[font=\bfseries] at (0,4) {REINFORCE};
@@ -130,8 +129,8 @@ REINFORCE is the simplest Policy Gradient algorithm, using Monte Carlo sampling 
     \draw[rounded corners, thick, orange!70] (-4.5,-1) rectangle (4.5,-1.9);
     \node[font=\small] at (0,-1.45) {Monte Carlo: use actual returns $G_t$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![REINFORCE Algorithm]({{ site.baseurl }}/assets/figures/rl-reinforce.svg)
 
 **REINFORCE is an unbiased estimator**: $\mathbb{E}[\hat{g}] = \nabla_\theta J(\theta)$
 
@@ -208,8 +207,7 @@ To estimate $\hat{V}(s)$, we introduce a **Critic** network. Actor-Critic method
 - **Actor**: Policy network $\pi_\theta(a|s)$, outputs action distribution
 - **Critic**: Value network $\hat{V}_\phi(s)$, estimates state value
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-actor-critic
 \begin{tikzpicture}[scale=0.85]
     % Actor box
     \draw[rounded corners, fill=blue!15, thick] (-2,2) rectangle (2,3.5);
@@ -246,8 +244,8 @@ To estimate $\hat{V}(s)$, we introduce a **Critic** network. Actor-Critic method
     % Update arrow
     \node[below] at (0,-1.5) {\small Update Actor with $\nabla_\theta \log \pi_\theta \cdot \hat{A}_t$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![Actor-Critic Architecture]({{ site.baseurl }}/assets/figures/rl-actor-critic.svg)
 
 **A2C (Advantage Actor-Critic)** core update rules:
 
@@ -369,8 +367,7 @@ where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a|s)]$ is the entropy of the 
 
 ### 8.4 Complete PPO Algorithm
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-ppo-algorithm
 \begin{tikzpicture}[scale=0.7]
     % Title
     \node[font=\bfseries] at (0,7.5) {Proximal Policy Optimization (PPO)};
@@ -402,8 +399,8 @@ where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a|s)]$ is the entropy of the 
 
     \node[anchor=west, font=\small] at (-5.8,-3.4) {Gradient ascent on $\theta$, gradient descent on $\phi$};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![PPO Algorithm]({{ site.baseurl }}/assets/figures/rl-ppo-algorithm.svg)
 
 > **Reasons for PPO's Success**:
 > 1. **Simple and efficient**: Only needs first-order optimization, no Hessian computation required
@@ -440,12 +437,23 @@ where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a|s)]$ is the entropy of the 
    - TRPO: KL-constrained optimization, complex implementation
    - PPO: Clip mechanism, simple and efficient, the preferred choice in practice
 
-<div class="mermaid">
-graph LR
-    R["REINFORCE<br/><small>unbiased, high variance</small>"] -->|"+Baseline"| B["+ Baseline<br/><small>reduce variance</small>"]
-    B -->|"+Critic"| AC["Actor-Critic<br/><small>learn Critic</small>"]
-    AC -->|"+GAE"| GAE["+ GAE<br/><small>λ tradeoff</small>"]
-    GAE -->|"+Clip"| PPO["PPO<br/><small>stable, efficient</small>"]
-</div>
+<!-- tikz-source: rl-pg-evolution-en
+\begin{tikzpicture}[
+    node/.style={draw, rounded corners, fill=blue!15, minimum width=2.2cm, minimum height=1.2cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[node, fill=red!20] (r) at (0, 0) {REINFORCE\\{\footnotesize unbiased, high var}};
+    \node[node, fill=orange!20] (b) at (3.8, 0) {+ Baseline\\{\footnotesize reduce variance}};
+    \node[node, fill=yellow!30] (ac) at (7.6, 0) {Actor-Critic\\{\footnotesize learn Critic}};
+    \node[node, fill=green!20] (gae) at (11.4, 0) {+ GAE\\{\footnotesize $\lambda$ tradeoff}};
+    \node[node, fill=purple!20] (ppo) at (15.2, 0) {PPO\\{\footnotesize stable, efficient}};
+
+    \draw[arrow] (r) -- node[above, font=\footnotesize] {+Baseline} (b);
+    \draw[arrow] (b) -- node[above, font=\footnotesize] {+Critic} (ac);
+    \draw[arrow] (ac) -- node[above, font=\footnotesize] {+GAE} (gae);
+    \draw[arrow] (gae) -- node[above, font=\footnotesize] {+Clip} (ppo);
+\end{tikzpicture}
+-->
+![Policy Gradient Evolution]({{ site.baseurl }}/assets/figures/rl-pg-evolution-en.svg)
 
 The next article will introduce Model-Based RL and multi-agent learning, including MCTS and AlphaGo/Zero.

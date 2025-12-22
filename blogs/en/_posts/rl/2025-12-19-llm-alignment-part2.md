@@ -31,8 +31,7 @@ GRPO's approach: **Use group-relative rewards to replace the Critic**, achieving
 >
 > where $\bar{R} = \frac{1}{G}\sum_i R_i$ is the group mean, $\text{Std}(R)$ is the group standard deviation.
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-grpo-sampling-en
 \begin{tikzpicture}[
     sample/.style={circle, draw, minimum size=0.6cm, font=\scriptsize},
     arrow/.style={->, thick, >=stealth}
@@ -69,8 +68,8 @@ GRPO's approach: **Use group-relative rewards to replace the Critic**, achieving
     % Explanation
     \node[font=\small, align=center] at (5, -3) {Group-relative comparison:\\boost above mean, suppress below mean};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![GRPO Group Sampling]({{ site.baseurl }}/assets/figures/rl-grpo-sampling-en.svg)
 
 Advantages of group normalization:
 1. **No Critic needed**: Use group mean to replace value function estimation
@@ -257,18 +256,17 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
 >   - Input: $(x, y_{\leq t})$
 >   - Output: Correctness score up to step $t$
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-orm-vs-prm-en
 \begin{tikzpicture}[
-    step/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.6cm, font=\small},
+    stepbox/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.6cm, font=\small},
     arrow/.style={->, thick, >=stealth}
 ]
     % ORM
     \begin{scope}[shift={(-4, 0)}]
-        \node[step, fill=blue!20] (s1) at (0, 0) {Step 1};
-        \node[step, fill=blue!20] (s2) at (2, 0) {Step 2};
-        \node[step, fill=blue!20] (s3) at (4, 0) {Step 3};
-        \node[step, fill=green!30] (ans) at (6, 0) {Answer};
+        \node[stepbox, fill=blue!20] (s1) at (0, 0) {Step 1};
+        \node[stepbox, fill=blue!20] (s2) at (2, 0) {Step 2};
+        \node[stepbox, fill=blue!20] (s3) at (4, 0) {Step 3};
+        \node[stepbox, fill=green!30] (ans) at (6, 0) {Answer};
 
         \draw[arrow] (s1) -- (s2);
         \draw[arrow] (s2) -- (s3);
@@ -280,10 +278,10 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
 
     % PRM
     \begin{scope}[shift={(-4, -3)}]
-        \node[step, fill=green!30] (s1) at (0, 0) {Step 1};
-        \node[step, fill=green!30] (s2) at (2, 0) {Step 2};
-        \node[step, fill=red!30] (s3) at (4, 0) {Step 3};
-        \node[step, fill=red!30] (ans) at (6, 0) {Answer};
+        \node[stepbox, fill=green!30] (s1) at (0, 0) {Step 1};
+        \node[stepbox, fill=green!30] (s2) at (2, 0) {Step 2};
+        \node[stepbox, fill=red!30] (s3) at (4, 0) {Step 3};
+        \node[stepbox, fill=red!30] (ans) at (6, 0) {Answer};
 
         \draw[arrow] (s1) -- (s2);
         \draw[arrow] (s2) -- (s3);
@@ -296,8 +294,8 @@ PRM provides process-level supervision, transforming sparse terminal rewards int
         \node[font=\bfseries] at (3, 1.2) {PRM: Evaluates each step};
     \end{scope}
 \end{tikzpicture}
-</script>
-</div>
+-->
+![ORM vs PRM Comparison]({{ site.baseurl }}/assets/figures/rl-orm-vs-prm-en.svg)
 
 ### Advantages of PRM
 
@@ -333,8 +331,7 @@ RL training for long Chain-of-Thought sequences (Long CoT) faces unique challeng
 
 3. **Sparse reward harder**: Only the final answer has feedback, signal must propagate thousands of steps
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-is-variance-en
 \begin{tikzpicture}
     \begin{axis}[
         width=10cm, height=5cm,
@@ -352,8 +349,8 @@ RL training for long Chain-of-Thought sequences (Long CoT) faces unique challeng
         \addlegendentry{Sequence-level IS (linear)}
     \end{axis}
 \end{tikzpicture}
-</script>
-</div>
+-->
+![IS Weight Variance]({{ site.baseurl }}/assets/figures/rl-is-variance-en.svg)
 
 ### GSPO: Sequence-level IS
 
@@ -462,8 +459,7 @@ Both factors can cause first-order approximation to fail:
    - Sequence-level IS replaces token-level IS
    - Kimi, DeepSeek practical techniques
 
-<div class="tikz-container">
-<script type="text/tikz">
+<!-- tikz-source: rl-alignment-evolution-en
 \begin{tikzpicture}[
     box/.style={draw, rounded corners, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
     arrow/.style={->, thick, >=stealth}
@@ -484,8 +480,8 @@ Both factors can cause first-order approximation to fail:
     \node[font=\scriptsize, gray, align=center] at (8, -1) {No Critic\\Group normalization};
     \node[font=\scriptsize, gray, align=center] at (12, -1) {Sequence-level IS\\Variance control};
 \end{tikzpicture}
-</script>
-</div>
+-->
+![LLM Alignment Evolution]({{ site.baseurl }}/assets/figures/rl-alignment-evolution-en.svg)
 
 ## Series Summary
 

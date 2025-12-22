@@ -375,24 +375,55 @@ $$Y' = Y \odot \sigma(XW_g)$$
 
 StreamingLLM 的关键发现：当使用滑动窗口注意力时，一旦初始 token 被移出窗口，模型输出会**完全崩溃**。但只需保留最初的 4 个 token，性能就能大幅恢复。
 
-<div class="mermaid">
-graph LR
-    subgraph shallow["浅层 Attention (对角线)"]
-        A1["■□□□□"]
-        A2["□■□□□"]
-        A3["□□■□□"]
-        A4["□□□■□"]
-        A5["□□□□■"]
-    end
-    subgraph deep["深层 Attention (Sink)"]
-        B1["■□□□□"]
-        B2["■□■□□"]
-        B3["■□□■□"]
-        B4["■□□□■"]
-        B5["■□□□□"]
-    end
-    shallow --> |"vs"| deep
-</div>
+<!-- tikz-source: transformer-attention-sink
+\begin{tikzpicture}[scale=0.6]
+    % Shallow Attention (Diagonal)
+    \draw[rounded corners, thick, blue!30, fill=blue!5] (-0.5, -5.5) rectangle (5.5, 1);
+    \node[font=\bfseries\small, blue!70] at (2.5, 0.5) {浅层 Attention（对角线）};
+
+    \foreach \i in {0,...,4} {
+        \foreach \j in {0,...,4} {
+            \pgfmathtruncatemacro{\diag}{\i==\j ? 1 : 0}
+            \ifnum\diag=1
+                \fill[blue!60] (\j, -\i-1) rectangle (\j+1, -\i);
+            \else
+                \fill[gray!20] (\j, -\i-1) rectangle (\j+1, -\i);
+            \fi
+            \draw[gray!50] (\j, -\i-1) rectangle (\j+1, -\i);
+        }
+    }
+
+    % Arrow
+    \draw[->, very thick] (6, -2.5) -- (7.5, -2.5);
+    \node at (6.75, -1.8) {vs};
+
+    % Deep Attention (Sink)
+    \draw[rounded corners, thick, red!30, fill=red!5] (8, -5.5) rectangle (14, 1);
+    \node[font=\bfseries\small, red!70] at (11, 0.5) {深层 Attention（Sink）};
+
+    \foreach \i in {0,...,4} {
+        \foreach \j in {0,...,4} {
+            \pgfmathtruncatemacro{\sink}{\j==0 ? 1 : 0}
+            \pgfmathtruncatemacro{\diag}{\i==\j ? 1 : 0}
+            \ifnum\sink=1
+                \fill[red!60] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+            \else
+                \ifnum\diag=1
+                    \fill[blue!40] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+                \else
+                    \fill[gray!20] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+                \fi
+            \fi
+            \draw[gray!50] (8.5+\j, -\i-1) rectangle (9.5+\j, -\i);
+        }
+    }
+
+    % Legend
+    \node[font=\footnotesize] at (2.5, -6.3) {每个 token 关注自己};
+    \node[font=\footnotesize] at (11, -6.3) {所有 token 都关注第一个 token};
+\end{tikzpicture}
+-->
+![Attention Sink Visualization]({{ site.baseurl }}/assets/figures/transformer-attention-sink.svg)
 
 > **图示说明**：左侧浅层注意力主要集中在对角线（每个 token 关注自己）；右侧深层注意力的第一列出现 Sink 现象（所有 token 都关注第一个 token）。
 
