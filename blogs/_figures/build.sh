@@ -67,6 +67,8 @@ compile_figure_from_file() {
     fi
 
     if [ "$svg_ok" -eq 1 ]; then
+      # 添加 shape-rendering="crispEdges" 让文字更清晰
+      sed -i '' 's/<svg /<svg shape-rendering="crispEdges" /' "$name.svg"
       mv "$name.svg" "../../assets/figures/"
       log_info "  -> $OUTPUT_DIR/$name.svg"
     else
