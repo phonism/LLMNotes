@@ -15,8 +15,10 @@
 
 % 统一样式
 \tikzset{
-  % 全局放大 1.4 倍，让字体更清晰
-  every picture/.style={scale=1.4, transform shape},
+  % 全局放大 1.6 倍，让字体更清晰
+  every picture/.style={scale=1.6, transform shape},
+  % 全局字体设置（对所有 node 生效）
+  every node/.append style={font=\large\bfseries},
   % 基础盒子
   box/.style={
     draw=accentgreen,
@@ -24,7 +26,7 @@
     rounded corners=4pt,
     minimum width=2.5cm,
     minimum height=1cm,
-    font=\large\sffamily
+    font=\Large\sffamily\bfseries
   },
   % Agent 样式
   agent/.style={box, fill=agentblue!30},
@@ -41,7 +43,7 @@
   },
   % 箭头样式
   arr/.style={-{Stealth[length=8pt]}, line width=1.2pt, accentgreen},
-  arrlab/.style={font=\normalsize, text=black},
+  arrlab/.style={font=\large\bfseries, text=black},
 }
 
 \begin{document}

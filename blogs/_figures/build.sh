@@ -67,9 +67,14 @@ compile_figure_from_file() {
     fi
 
     if [ "$svg_ok" -eq 1 ]; then
-      # 添加 shape-rendering="crispEdges" 让文字更清晰
-      sed -i '' 's/<svg /<svg shape-rendering="crispEdges" /' "$name.svg"
-      mv "$name.svg" "../../assets/figures/"
+      # 用 inkscape 把文字转成路径，避免渲染模糊
+      if command -v inkscape &> /dev/null; then
+        inkscape "$name.svg" --export-type=svg --export-text-to-path --export-filename="$name-path.svg" 2>/dev/null
+        mv "$name-path.svg" "../../assets/figures/$name.svg"
+        rm -f "$name.svg"
+      else
+        mv "$name.svg" "../../assets/figures/"
+      fi
       log_info "  -> $OUTPUT_DIR/$name.svg"
     else
       log_error "  SVG 转换失败: $name"
