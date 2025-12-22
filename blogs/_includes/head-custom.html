@@ -1,3 +1,11 @@
+<!-- 立即应用主题，防止闪烁 -->
+<script>
+  (function() {
+    var theme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+
 {% include mathjax.html %}
 
 <!-- Mermaid 图表支持 -->
@@ -294,6 +302,20 @@
   }
 
   [data-theme="light"] .tikz-container svg {
+    filter: none;
+  }
+
+  /* 本地编译的 SVG 图片深色模式适配 */
+  img[src*="/assets/figures/"] {
+    filter: invert(1) hue-rotate(180deg);
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1em auto;
+    background: transparent;
+  }
+
+  [data-theme="light"] img[src*="/assets/figures/"] {
     filter: none;
   }
 </style>
