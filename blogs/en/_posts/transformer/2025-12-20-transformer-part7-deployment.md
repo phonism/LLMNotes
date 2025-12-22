@@ -2,7 +2,7 @@
 layout: post
 title: "Transformer Notes (VII): Deployment Optimization"
 date: 2025-12-20 11:00:00
-author: Phonism
+author: Qi Lu
 tags: [Quantization, Inference, vLLM, Speculative Decoding, KV Cache]
 math: true
 lang: en

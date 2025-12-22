@@ -2,7 +2,7 @@
 layout: post
 title: "Transformer Notes (I): Fundamentals"
 date: 2025-12-20 10:00:00
-author: Phonism
+author: Qi Lu
 tags: [Transformer, LLM, Scaling Law, GPU]
 lang: en
 translation: /transformer-part1-fundamentals/

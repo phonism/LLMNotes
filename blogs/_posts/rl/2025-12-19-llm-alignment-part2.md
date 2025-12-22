@@ -2,10 +2,12 @@
 layout: post
 title: "RL 学习笔记（六）：GRPO 与 Long CoT RL"
 date: 2025-12-19 08:00:00
-author: Phonism
+author: Qi Lu
 tags: [RL, LLM, GRPO, PRM, Long-CoT, Alignment]
 lang: zh
 translation: /en/llm-alignment-part2/
+series: rl
+series_order: 6
 ---
 
 本文是强化学习系列的第六篇，也是最后一篇。本篇介绍 GRPO（无 Critic 的在线 RL）、KL 散度估计器、On-Policy Distillation、过程奖励模型 PRM，以及 Long CoT RL 的挑战与方法。

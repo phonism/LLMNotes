@@ -2,7 +2,7 @@
 layout: post
 title: "Transformer Notes (IV): Mixture of Experts Architecture"
 date: 2025-12-20 10:30:00
-author: Phonism
+author: Qi Lu
 tags: [MoE, DeepSeek, Sparse Model, Expert Parallelism]
 lang: en
 translation: /transformer-part4-moe/

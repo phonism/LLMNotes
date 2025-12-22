@@ -2,7 +2,7 @@
 layout: post
 title: "为什么 LoRA 在强化学习微调中有效？—— 信息带宽的视角"
 date: 2025-12-19 01:00:00
-author: Phonism
+author: Qi Lu
 tags: [LoRA, RL, RLHF, Information Theory]
 lang: zh
 translation: /en/lora-information-bandwidth-rl/

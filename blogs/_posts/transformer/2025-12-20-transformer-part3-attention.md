@@ -2,10 +2,12 @@
 layout: post
 title: "Transformer 学习笔记（三）：注意力机制"
 date: 2025-12-20 10:20:00
-author: Phonism
+author: Qi Lu
 tags: [Transformer, FlashAttention, MLA, Sparse Attention, Linear Attention]
 lang: zh
 translation: /en/transformer-part3-attention/
+series: transformer
+series_order: 3
 ---
 
 注意力机制是 Transformer 的核心，但标准的 $O(N^2)$ 复杂度成为长上下文建模的瓶颈。本文系统介绍四种优化路径：FlashAttention 通过 IO 感知优化加速计算；MLA 通过低秩压缩减少 KV Cache；稀疏注意力只计算重要的 token 对；线性注意力彻底改变计算形式。

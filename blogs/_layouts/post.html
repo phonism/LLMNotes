@@ -2,20 +2,74 @@
 layout: default
 ---
 
-<h1>{{ page.title }}</h1>
-<small>{{ page.date | date: "%Y-%m-%d" }} · {{ page.author }}</small>
+<h1 style="margin-bottom: 0.3em;">{{ page.title }}</h1>
+<p style="margin-top: 0; margin-bottom: 2em; color: #888;">
+  <small>{{ page.date | date: "%Y-%m-%d" }} · {{ page.author }} · <span>Views: <span id="busuanzi_page_uv"></span></span></small>
+</p>
+
+{% if page.series %}
+{% assign series_posts = site.posts | where: "series", page.series | sort: "series_order" %}
+{% assign prev_order = page.series_order | minus: 1 %}
+{% assign next_order = page.series_order | plus: 1 %}
+{% assign prev_post = nil %}
+{% assign next_post = nil %}
+{% for post in series_posts %}
+  {% if post.series_order == prev_order %}
+    {% assign prev_post = post %}
+  {% elsif post.series_order == next_order %}
+    {% assign next_post = post %}
+  {% endif %}
+{% endfor %}
+<div class="series-nav" style="margin: 1em 0 2em 0; padding: 1em; background: var(--code-bg); border: 1px solid var(--accent-color); border-radius: 4px;">
+  <div style="text-align: center; margin-bottom: 0.5em; color: var(--accent-color); font-weight: bold;">
+    {% if page.series == "rl" %}RL 学习笔记{% elsif page.series == "transformer" %}Transformer 学习笔记{% else %}{{ page.series }}{% endif %} · {{ page.series_order }}/{{ series_posts.size }}
+  </div>
+  <div style="display: flex; justify-content: space-between;">
+    <div>
+      {% if prev_post %}
+      <a href="{{ prev_post.url | relative_url }}">← {{ prev_post.title }}</a>
+      {% endif %}
+    </div>
+    <div>
+      {% if next_post %}
+      <a href="{{ next_post.url | relative_url }}">{{ next_post.title }} →</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {{ content }}
 
 {% if page.tags.size > 0 %}
-<div class="post-tags" style="margin-top: 2em; padding-top: 1em; border-top: 1px dashed #b5e853;">
+<div class="post-tags" style="margin-top: 2em; padding-top: 1em; border-top: 1px dashed var(--accent-color);">
   <strong>Tags:</strong>
   {% for tag in page.tags %}
-    <a href="{{ '/tags/' | relative_url }}#{{ tag | slugify }}" style="margin-left: 8px; padding: 2px 8px; background: #1a1a1a; border: 1px solid #b5e853; border-radius: 3px;">{{ tag }}</a>
+    <a href="{{ '/tags/' | relative_url }}#{{ tag | slugify }}" style="margin-left: 8px; padding: 2px 8px; background: var(--code-bg); border: 1px solid var(--accent-color); border-radius: 3px;">{{ tag }}</a>
   {% endfor %}
 </div>
 {% endif %}
 
 <div style="margin-top: 2em;">
   <a href="{{ '/' | relative_url }}">← Back to Home</a>
+</div>
+
+<!-- Giscus 评论区 -->
+<div class="comments" style="margin-top: 3em; padding-top: 2em; border-top: 1px dashed var(--accent-color);">
+  <h3>Comments</h3>
+  <script src="https://giscus.app/client.js"
+    data-repo="phonism/LLMNotes"
+    data-repo-id="R_kgDOQneu0A"
+    data-category="Announcements"
+    data-category-id="DIC_kwDOQneu0M4C0HO9"
+    data-mapping="pathname"
+    data-strict="1"
+    data-reactions-enabled="1"
+    data-emit-metadata="0"
+    data-input-position="bottom"
+    data-theme="preferred_color_scheme"
+    data-lang="zh-CN"
+    crossorigin="anonymous"
+    async>
+  </script>
 </div>

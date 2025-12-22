@@ -2,10 +2,12 @@
 layout: post
 title: "Transformer 学习笔记（二）：核心组件"
 date: 2025-12-20 10:10:00
-author: Phonism
+author: Qi Lu
 tags: [Transformer, Tokenizer, RoPE, SwiGLU]
 lang: zh
 translation: /en/transformer-part2-components/
+series: transformer
+series_order: 2
 ---
 
 Transformer 的强大能力建立在三个精心设计的核心组件之上：分词器（Tokenizer）将文本转换为模型可处理的离散符号；位置编码（Position Encoding）为自注意力机制注入序列顺序信息；门控机制（Gating）让网络学会选择性地传递信息。

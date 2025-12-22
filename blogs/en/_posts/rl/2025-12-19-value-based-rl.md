@@ -2,7 +2,7 @@
 layout: post
 title: "RL Notes (2): Bellman Equations and DQN"
 date: 2025-12-19 04:00:00
-author: Phonism
+author: Qi Lu
 tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
 lang: en
 translation: /value-based-rl/

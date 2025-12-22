@@ -2,7 +2,7 @@
 layout: post
 title: "RL Notes (6): GRPO and Long CoT RL"
 date: 2025-12-19 08:00:00
-author: Phonism
+author: Qi Lu
 tags: [RL, LLM, GRPO, PRM, Long-CoT, Alignment]
 lang: en
 translation: /llm-alignment-part2/

@@ -2,7 +2,7 @@
 layout: post
 title: "RL Notes (4): MCTS and AlphaZero"
 date: 2025-12-19 06:00:00
-author: Phonism
+author: Qi Lu
 tags: [RL, Model-Based, MARL, MCTS, AlphaZero]
 lang: en
 translation: /model-based-marl/

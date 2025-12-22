@@ -2,7 +2,7 @@
 layout: post
 title: "Transformer Notes (VIII): Frontier Applications"
 date: 2025-12-20 11:10:00
-author: Phonism
+author: Qi Lu
 tags: [Multimodal, Reasoning, GPT-4o, DeepSeek-R1, VLM]
 lang: en
 translation: /transformer-part8-frontiers/

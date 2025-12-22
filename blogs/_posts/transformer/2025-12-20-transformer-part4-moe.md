@@ -2,11 +2,14 @@
 layout: post
 title: "Transformer 学习笔记（四）：Mixture of Experts 稀疏架构"
 date: 2025-12-20 10:30:00
+author: Qi Lu
 categories: [Deep Learning, Transformer]
 tags: [MoE, DeepSeek, Sparse Model, Expert Parallelism]
 math: true
 lang: zh
 translation: /en/transformer-part4-moe/
+series: transformer
+series_order: 4
 ---
 
 本文是 Transformer 系列的第四篇，深入解析 **Mixture of Experts (MoE)** 稀疏激活架构。MoE 通过让每个 token 只激活部分参数，实现了"大模型容量、小模型计算量"的目标，是 DeepSeek-V3、Kimi K2 等前沿模型的核心架构。

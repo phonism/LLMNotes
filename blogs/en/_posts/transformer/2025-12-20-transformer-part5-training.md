@@ -2,7 +2,7 @@
 layout: post
 title: "Transformer Notes (V): Training Techniques"
 date: 2025-12-20 10:40:00
-author: Phonism
+author: Qi Lu
 tags: [Data Engineering, Distributed Training, ZeRO, FSDP, Muon Optimizer]
 lang: en
 translation: /transformer-part5-training/

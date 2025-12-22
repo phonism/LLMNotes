@@ -2,7 +2,7 @@
 layout: post
 title: "RL Notes (5): RLHF and DPO"
 date: 2025-12-19 07:00:00
-author: Phonism
+author: Qi Lu
 tags: [RL, LLM, RLHF, DPO, Alignment]
 lang: en
 translation: /llm-alignment-part1/

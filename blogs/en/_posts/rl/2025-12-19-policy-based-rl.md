@@ -2,7 +2,7 @@
 layout: post
 title: "RL Notes (3): REINFORCE and PPO"
 date: 2025-12-19 05:00:00
-author: Phonism
+author: Qi Lu
 tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
 lang: en
 translation: /policy-based-rl/

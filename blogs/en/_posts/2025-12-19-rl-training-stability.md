@@ -2,7 +2,7 @@
 layout: post
 title: "LLM-RL Training Stability: Root Cause Analysis and Solutions"
 date: 2025-12-19 02:00:00
-author: Phonism
+author: Qi Lu
 tags: [RL, RLHF, PPO, GRPO, GSPO, Training Stability]
 lang: en
 translation: /rl-training-stability/

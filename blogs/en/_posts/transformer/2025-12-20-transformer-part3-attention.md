@@ -2,7 +2,7 @@
 layout: post
 title: "Transformer Notes (III): Attention Mechanisms"
 date: 2025-12-20 10:20:00
-author: Phonism
+author: Qi Lu
 tags: [Transformer, FlashAttention, MLA, Sparse Attention, Linear Attention]
 lang: en
 translation: /transformer-part3-attention/

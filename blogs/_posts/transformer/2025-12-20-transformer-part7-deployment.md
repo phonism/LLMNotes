@@ -2,11 +2,14 @@
 layout: post
 title: "Transformer 学习笔记（七）：部署优化"
 date: 2025-12-20 11:00:00
+author: Qi Lu
 categories: [Deep Learning, Transformer]
 tags: [Quantization, Inference, vLLM, Speculative Decoding, KV Cache]
 math: true
 lang: zh
 translation: /en/transformer-part7-deployment/
+series: transformer
+series_order: 7
 ---
 
 本文是 Transformer 系列的第七篇，全面解析大语言模型的 **部署优化** 技术，包括模型量化和推理加速。这些技术是将千亿参数模型高效部署到实际应用的关键。
