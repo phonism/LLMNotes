@@ -9,9 +9,9 @@ lang: zh
 
 ## 引言
 
-2025 年，LLM 强化学习（特别是 RLVR: Reinforcement Learning with Verifiable Rewards）领域爆发了大量关于 **Entropy Collapse**（熵崩溃）问题的研究。这个问题的核心是：RL 训练过程中，模型的输出多样性会不可避免地下降，导致探索能力丧失、过早收敛到次优解。
+2025 年，LLM 强化学习领域（特别是 RLVR: Reinforcement Learning with Verifiable Rewards）出现了一系列关于 **Entropy Collapse**（熵崩溃）问题的研究。该问题的核心在于：RL 训练过程中，模型的输出多样性会逐渐下降，导致探索能力丧失、过早收敛到次优解。
 
-本文按**论文发表时间线**，系统梳理这一领域的关键工作，提取核心观点和公式，最后进行统一分析。
+本文按**论文发表时间线**梳理这一领域的相关工作，提取核心观点和公式，并在最后进行统一分析与反思。
 
 ---
 
@@ -158,7 +158,7 @@ $$\hat{A}_i = f(\text{SE}(q)) \cdot (r_i - \bar{r})$$
 
 #### 核心发现：R = -a·exp(H) + b
 
-这是本领域最重要的理论发现之一：
+该论文提出了一个经验性的熵-性能关系：
 
 $$R = -a \cdot e^H + b$$
 
@@ -343,7 +343,7 @@ OPO 强调 **strict exact on-policy training** 的重要性，与 PPO/GRPO 的�
 | **PSR** (Positive Sample Reinforcement) | 强化正确回答 |
 | **NSR** (Negative Sample Reinforcement) | 惩罚错误回答 |
 
-#### 惊人发现
+#### 核心发现
 
 > "Training with **only negative samples** — without reinforcing correct responses — can be highly effective: it consistently improves performance over the base model across the entire Pass@k spectrum."
 
@@ -681,7 +681,7 @@ $$R = -a \cdot e^H + b$$
 
 ## 批判性反思：熵控制真的重要吗？
 
-在综述了上述 16 篇论文后，有必要提出一个尖锐的问题：**这些关于熵的讨论在工业实践中真的重要吗？**
+综述了上述论文后，一个值得思考的问题是：**这些熵控制方法在工业实践中是否必要？**
 
 ### 工业界的实际做法
 
@@ -728,18 +728,18 @@ if advantage < 0 and off_policy_degree > threshold:
     mask_this_sample()
 ```
 
-这个简单的规则可能比所有 entropy 论文加起来都有效，因为它直接解决了：
+这个规则直接解决了两个问题：
 - Off-policy 样本的有害梯度
 - 负样本的过度惩罚
 
-### 学术论文的"锤子找钉子"效应
+### 研究对象选择的偏向
 
-熵是一个：
-- ✓ 容易定义的数学量
-- ✓ 容易测量的指标
-- ✓ 容易写公式的对象
+熵作为研究对象有其便利性：
+- 数学定义清晰
+- 易于测量和追踪
+- 便于建立理论分析框架
 
-所以大量论文围绕它展开。**但这不代表它是最重要的因素。**
+这可能导致研究集中在熵本身，而非更根本的问题。
 
 ### 重新评估：哪些发现真正有价值？
 
@@ -751,23 +751,23 @@ if advantage < 0 and off_policy_degree > threshold:
 | **Exact on-policy 更稳定** | ⭐⭐⭐ | 工程指导，但牺牲样本效率 |
 | **各种熵控制方法** | ⭐ | 可能是过度工程化 |
 
-### 一个尴尬的现实
+### 实验设置的局限性
 
 这些论文的实验设置：
 - 大部分基于 **Qwen2.5 + AIME/MATH**
 - 训练规模相对较小（几千到几万步）
-- 没有对比 DeepSeek V3.2 级别的 baseline
+- 缺少与工业级系统的对比
 
-而 DeepSeek V3.2 用简单的 masking 就做到了 SOTA，可能说明：
+而 DeepSeek V3.2 通过简单的 masking 策略取得了较好效果，这提示：
 
-> **在足够好的数据和训练设置下，熵控制是次要问题。**
+> **在数据质量和训练设置足够好的情况下，显式熵控制可能不是首要问题。**
 
-### 修正后的观点
+### 综合来看
 
-1. **熵是一个有用的监控指标**（类似 loss curve），但不是优化目标
-2. **显式熵控制可能只在特定场景必要**：小数据、弱模型、长训练
+1. **熵是一个有用的监控指标**，类似于 loss curve，但不一定需要作为优化目标
+2. **显式熵控制可能只在特定场景必要**：数据有限、模型较小、需要长时间训练
 3. **工业实践更关注上游问题**：数据质量、训练稳定性、reward 设计
-4. **这些论文的价值更多是理论理解**，帮助我们知道"为什么"，而非"必须这样做"
+4. **这些论文的主要价值在于理论理解**，帮助解释现象背后的原因
 
 ### 什么时候需要关注熵？
 

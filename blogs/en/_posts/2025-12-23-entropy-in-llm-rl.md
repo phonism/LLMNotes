@@ -10,9 +10,9 @@ translation: /rl/entropy-in-llm-rl/
 
 ## Introduction
 
-In 2025, the LLM reinforcement learning community (especially RLVR: Reinforcement Learning with Verifiable Rewards) witnessed an explosion of research on **Entropy Collapse**. The core problem is: during RL training, the model's output diversity inevitably decreases, leading to loss of exploration capability and premature convergence to suboptimal solutions.
+In 2025, a series of studies emerged in LLM reinforcement learning (especially RLVR: Reinforcement Learning with Verifiable Rewards) addressing **Entropy Collapse**. The core problem: during RL training, model output diversity gradually decreases, leading to loss of exploration capability and premature convergence to suboptimal solutions.
 
-This article systematically reviews key works in this field **organized by publication timeline**, extracting core insights and formulas, followed by a unified analysis and critical reflection.
+This article reviews relevant works in this field **organized by publication timeline**, extracting core insights and formulas, followed by unified analysis and critical reflection.
 
 ---
 
@@ -142,7 +142,7 @@ Where $\text{SE}(q)$ is semantic entropy, $f$ is the modulation function.
 
 #### Core Discovery: R = -a·exp(H) + b
 
-This is one of the most important theoretical discoveries in this field:
+The paper proposes an empirical entropy-performance relationship:
 
 $$R = -a \cdot e^H + b$$
 
@@ -321,7 +321,7 @@ Decomposing RLVR's learning signal:
 | **PSR** (Positive Sample Reinforcement) | Reinforce correct answers |
 | **NSR** (Negative Sample Reinforcement) | Penalize incorrect answers |
 
-#### Surprising Finding
+#### Core Finding
 
 > "Training with **only negative samples** — without reinforcing correct responses — can be highly effective: it consistently improves performance over the base model across the entire Pass@k spectrum."
 
@@ -629,7 +629,7 @@ Only ~20% of tokens are high-entropy, but they are:
 
 ## Critical Reflection: Does Entropy Control Really Matter?
 
-After surveying these 16 papers, we must ask a pointed question: **Are these entropy discussions truly important in industrial practice?**
+After surveying these papers, a question worth considering: **Are these entropy control methods necessary in industrial practice?**
 
 ### What Industry Actually Does
 
@@ -676,18 +676,18 @@ if advantage < 0 and off_policy_degree > threshold:
     mask_this_sample()
 ```
 
-This simple rule might be more effective than all entropy papers combined, because it directly addresses:
+This rule directly addresses two problems:
 - Harmful gradients from off-policy samples
 - Over-penalization of negative samples
 
-### The "Hammer Looking for Nails" Effect in Academic Papers
+### Research Focus Selection Bias
 
-Entropy is:
-- ✓ An easy-to-define mathematical quantity
-- ✓ An easy-to-measure metric
-- ✓ An easy-to-formulate object
+Entropy as a research subject has practical advantages:
+- Clear mathematical definition
+- Easy to measure and track
+- Convenient for theoretical analysis
 
-So many papers revolve around it. **But this doesn't mean it's the most important factor.**
+This may lead research to focus on entropy itself rather than more fundamental issues.
 
 ### Re-evaluation: Which Findings Are Actually Valuable?
 
@@ -699,23 +699,23 @@ So many papers revolve around it. **But this doesn't mean it's the most importan
 | **Exact on-policy is more stable** | ⭐⭐⭐ | Engineering guidance, but sacrifices sample efficiency |
 | **Various entropy control methods** | ⭐ | May be over-engineering |
 
-### An Awkward Reality
+### Experimental Setting Limitations
 
 These papers' experimental settings:
 - Mostly based on **Qwen2.5 + AIME/MATH**
 - Relatively small training scale (thousands to tens of thousands of steps)
-- No comparison with DeepSeek V3.2-level baselines
+- Lack comparison with industrial-scale systems
 
-Yet DeepSeek V3.2 achieved SOTA with simple masking, possibly suggesting:
+Yet DeepSeek V3.2 achieved good results with simple masking strategies, suggesting:
 
-> **With good enough data and training setup, entropy control is a secondary concern.**
+> **With sufficient data quality and proper training setup, explicit entropy control may not be the primary concern.**
 
-### Revised Perspective
+### Summary
 
-1. **Entropy is a useful monitoring metric** (like loss curve), but not an optimization target
-2. **Explicit entropy control may only be necessary in specific scenarios**: limited data, weak models, long training
+1. **Entropy is a useful monitoring metric**, similar to loss curves, but may not need to be an optimization target
+2. **Explicit entropy control may only be necessary in specific scenarios**: limited data, smaller models, extended training
 3. **Industry focuses more on upstream problems**: data quality, training stability, reward design
-4. **These papers' value is more in theoretical understanding**, helping us know "why" rather than "must do this"
+4. **These papers' primary value lies in theoretical understanding**, helping explain the underlying mechanisms
 
 ### When Should You Care About Entropy?
 
