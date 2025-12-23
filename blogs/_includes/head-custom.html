@@ -429,16 +429,25 @@
     font-weight: bold;
     border-radius: 50%;
     cursor: pointer;
-    opacity: 0.7;
+    opacity: 0.4;
     transition: all 0.3s ease;
     z-index: 999;
   }
 
-  #back-to-top:hover {
-    opacity: 1;
-    background: var(--accent-color);
-    color: var(--bg-color);
-    transform: translateY(-3px);
+  /* 只在支持悬停的设备上应用 hover 效果 */
+  @media (hover: hover) {
+    #back-to-top:hover {
+      opacity: 0.9;
+      background: var(--accent-color);
+      color: var(--bg-color);
+      transform: translateY(-3px);
+    }
+  }
+
+  /* 触摸设备点击时的短暂反馈 */
+  #back-to-top:active {
+    opacity: 0.9;
+    transform: scale(0.95);
   }
 
   @media (max-width: 480px) {
