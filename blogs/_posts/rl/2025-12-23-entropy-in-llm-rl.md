@@ -57,6 +57,30 @@ $$\text{clip}(\rho, 1-\epsilon_{\text{low}}, 1+\epsilon_{\text{high}})$$
 
 ---
 
+### 2025年4月：VAPO — 价值增强的策略优化
+
+**论文**: [VAPO: Efficient and Reliable Reinforcement Learning for Advanced Reasoning Tasks](https://arxiv.org/abs/2504.05118)
+**机构**: ByteDance
+**发表时间**: 2025-04-07
+
+#### 核心贡献
+
+VAPO 在 PPO 基础上引入 **7 种创新技术**，显著改进价值学习并平衡探索与利用。
+
+#### 关键技术
+
+1. **Clip-Higher**: 沿用 DAPO 的非对称裁剪（$\epsilon_{\text{high}} = 0.28$, $\epsilon_{\text{low}} = 0.2$）
+2. **Value Learning 改进**: 更精确的价值估计减少方差
+3. **探索-利用平衡**: 保持稳定熵，既不崩溃也不过高
+
+#### 核心结果
+
+> "VAPO matches DAPO's performance using only **60% of DAPO's steps** and achieves a new SOTA score of 60.4 within just 5,000 steps."
+
+> "VAPO maintains stable entropy — neither collapsing nor becoming excessively high."
+
+---
+
 ### 2025年5月：SEED-GRPO — 语义熵引导的不确定性感知优化
 
 **论文**: [SEED-GRPO: Semantic Entropy Enhanced GRPO for Uncertainty-Aware Policy Optimization](https://arxiv.org/abs/2505.12346)
@@ -183,6 +207,90 @@ $$\mathcal{L}_{\text{KL-Cov}} = \mathcal{L}_{\text{GRPO}} + \beta \cdot \text{KL
 
 ---
 
+### 2025年5月：OPO — Exact On-Policy 训练的优势
+
+**论文**: [On-Policy RL with Optimal Reward Baseline](https://arxiv.org/abs/2505.23585)
+**机构**: Microsoft Research
+**发表时间**: 2025-05-29
+
+#### 核心观点
+
+OPO 强调 **strict exact on-policy training** 的重要性，与 PPO/GRPO 的多次更新策略形成对比。
+
+#### 两大创新
+
+1. **Exact On-Policy**: 每批数据只做一次梯度更新（`ppo_mini_batch_size = train_batch_size`）
+2. **Optimal Baseline**: 依赖 policy 和 reward 的最优基线，最小化梯度方差
+
+#### 关键发现
+
+> "Exact on-policy training demonstrates superior pass@1 performance and significantly **lower KL divergence and higher output entropy** throughout training compared to off-policy variants."
+
+**配置**: `entropy_coeff: 0`, `use_kl_loss: False` — 不需要显式熵正则化！
+
+#### 实验结果
+
+| Benchmark | OPO | GRPO |
+|-----------|-----|------|
+| MATH-500 | 95.26% | 95.10% |
+| AIME 2025 (Pass@16) | **85.33%** | 81.33% |
+
+已合并到 [verl 框架](https://verl.readthedocs.io/en/latest/algo/opo.html)。
+
+---
+
+### 2025年5月：Skywork-OR1 — MAGIC Pipeline 与自适应熵控制
+
+**论文**: [Skywork Open Reasoner 1 Technical Report](https://arxiv.org/abs/2505.22312)
+**机构**: Skywork AI
+**发表时间**: 2025-05-29
+**开源**: [GitHub](https://github.com/SkyworkAI/Skywork-OR1)
+
+#### MAGIC Pipeline
+
+**MAGIC** = Multi-stage Adaptive entropy scheduling for GRPO In Convergence
+
+核心组件：
+- 严格的数据收集（离线+在线过滤）
+- 多阶段训练（渐进增加 context length）
+- 高温采样增强探索
+
+#### 自适应熵控制
+
+> "By leveraging **adaptive entropy control**, we maintain the model's entropy at a reasonable level throughout training and effectively prevent premature collapse."
+
+使用自适应系数 $\alpha_k$ 动态调整熵项权重。
+
+#### 关键发现
+
+> "Training approaches that **accelerate entropy collapse lead to worse test performance**."
+
+#### 实验结果
+
+基于 DeepSeek-R1-Distill-32B：
+- AIME24: +15.0%（从 57.8% 到 72.8%）
+- 超过 DeepSeek-R1 和 Qwen3-32B
+
+---
+
+### 2025年5月：ProRL — 延长 RL 训练的稳定性
+
+**论文**: [ProRL: Prolonged Reinforcement Learning Expands Reasoning Boundaries](https://arxiv.org/abs/2505.24864)
+**发表时间**: 2025-05-30
+
+#### 核心问题
+
+如何在**延长的 RL 训练**中保持稳定？
+
+#### 解决方案
+
+1. **KL Divergence Penalty**: 比 Clip-Higher 更强的稳定性
+2. **Periodic Reset of Reference Policy**: 周期性重置参考策略
+
+> "While DAPO and temperature adjustment help slow entropy collapse, **explicit regularization via KL divergence penalty provides a stronger and more stable solution**."
+
+---
+
 ### 2025年6月：Beyond the 80/20 Rule — 高熵少数 Token 驱动有效 RL
 
 **论文**: [Beyond the 80/20 Rule: High-Entropy Minority Tokens Drive Effective Reinforcement Learning for LLM Reasoning](https://arxiv.org/abs/2506.01939)
@@ -287,6 +395,47 @@ NSR 对熵的保持至关重要 → 大 k 时的多样性。
 #### 实验结果
 
 在 miniF2F-test 定理证明 benchmark 上达到与 DeepSeek-Prover-V1.5-RL 相当的性能。
+
+---
+
+### 2025年6月：LUFFY — Off-Policy Guidance 保持高熵
+
+**论文**: [LUFFY: Learning to reason Under oFF-policY guidance](https://arxiv.org/abs/2506.07527)
+**发表时间**: 2025-06-11
+
+#### 核心问题
+
+On-policy RL 的局限：模型只能从自己的生成中学习，无法接触更优推理模式。
+
+#### 解决方案
+
+引入**外部强策略**（如 DeepSeek-R1）的 off-policy guidance。
+
+#### 关键发现
+
+> "LUFFY consistently sustains **higher entropy** compared to On-Policy RL throughout training. The generation entropy of On-Policy RL rapidly converges to nearly zero after ~200 steps, while the elevated entropy in LUFFY allows continuous exploration."
+
+| 方法 | 200 步后熵 |
+|------|-----------|
+| On-Policy RL | ~0 |
+| **LUFFY** | 保持高位 |
+
+---
+
+### 2025年6月：Dr. GRPO — 修正 GRPO 的偏差
+
+**论文**: Dr. GRPO (Getting GRPO Done Right)
+**发表时间**: 2025-06
+
+#### 核心问题
+
+GRPO 的 length normalization 和 std normalization 可能导致**偏差优化**，使模型倾向于生成更长的错误回答。
+
+#### 解决方案
+
+> "Removing both the length and std normalization terms in GRPO."
+
+简单但有效的修正。
 
 ---
 
@@ -465,14 +614,18 @@ $$R = -a \cdot e^H + b$$
 
 | 类别 | 方法 | 代表论文 |
 |------|------|----------|
-| **裁剪策略** | Clip-Higher, 解耦 $\epsilon$ | DAPO |
+| **裁剪策略** | Clip-Higher, 解耦 $\epsilon$ | DAPO, VAPO |
 | **协方差控制** | Clip-Cov, KL-Cov | Entropy Mechanism |
 | **Token 筛选** | 只用高熵 token 梯度 | Beyond 80/20 |
 | **样本重加权** | W-REINFORCE, Unlikeliness Reward | NSR, Rewarding Unlikely |
-| **直接熵控制** | PID 控制器 | EntroPIC |
+| **直接熵控制** | PID 控制器, 自适应系数 | EntroPIC, Skywork-OR1 |
 | **熵变化感知** | Token 级熵变化重加权 | STEER |
 | **课程学习** | 语义熵排序数据 | SENT, SEED-GRPO |
 | **负样本挖掘** | 从错误回答中提取正确步骤 | Unearthing Gems |
+| **On-Policy 优化** | Exact on-policy, optimal baseline | OPO |
+| **Off-Policy Guidance** | 外部强策略引导 | LUFFY |
+| **KL 正则化** | KL penalty + periodic reset | ProRL |
+| **归一化修正** | 移除 length/std normalization | Dr. GRPO |
 
 ### 4. 正样本 vs 负样本的作用
 
@@ -538,22 +691,30 @@ $$R = -a \cdot e^H + b$$
 
 ## 参考文献
 
-1. [DAPO: An Open-Source LLM Reinforcement Learning System at Scale](https://arxiv.org/abs/2503.14476) (2025.03)
-2. [SEED-GRPO: Semantic Entropy Enhanced GRPO](https://arxiv.org/abs/2505.12346) (2025.05)
-3. [Unearthing Gems from Stones: Policy Optimization with Negative Sample Augmentation](https://arxiv.org/abs/2505.14403) (2025.05)
-4. [The Entropy Mechanism of Reinforcement Learning for Reasoning Language Models](https://arxiv.org/abs/2505.22617) (2025.05)
-5. [Beyond the 80/20 Rule: High-Entropy Minority Tokens Drive Effective RL](https://arxiv.org/abs/2506.01939) (2025.06, NeurIPS 2025)
-6. [The Surprising Effectiveness of Negative Reinforcement in LLM Reasoning](https://arxiv.org/abs/2506.01347) (2025.06, NeurIPS 2025)
-7. [Rewarding the Unlikely: Lifting GRPO Beyond Distribution Sharpening](https://arxiv.org/abs/2506.02355) (2025.06, EMNLP 2025)
-8. [Rethinking Entropy Interventions in RLVR](https://arxiv.org/abs/2510.10150) (2025.10)
-9. [Revisiting Entropy in Reinforcement Learning for Large Reasoning Models](https://arxiv.org/abs/2511.05993) (2025.11)
-10. [EntroPIC: Entropy Stabilization with Proportional-Integral Control](https://arxiv.org/abs/2511.15248) (2025.11)
-11. [SENT: Semantic and Token Entropy for LLM Reasoning](https://arxiv.org/abs/2512.04359) (2025.12)
+### 按时间排序
+
+1. [DAPO: An Open-Source LLM Reinforcement Learning System at Scale](https://arxiv.org/abs/2503.14476) (2025.03, ByteDance)
+2. [VAPO: Efficient and Reliable Reinforcement Learning for Advanced Reasoning Tasks](https://arxiv.org/abs/2504.05118) (2025.04, ByteDance)
+3. [SEED-GRPO: Semantic Entropy Enhanced GRPO](https://arxiv.org/abs/2505.12346) (2025.05)
+4. [Unearthing Gems from Stones: Policy Optimization with Negative Sample Augmentation](https://arxiv.org/abs/2505.14403) (2025.05, 中科院/StepFun)
+5. [The Entropy Mechanism of Reinforcement Learning for Reasoning Language Models](https://arxiv.org/abs/2505.22617) (2025.05, 上海 AI Lab)
+6. [Skywork Open Reasoner 1 Technical Report](https://arxiv.org/abs/2505.22312) (2025.05, Skywork AI)
+7. [On-Policy RL with Optimal Reward Baseline](https://arxiv.org/abs/2505.23585) (2025.05, Microsoft Research)
+8. [ProRL: Prolonged Reinforcement Learning Expands Reasoning Boundaries](https://arxiv.org/abs/2505.24864) (2025.05)
+9. [Beyond the 80/20 Rule: High-Entropy Minority Tokens Drive Effective RL](https://arxiv.org/abs/2506.01939) (2025.06, NeurIPS 2025, Qwen/Alibaba)
+10. [The Surprising Effectiveness of Negative Reinforcement in LLM Reasoning](https://arxiv.org/abs/2506.01347) (2025.06, NeurIPS 2025)
+11. [Rewarding the Unlikely: Lifting GRPO Beyond Distribution Sharpening](https://arxiv.org/abs/2506.02355) (2025.06, EMNLP 2025, CMU)
+12. [LUFFY: Learning to reason Under oFF-policY guidance](https://arxiv.org/abs/2506.07527) (2025.06)
+13. [Rethinking Entropy Interventions in RLVR](https://arxiv.org/abs/2510.10150) (2025.10, 浙江大学)
+14. [Revisiting Entropy in Reinforcement Learning for Large Reasoning Models](https://arxiv.org/abs/2511.05993) (2025.11)
+15. [EntroPIC: Entropy Stabilization with Proportional-Integral Control](https://arxiv.org/abs/2511.15248) (2025.11, 腾讯 AI Lab)
+16. [SENT: Semantic and Token Entropy for LLM Reasoning](https://arxiv.org/abs/2512.04359) (2025.12)
 
 ### 开源实现
 
-- [verl (Clip-Cov, KL-Cov)](https://verl.readthedocs.io/en/latest/algo/entropy.html)
+- [verl (Clip-Cov, KL-Cov, OPO)](https://verl.readthedocs.io/en/latest/algo/entropy.html)
 - [DAPO](https://dapo-sia.github.io/)
+- [Skywork-OR1](https://github.com/SkyworkAI/Skywork-OR1)
 - [PRIME-RL/Entropy-Mechanism-of-RL](https://github.com/PRIME-RL/Entropy-Mechanism-of-RL)
 - [TianHongZXY/RLVR-Decomposed (W-REINFORCE)](https://github.com/TianHongZXY/RLVR-Decomposed)
 - [EntroPIC](https://github.com/yk7333/EntroPIC)
