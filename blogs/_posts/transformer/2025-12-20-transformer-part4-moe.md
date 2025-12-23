@@ -4,7 +4,7 @@ title: "Transformer 学习笔记（四）：Mixture of Experts 稀疏架构"
 date: 2025-12-20 10:30:00
 author: Qi Lu
 categories: [Deep Learning, Transformer]
-tags: [MoE, DeepSeek, Sparse Model, Expert Parallelism]
+tags: [Transformer, MoE]
 math: true
 lang: zh
 translation: /en/transformer-part4-moe/

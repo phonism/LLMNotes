@@ -3,7 +3,7 @@ layout: post
 title: "RL Notes (5): LLM Alignment (Part 1)"
 date: 2025-12-19 07:00:00
 author: Qi Lu
-tags: [RL, LLM, RLHF, DPO, Alignment]
+tags: [RL, RLHF, Alignment]
 lang: en
 translation: /llm-alignment-part1/
 ---

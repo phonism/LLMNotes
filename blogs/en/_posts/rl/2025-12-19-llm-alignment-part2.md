@@ -3,7 +3,7 @@ layout: post
 title: "RL Notes (6): LLM Alignment (Part 2)"
 date: 2025-12-19 08:00:00
 author: Qi Lu
-tags: [RL, LLM, GRPO, PRM, Long-CoT, Alignment]
+tags: [RL, RLHF, Alignment]
 lang: en
 translation: /llm-alignment-part2/
 ---

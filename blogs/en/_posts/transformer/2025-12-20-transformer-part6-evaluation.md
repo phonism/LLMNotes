@@ -3,7 +3,7 @@ layout: post
 title: "Transformer Notes (VI): Evaluation and Benchmarks"
 date: 2025-12-20 10:50:00
 author: Qi Lu
-tags: [Evaluation, Benchmark, MMLU, LiveCodeBench, Chatbot Arena]
+tags: [Transformer, Evaluation]
 lang: en
 translation: /transformer-part6-evaluation/
 ---

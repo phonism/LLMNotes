@@ -3,7 +3,7 @@ layout: post
 title: "RL Notes (4): Model-Based Methods & MARL"
 date: 2025-12-19 06:00:00
 author: Qi Lu
-tags: [RL, Model-Based, MARL, MCTS, AlphaZero]
+tags: [RL, MCTS, AlphaZero]
 lang: en
 translation: /model-based-marl/
 ---

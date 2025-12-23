@@ -3,7 +3,7 @@ layout: post
 title: "Transformer 学习笔记（二）：核心组件"
 date: 2025-12-20 10:10:00
 author: Qi Lu
-tags: [Transformer, Tokenizer, RoPE, SwiGLU]
+tags: [Transformer]
 lang: zh
 translation: /en/transformer-part2-components/
 series: transformer

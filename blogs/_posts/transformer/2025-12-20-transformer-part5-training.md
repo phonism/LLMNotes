@@ -4,7 +4,7 @@ title: "Transformer 学习笔记（五）：训练技术全景"
 date: 2025-12-20 10:40:00
 author: Qi Lu
 categories: [Deep Learning, Transformer]
-tags: [Data Engineering, Distributed Training, ZeRO, FSDP, Muon Optimizer]
+tags: [Transformer, Training]
 math: true
 lang: zh
 translation: /en/transformer-part5-training/

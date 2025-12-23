@@ -3,7 +3,7 @@ layout: post
 title: "Transformer 学习笔记（三）：注意力机制"
 date: 2025-12-20 10:20:00
 author: Qi Lu
-tags: [Transformer, FlashAttention, MLA, Sparse Attention, Linear Attention]
+tags: [Transformer, Attention]
 lang: zh
 translation: /en/transformer-part3-attention/
 series: transformer

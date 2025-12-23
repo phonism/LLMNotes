@@ -3,7 +3,7 @@ layout: post
 title: "RL Notes (2): Value-Based RL"
 date: 2025-12-19 04:00:00
 author: Qi Lu
-tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
+tags: [RL, DQN]
 lang: en
 translation: /value-based-rl/
 ---

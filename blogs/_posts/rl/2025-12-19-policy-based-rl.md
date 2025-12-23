@@ -3,7 +3,7 @@ layout: post
 title: "RL 学习笔记（三）：基于策略的强化学习"
 date: 2025-12-19 05:00:00
 author: Qi Lu
-tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
+tags: [RL, PPO]
 lang: zh
 translation: /en/policy-based-rl/
 series: rl

@@ -3,7 +3,7 @@ layout: post
 title: "Transformer 学习笔记（一）：基础理论"
 date: 2025-12-20 10:00:00
 author: Qi Lu
-tags: [Transformer, LLM, Scaling Law, GPU]
+tags: [Transformer]
 lang: zh
 translation: /en/transformer-part1-fundamentals/
 series: transformer

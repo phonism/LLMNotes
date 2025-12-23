@@ -3,7 +3,7 @@ layout: post
 title: "Transformer Notes (II): Core Components"
 date: 2025-12-20 10:10:00
 author: Qi Lu
-tags: [Transformer, Tokenizer, RoPE, SwiGLU]
+tags: [Transformer]
 lang: en
 translation: /transformer-part2-components/
 ---

@@ -3,7 +3,7 @@ layout: post
 title: "RL 学习笔记（二）：基于价值的强化学习"
 date: 2025-12-19 04:00:00
 author: Qi Lu
-tags: [RL, Bellman, Q-Learning, DQN, TD, MC]
+tags: [RL, DQN]
 lang: zh
 translation: /en/value-based-rl/
 series: rl

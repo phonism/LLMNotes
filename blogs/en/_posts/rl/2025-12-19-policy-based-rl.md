@@ -3,7 +3,7 @@ layout: post
 title: "RL Notes (3): Policy-Based RL"
 date: 2025-12-19 05:00:00
 author: Qi Lu
-tags: [RL, Policy Gradient, PPO, Actor-Critic, GAE]
+tags: [RL, PPO]
 lang: en
 translation: /policy-based-rl/
 ---

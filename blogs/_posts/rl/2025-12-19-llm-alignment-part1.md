@@ -3,7 +3,7 @@ layout: post
 title: "RL 学习笔记（五）：LLM 对齐（上）"
 date: 2025-12-19 07:00:00
 author: Qi Lu
-tags: [RL, LLM, RLHF, DPO, Alignment]
+tags: [RL, RLHF, Alignment]
 lang: zh
 translation: /en/llm-alignment-part1/
 series: rl

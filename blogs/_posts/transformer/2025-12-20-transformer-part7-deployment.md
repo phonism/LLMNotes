@@ -4,7 +4,7 @@ title: "Transformer 学习笔记（七）：部署优化"
 date: 2025-12-20 11:00:00
 author: Qi Lu
 categories: [Deep Learning, Transformer]
-tags: [Quantization, Inference, vLLM, Speculative Decoding, KV Cache]
+tags: [Transformer, Inference]
 math: true
 lang: zh
 translation: /en/transformer-part7-deployment/

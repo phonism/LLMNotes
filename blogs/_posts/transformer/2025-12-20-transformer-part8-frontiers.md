@@ -4,7 +4,7 @@ title: "Transformer 学习笔记（八）：前沿应用"
 date: 2025-12-20 11:10:00
 author: Qi Lu
 categories: [Deep Learning, Transformer]
-tags: [Multimodal, Reasoning, GPT-4o, DeepSeek-R1, VLM]
+tags: [Transformer, Multimodal, Reasoning]
 math: true
 lang: zh
 translation: /en/transformer-part8-frontiers/

@@ -3,7 +3,7 @@ layout: post
 title: "RL 学习笔记（四）：基于模型的方法与多智能体"
 date: 2025-12-19 06:00:00
 author: Qi Lu
-tags: [RL, Model-Based, MARL, MCTS, AlphaZero]
+tags: [RL, MCTS, AlphaZero]
 lang: zh
 translation: /en/model-based-marl/
 series: rl

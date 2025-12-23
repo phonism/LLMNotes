@@ -4,7 +4,7 @@ title: "Transformer 学习笔记（六）：评测与 Benchmark"
 date: 2025-12-20 10:50:00
 author: Qi Lu
 categories: [Deep Learning, Transformer]
-tags: [Evaluation, Benchmark, MMLU, LiveCodeBench, Chatbot Arena]
+tags: [Transformer, Evaluation]
 math: true
 lang: zh
 translation: /en/transformer-part6-evaluation/

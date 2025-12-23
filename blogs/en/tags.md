@@ -9,27 +9,32 @@ translation: /tags/
 # Tags
 
 {% assign filtered_posts = site.posts | where: "lang", "en" %}
-{% assign rawtags = "" %}
+{% assign tag_counts = "" %}
 {% for post in filtered_posts %}
-  {% assign ttags = post.tags | join:'|' | append:'|' %}
-  {% assign rawtags = rawtags | append:ttags %}
+  {% for tag in post.tags %}
+    {% assign tag_counts = tag_counts | append: tag | append: "|" %}
+  {% endfor %}
 {% endfor %}
-{% assign rawtags = rawtags | split:'|' | sort %}
-
-{% assign tags = "" %}
-{% for tag in rawtags %}
+{% assign tag_array = tag_counts | split: "|" %}
+{% assign unique_tags = tag_array | uniq %}
+{% assign sorted_tags = "" %}
+{% for tag in unique_tags %}
   {% if tag != "" %}
-    {% if tags == "" %}
-      {% assign tags = tag | split:'|' %}
-    {% endif %}
-    {% unless tags contains tag %}
-      {% assign tags = tags | join:'|' | append:'|' | append:tag | split:'|' %}
-    {% endunless %}
+    {% assign count = 0 %}
+    {% for t in tag_array %}
+      {% if t == tag %}{% assign count = count | plus: 1 %}{% endif %}
+    {% endfor %}
+    {% assign sorted_tags = sorted_tags | append: count | append: ":" | append: tag | append: "|" %}
   {% endif %}
 {% endfor %}
+{% assign sorted_tags = sorted_tags | split: "|" | sort | reverse %}
 
-{% for tag in tags %}
-<h2 id="{{ tag | slugify }}">{{ tag }}</h2>
+{% for item in sorted_tags %}
+  {% if item != "" %}
+    {% assign parts = item | split: ":" %}
+    {% assign tag = parts[1] %}
+    {% assign count = parts[0] %}
+<h2 id="{{ tag | slugify }}">{{ tag }} ({{ count }})</h2>
 
 <ul>
 {% for post in filtered_posts %}
@@ -38,5 +43,5 @@ translation: /tags/
 {% endif %}
 {% endfor %}
 </ul>
-
+  {% endif %}
 {% endfor %}

@@ -49,7 +49,7 @@
 
     <footer class="site-footer">
       <p>© 2025 {{ site.author }}. Built with Jekyll & Hacker Theme.</p>
-      <p><a href="{{ site.github.repository_url }}">GitHub</a> · <a href="mailto:{{ site.email }}">Email</a></p>
+      <p><a href="{{ site.github.repository_url }}">GitHub</a> · <a href="mailto:{{ site.email }}">Email</a> · {% if page.lang == 'en' %}Visitors{% else %}访客数{% endif %}: <span id="busuanzi_site_uv">--</span> · {% if page.lang == 'en' %}Views{% else %}访问量{% endif %}: <span id="busuanzi_site_pv">--</span></p>
     </footer>
 
     <!-- 回到顶部按钮 -->
