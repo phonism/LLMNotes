@@ -766,12 +766,18 @@ OpenAI API 提供 `seed` 参数以提高可复现性：
 
 LLM 推理的非确定性源于 **kernel 实现对 batch size 的敏感性**，而非 GPU 的并发特性。通过设计 batch-invariant kernels，可以在工程层面实现完全确定的推理。
 
-关键技术点：
+**Dense 模型的关键技术点**：
 
 1. 固定 RMSNorm 的 reduction 分块
 2. 固定 MatMul 的 tiling 配置
 3. 固定 Attention 的 KV split size
 4. 多 GPU 场景使用确定性 AllReduce
+
+**MoE 模型的额外挑战**：
+
+1. Token routing 的离散决策在门控分数接近时不稳定
+2. Expert capacity 和 token dropping 引入 batch 依赖的非确定性
+3. 训练-推理路由不一致需要 Routing Replay（R2/R3）机制
 
 性能代价约 30-60%，但在 RL 训练、模型调试、安全审计等场景中是必要的投入。
 
@@ -791,6 +797,6 @@ LLM 推理的非确定性源于 **kernel 实现对 batch size 的敏感性**，�
 
 6. Dao, T. et al. [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691). 2023.
 
-7. Ma, Y. et al. [Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers](https://arxiv.org/abs/2510.11370). 2025.
+7. Ma, W. et al. [Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers](https://arxiv.org/abs/2510.11370). 2025.
 
-8. [Towards Stable and Effective Reinforcement Learning for Mixture-of-Experts](https://arxiv.org/abs/2510.23027). 2025.
+8. [Towards Stable and Effective Reinforcement Learning for Mixture-of-Experts](https://arxiv.org/abs/2510.23027). arXiv 2025.
