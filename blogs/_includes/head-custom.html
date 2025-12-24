@@ -1,3 +1,56 @@
+<!-- Google Search Console Verification -->
+<meta name="google-site-verification" content="mBlaBirpTPhiFuuGyfLWVBWSjp7uvjbZOfAVr0lm5TA" />
+
+<!-- SEO Meta Tags -->
+{% if page.description %}
+  {% assign seo_description = page.description %}
+{% elsif page.excerpt %}
+  {% assign seo_description = page.excerpt | strip_html | truncate: 160 %}
+{% else %}
+  {% assign seo_description = site.description %}
+{% endif %}
+<meta name="description" content="{{ seo_description }}">
+<meta name="author" content="{{ page.author | default: site.author }}">
+<link rel="canonical" href="{{ page.url | absolute_url }}">
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content="{% if page.layout == 'post' %}article{% else %}website{% endif %}">
+<meta property="og:url" content="{{ page.url | absolute_url }}">
+<meta property="og:title" content="{{ page.title }} | {{ site.title }}">
+<meta property="og:description" content="{{ seo_description }}">
+<meta property="og:site_name" content="{{ site.title }}">
+{% if page.layout == 'post' %}
+<meta property="article:published_time" content="{{ page.date | date_to_xmlschema }}">
+<meta property="article:author" content="{{ page.author | default: site.author }}">
+{% for tag in page.tags %}<meta property="article:tag" content="{{ tag }}">
+{% endfor %}{% endif %}
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ page.title }} | {{ site.title }}">
+<meta name="twitter:description" content="{{ seo_description }}">
+
+<!-- JSON-LD Structured Data -->
+{% if page.layout == 'post' %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "{{ page.title | escape }}",
+  "datePublished": "{{ page.date | date_to_xmlschema }}",
+  "author": {
+    "@type": "Person",
+    "name": "{{ page.author | default: site.author }}"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "{{ site.author }}"
+  },
+  "description": "{{ seo_description | escape }}"
+}
+</script>
+{% endif %}
+
 <!-- 立即应用主题，防止闪烁 -->
 <script>
   (function() {

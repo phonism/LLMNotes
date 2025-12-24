@@ -1,12 +1,14 @@
 title: LLM Notes
-description: LLM 学习笔记
+description: LLM 与强化学习学习笔记 - Transformer、RLHF、PPO、DPO 等技术深度解析
 author: Qi Lu
 email: luqi.code@gmail.com
+lang: zh-CN
 
 # 使用 hacker 主题 (geek 风格，黑绿终端风)
 remote_theme: pages-themes/hacker@v0.2.0
 plugins:
   - jekyll-remote-theme
+  - jekyll-seo-tag
 
 # Markdown 配置
 markdown: kramdown
