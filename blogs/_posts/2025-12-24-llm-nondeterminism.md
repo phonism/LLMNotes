@@ -441,6 +441,234 @@ SGLang 实现了 deterministic tensor parallelism，确保多 GPU 场景下的�
 
 ---
 
+## MoE 模型的额外挑战
+
+Mixture-of-Experts（MoE）架构引入了 Dense 模型不存在的非确定性来源。以 Qwen3-235B-A22B、DeepSeek-V3 等模型为代表的 MoE 架构，其稀疏激活特性使得确定性推理面临额外挑战。
+
+### Token Routing 的非确定性
+
+MoE 的核心是 **门控网络**（Gating Network），决定每个 token 被路由到哪些 expert：
+
+$$G(x) = \text{TopK}(\text{softmax}(W_g \cdot x))$$
+
+问题在于：当多个 expert 的门控分数接近时，微小的数值扰动可能改变 TopK 的选择结果。
+
+<!-- tikz-source: nondeterminism-moe-routing
+\begin{tikzpicture}[
+    token/.style={draw, circle, minimum size=0.6cm, font=\scriptsize},
+    expert/.style={draw, rounded corners, minimum width=1.2cm, minimum height=0.8cm, align=center, font=\small},
+    gate/.style={draw, rounded corners, fill=yellow!20, minimum width=2cm, minimum height=0.6cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Tokens
+    \node[token, fill=blue!20] (t1) at (0, 2) {$t_1$};
+    \node[token, fill=blue!20] (t2) at (0, 0) {$t_2$};
+    \node[token, fill=blue!20] (t3) at (0, -2) {$t_3$};
+
+    % Gate
+    \node[gate] (gate) at (3, 0) {Gating\\Network};
+
+    % Experts
+    \node[expert, fill=green!20] (e1) at (7, 2) {Expert 1};
+    \node[expert, fill=green!20] (e2) at (7, 0) {Expert 2};
+    \node[expert, fill=green!20] (e3) at (7, -2) {Expert 3};
+
+    % 连接
+    \draw[arrow] (t1) -- (gate);
+    \draw[arrow] (t2) -- (gate);
+    \draw[arrow] (t3) -- (gate);
+
+    % 路由（实线 = 稳定，虚线 = 不稳定）
+    \draw[arrow, thick, green!60!black] (gate) -- node[above, font=\scriptsize] {0.45} (e1);
+    \draw[arrow, thick, green!60!black] (gate) -- node[above, font=\scriptsize] {0.35} (e2);
+    \draw[arrow, dashed, red] (gate) -- node[below, font=\scriptsize] {0.20} (e3);
+
+    % 标注
+    \node[font=\scriptsize, red] at (5, -3) {当 $|s_2 - s_3| < \epsilon$，路由决策不稳定};
+\end{tikzpicture}
+-->
+![MoE Token Routing 示意]({{ site.baseurl }}/assets/figures/nondeterminism-moe-routing.svg)
+
+### Expert Capacity 与 Token Dropping
+
+为保证计算效率，MoE 通常设置 **Expert Capacity**：每个 expert 能处理的最大 token 数。当某个 expert 接收的 token 超过容量时，多余的 token 被 **丢弃**（dropped），直接通过残差连接传递到下一层。
+
+$$\text{Expert Capacity} = \frac{\text{Batch Tokens} \times \text{Capacity Factor}}{\text{Num Experts}}$$
+
+Token dropping 的非确定性来源：
+
+1. **Batch 组成变化**：不同 batch 中的 token 分布不同，同一 token 可能在某些 batch 中被处理，在另一些中被丢弃
+2. **路由顺序依赖**：当 capacity 接近饱和时，先到达的 token 被处理，后到达的被丢弃
+3. **负载不均衡**：热门 expert 更容易触发 dropping
+
+### 训练-推理不一致
+
+研究发现，MoE 模型在训练和推理阶段的路由行为存在显著差异：
+
+> "Even under identical conditions, the routing framework can yield divergent expert selections across repeated forward passes."
+
+这种不一致在 RL 训练中尤为严重：
+
+- **On-policy 要求**：RL 训练要求 rollout 与训练使用相同的策略
+- **路由漂移**：推理时的路由决策可能偏离训练时的分布
+- **奖励噪声**：非确定性路由引入难以追踪的奖励波动
+
+### MoE 确定性推理的解决方案
+
+#### 1. 固定路由阈值
+
+避免在门控分数接近时产生不稳定决策：
+
+```python
+def deterministic_topk(scores, k, margin=1e-5):
+    # 当分数差异小于 margin 时，使用固定的 tie-breaking 规则
+    sorted_scores, indices = torch.sort(scores, descending=True)
+
+    # 检测 tie 情况
+    for i in range(k-1, len(sorted_scores)-1):
+        if sorted_scores[i] - sorted_scores[i+1] < margin:
+            # 使用 expert index 作为 tie-breaker
+            pass
+
+    return indices[:k]
+```
+
+#### 2. 取消 Token Dropping
+
+以计算效率换取确定性：
+
+```python
+# 设置足够大的 capacity factor，确保不发生 dropping
+config.moe_capacity_factor = 2.0  # 或更高
+config.moe_drop_tokens = False
+```
+
+#### 3. Soft MoE
+
+使用软路由替代硬路由，每个 token 以加权方式分配给所有 expert：
+
+$$y = \sum_{i=1}^{E} g_i(x) \cdot \text{Expert}_i(x)$$
+
+Soft MoE 消除了离散的路由决策，但计算开销更高。
+
+### 对 RL 训练的特殊影响
+
+MoE 模型的 RL 训练面临双重挑战：
+
+1. **数值非确定性**：前述的 batch variance 问题
+2. **结构非确定性**：路由决策的不稳定性
+
+研究表明，MoE RL 训练的不稳定性部分源于路由分布的漂移：
+
+> "The routing distribution has been identified as a pivotal factor contributing to the instability of MoE RL."
+
+实验数据显示，约 10% 的 router 在训练和推理间选择不同的 expert，94% 的 token 至少在一层选择了不同的 expert。
+
+### Routing Replay：R2 与 R3
+
+为解决训练-推理路由不一致问题，研究者提出了 **Routing Replay** 机制，核心思想是在训练时重放推理阶段的路由决策。
+
+#### R2：Vanilla Routing Replay
+
+**定义**：重用 **训练系统** 在 rollout 阶段选择的 expert。
+
+```
+Rollout (Training System) → 记录路由决策 → Training 时重放
+```
+
+- **优点**：实现简单，开销较小
+- **缺点**：当 off-policy 程度较大时效果下降
+
+#### R3：Rollout Routing Replay
+
+**定义**：重用 **推理系统** 在 rollout 阶段选择的 expert。
+
+```
+Rollout (Inference System) → 记录路由决策 → Training 时重放
+```
+
+R3 强制约束：在 rollout 阶段激活的特定 expert 必须在训练反向传播时严格重用。
+
+<!-- tikz-source: nondeterminism-r2-r3
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
+    arrow/.style={->, thick, >=stealth},
+    dasharrow/.style={->, thick, >=stealth, dashed}
+]
+    % R2
+    \node[font=\bfseries] at (0, 3) {R2: Vanilla Routing Replay};
+    \node[box, fill=blue!20] (r2-train) at (-2, 2) {Training\\System};
+    \node[box, fill=green!20] (r2-rollout) at (2, 2) {Rollout};
+    \node[box, fill=orange!20] (r2-bp) at (2, 0.5) {Backprop};
+
+    \draw[arrow] (r2-train) -- node[above, font=\scriptsize] {生成} (r2-rollout);
+    \draw[arrow] (r2-rollout) -- node[right, font=\scriptsize] {重放路由} (r2-bp);
+    \draw[dasharrow, gray] (r2-train) -- (r2-bp);
+
+    % R3
+    \node[font=\bfseries] at (8, 3) {R3: Rollout Routing Replay};
+    \node[box, fill=purple!20] (r3-infer) at (6, 2) {Inference\\System};
+    \node[box, fill=green!20] (r3-rollout) at (10, 2) {Rollout};
+    \node[box, fill=orange!20] (r3-bp) at (10, 0.5) {Backprop};
+
+    \draw[arrow] (r3-infer) -- node[above, font=\scriptsize] {生成} (r3-rollout);
+    \draw[arrow] (r3-rollout) -- node[right, font=\scriptsize] {重放路由} (r3-bp);
+
+    % 标注
+    \node[font=\scriptsize, gray] at (2, -0.5) {训练系统的路由决策};
+    \node[font=\scriptsize, gray] at (10, -0.5) {推理系统的路由决策};
+\end{tikzpicture}
+-->
+![R2 与 R3 对比]({{ site.baseurl }}/assets/figures/nondeterminism-r2-r3.svg)
+
+#### 选择 R2 还是 R3？
+
+| 场景 | 推荐方案 | 原因 |
+|------|----------|------|
+| Off-policy 程度小 | R2 | R3 对目标策略的改变代价大于收益 |
+| Off-policy 程度大 | R3 | 保持一阶近似的有效性更重要 |
+
+#### 实现细节
+
+R3 可与 KV Cache 集成：
+
+```python
+# 对于每层每个 token prefix，存储对应的路由 mask
+routing_cache = {}
+
+def forward_with_replay(x, layer_idx, prefix_hash):
+    if prefix_hash in routing_cache:
+        # 命中缓存，重用路由决策
+        mask = routing_cache[prefix_hash]
+    else:
+        # 计算新路由
+        mask = compute_routing(x)
+        routing_cache[prefix_hash] = mask
+
+    # 使用 mask 进行 softmax gating，但不阻断梯度流
+    return apply_routing(x, mask, allow_grad=True)
+```
+
+关键点：重放的 mask 用于 softmax gating 计算，但不阻止梯度流经标准 router 权重，确保 router 仍可训练。
+
+### 其他解决方案
+
+#### RSPO（Router-Shift Policy Optimization）
+
+不同于 R2/R3 的硬约束，RSPO 采用软调整机制：
+
+$$w_{rspo} = w_{is} \cdot \text{clip}(\text{router\_shift\_ratio}, 1-\epsilon, 1+\epsilon)$$
+
+- 计算当前策略与旧策略间的 **router shift ratio**
+- 量化每个 token 的路由偏移程度
+- 自适应重加权更新，限制过大更新同时保持 router 灵活性
+
+#### 冻结 Router
+
+最简单的方案是冻结 router 参数，但会损害模型适应性，通常不推荐。
+
+---
+
 ## 性能分析
 
 Batch-invariant kernels 的主要开销来源：
@@ -562,3 +790,7 @@ LLM 推理的非确定性源于 **kernel 实现对 batch size 的敏感性**，�
 5. vLLM Documentation. [Batch Invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/).
 
 6. Dao, T. et al. [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691). 2023.
+
+7. Ma, Y. et al. [Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers](https://arxiv.org/abs/2510.11370). 2025.
+
+8. [Towards Stable and Effective Reinforcement Learning for Mixture-of-Experts](https://arxiv.org/abs/2510.23027). 2025.
