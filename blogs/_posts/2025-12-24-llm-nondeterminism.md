@@ -1,330 +1,564 @@
 ---
 layout: post
-title: "LLM 推理的非确定性之谜：从浮点幻觉到 Batch Invariance"
+title: "LLM 推理的非确定性：根因分析与 Batch Invariance 解决方案"
 date: 2025-12-24 12:00:00
 author: Qi Lu
-tags: [LLM, Inference, Determinism, Batch Invariance, Reproducibility]
+tags: [LLM, Inference, Determinism, Batch Invariance, Reproducibility, CUDA]
 lang: zh
 ---
 
-## 引言
+## 问题定义
 
-可复现性是科学研究的基石。然而，当我们试图从大型语言模型中获取可复现的结果时，却面临着一个令人困惑的现象：即使将采样温度设置为 0（理论上应当进行确定性的贪婪解码），模型的输出仍然可能发生变化。
+在 LLM 推理服务中，相同的输入理应产生相同的输出。然而实际观测表明，即使采用贪婪解码（temperature=0），输出仍存在不确定性。以下实验数据来自 Thinking Machines Lab：
 
-这不是偶发现象。使用 Qwen3-235B 模型在 temperature=0 条件下对同一 prompt 采样 1000 次，竟然产生了 80 种不同的输出，其中最频繁的输出仅出现 78 次。这一结果与"贪婪解码必然确定"的直觉形成了鲜明对比。
+| 模型 | 采样次数 | 不同输出数 | 最频繁输出出现次数 |
+|------|----------|-----------|------------------|
+| Qwen3-235B-A22B | 1000 | 80 | 78 |
 
-2025 年 9 月，由前 OpenAI CTO Mira Murati 创立的 Thinking Machines Lab 发布了一篇研究论文，系统性地分析了这一问题的根源，并提出了工程化的解决方案。本文将深入解析这一研究，探讨 LLM 推理非确定性的真正来源及其解决路径。
+这一现象与贪婪解码的数学定义矛盾：$\hat{y}_t = \arg\max_v p(v \mid y_{<t}, x)$ 应当是确定性的。
 
----
-
-## 常见误解：浮点非关联性假说
-
-### 浮点运算的数学特性
-
-在讨论非确定性来源之前，有必要回顾浮点运算的一个基本特性：**非关联性**（non-associativity）。
-
-在理想的实数运算中，加法满足结合律：
-
-$$(a + b) + c = a + (b + c)$$
-
-然而，由于浮点数的有限精度和舍入误差，这一等式在计算机中并不总是成立。考虑以下示例：
-
-```python
-a = 1e-10
-b = 1.0
-c = -1.0
-print((a + b) + c)  # 输出: 1.0000000000000002e-10
-print(a + (b + c))  # 输出: 1e-10
-```
-
-当 GPU 执行大规模并行计算时，不同线程完成的顺序可能不同，导致累加操作的顺序发生变化，进而产生微小的数值差异。
-
-### 主流假说的局限性
-
-基于上述观察，业界普遍持有一种假说：LLM 推理的非确定性源于 **"并发执行 + 浮点非关联性"** 的组合效应。具体而言：
-
-1. GPU 的并行线程以不确定的顺序完成计算
-2. 原子加法（atomic add）操作的执行顺序不可预测
-3. 不同的执行顺序导致不同的舍入误差累积
-4. 最终 logits 产生微小差异，在贪婪解码时可能选择不同的 token
-
-这一假说看似合理，却忽略了现代 Transformer 实现的一个关键事实：**主流 LLM 推理引擎中的大多数核心操作实际上使用的是确定性的 reduction trees，而非原子操作**。
-
-Thinking Machines Lab 的研究明确指出：
-
-> "Although this can lead to nondeterministic kernels, concurrency (and atomic adds) end up being completely uninvolved in LLM inference nondeterminism."
+本文的目标是：(1) 定位非确定性的根本来源；(2) 设计可工程化部署的解决方案。
 
 ---
 
-## 真正的元凶：Batch Size 的隐形影响
+## 假说检验：并发浮点运算 vs. Batch Size 变化
 
-### 动态批处理的数值后果
+### 假说 1：GPU 并发导致的浮点非关联性
 
-现代 LLM 推理服务为了最大化 GPU 利用率，普遍采用**动态批处理**（dynamic batching）策略：将多个用户请求合并为一个批次进行并行计算。批次大小取决于当前系统负载，因此具有不可预测性。
+主流假说认为，GPU 的并行计算引入了不确定性。其逻辑链条如下：
 
-问题在于：**许多核心计算 kernel 的数值输出会随批次大小变化而变化**。即使单个样本的计算逻辑相同，其数值路径也会因批次中其他样本的存在而发生改变。
+1. 浮点加法不满足结合律：$(a + b) + c \neq a + (b + c)$
+2. GPU 并行 reduction 的执行顺序取决于线程调度
+3. 不同的执行顺序产生不同的累加结果
+4. 微小差异经 argmax 放大后改变输出 token
 
-这一现象被称为 **Batch Invariance 的缺失**，它构成了 LLM 推理非确定性的主要来源。
+这一假说的典型支持证据是 CUDA 的 `atomicAdd` 操作的非确定性。
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Dynamic Batching Server                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   Request A ──┐                                             │
-│               │     ┌───────────┐                           │
-│   Request B ──┼────▶│ Batch = 3 │────▶ Different numerical  │
-│               │     └───────────┘      path for A           │
-│   Request C ──┘                                             │
-│                                                             │
-│   ─────────────────────────────────────────────────────     │
-│                                                             │
-│   Request A ──┐     ┌───────────┐                           │
-│               ├────▶│ Batch = 2 │────▶ Different numerical  │
-│   Request D ──┘     └───────────┘      path for A           │
-│                                                             │
-│   Same request A, different batch contexts,                 │
-│   potentially different outputs                             │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+### 假说 1 的问题
 
-*图 1：动态批处理导致相同请求在不同批次上下文中产生不同数值路径*
+Thinking Machines Lab 的分析指出，现代 Transformer 推理中的核心操作并不依赖原子操作：
 
-值得强调的是，这一问题并非 GPU 特有。**CPU 和 TPU 上的推理服务同样存在因批次大小变化导致的非确定性**，因为问题根源在于 kernel 的数值计算方式，而非特定硬件的并发特性。
+- **GEMM**：使用 cuBLAS 的分块矩阵乘法，reduction 树结构固定
+- **LayerNorm/RMSNorm**：标准实现使用确定性的 warp-level reduction
+- **Attention**：FlashAttention 的 tiled 实现同样采用固定 reduction 顺序
 
-### 三个关键操作的深入分析
+实验验证：在单 GPU、固定 batch size 条件下，同一输入的多次推理输出完全一致。这排除了线程级非确定性作为主要来源。
 
-Thinking Machines Lab 的研究表明，要实现 batch-invariant 的 Transformer 推理，需要关注三个核心操作：
+### 假说 2：Batch Size 变化导致数值路径分歧
 
-#### 1. RMSNorm（Root Mean Square Normalization）
+真正的问题在于：**kernel 的数值输出是 batch size 的函数**。
 
-RMSNorm 是 LLM 中广泛使用的归一化层。其计算涉及对隐藏维度的求和操作：
+<!-- tikz-source: nondeterminism-batch-path-divergence
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\small},
+    kernel/.style={draw, rounded corners, fill=blue!15, minimum width=1.8cm, minimum height=0.7cm, align=center, font=\footnotesize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 请求
+    \node[box, fill=gray!20] (req) at (0, 0) {Request $x$};
 
-$$\text{RMSNorm}(x) = \frac{x}{\sqrt{\frac{1}{d}\sum_{i=1}^{d} x_i^2 + \epsilon}} \cdot \gamma$$
+    % 分支
+    \node[font=\small] at (3, 1.5) {Batch size = 1};
+    \node[font=\small] at (3, -1.5) {Batch size = 4};
 
-当批次大小变化时，GPU kernel 的 tiling 策略可能发生改变，导致求和的分块方式不同，进而产生不同的舍入误差。
+    % 路径 1
+    \node[kernel] (k1a) at (5, 1.5) {RMSNorm\\$f_1(x)$};
+    \node[kernel] (k1b) at (7.5, 1.5) {MatMul\\$g_1(x)$};
+    \node[kernel] (k1c) at (10, 1.5) {Attn\\$h_1(x)$};
+    \node[box, fill=green!20] (out1) at (12.5, 1.5) {logits $\ell_1$};
 
-#### 2. 矩阵乘法（Matrix Multiplication）
+    % 路径 2
+    \node[kernel] (k2a) at (5, -1.5) {RMSNorm\\$f_4(x)$};
+    \node[kernel] (k2b) at (7.5, -1.5) {MatMul\\$g_4(x)$};
+    \node[kernel] (k2c) at (10, -1.5) {Attn\\$h_4(x)$};
+    \node[box, fill=red!20] (out2) at (12.5, -1.5) {logits $\ell_2$};
 
-矩阵乘法是 Transformer 中计算量最大的操作，涉及大规模的点积累加。不同的 tiling 和 reduction 策略会导致不同的数值结果：
+    % 连接
+    \draw[arrow] (req) -- (2, 0) -- (2, 1.5) -- (k1a);
+    \draw[arrow] (req) -- (2, 0) -- (2, -1.5) -- (k2a);
+    \draw[arrow] (k1a) -- (k1b);
+    \draw[arrow] (k1b) -- (k1c);
+    \draw[arrow] (k1c) -- (out1);
+    \draw[arrow] (k2a) -- (k2b);
+    \draw[arrow] (k2b) -- (k2c);
+    \draw[arrow] (k2c) -- (out2);
 
-```
-Standard MatMul: C = A × B
+    % 标注
+    \node[font=\footnotesize, red] at (12.5, 0) {$\ell_1 \neq \ell_2$};
+    \node[font=\scriptsize, gray] at (5, 0) {不同 tiling};
+    \node[font=\scriptsize, gray] at (7.5, 0) {不同 reduction};
+    \node[font=\scriptsize, gray] at (10, 0) {不同 split};
+\end{tikzpicture}
+-->
+![Batch Size 变化导致数值路径分歧]({{ site.baseurl }}/assets/figures/nondeterminism-batch-path-divergence.svg)
 
-Tiling affects reduction order:
-┌─────────────────────────────────────┐
-│  Tile 1    Tile 2    Tile 3         │
-│  ┌───┐    ┌───┐    ┌───┐           │
-│  │   │    │   │    │   │           │
-│  │ A │ ×  │ B │ =  │ C │           │
-│  │   │    │   │    │   │           │
-│  └───┘    └───┘    └───┘           │
-│                                     │
-│  Different batch sizes may trigger  │
-│  different tiling configurations    │
-└─────────────────────────────────────┘
-```
-
-#### 3. Attention 机制
-
-Attention 的计算包含 softmax 归一化和加权求和，两者都涉及 reduction 操作：
-
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V$$
-
-FlashAttention 等高效实现采用了复杂的 tiling 策略来优化内存访问，但这也引入了对批次大小的敏感性。
-
-### 微小差异的雪崩效应
-
-一个自然的问题是：如此微小的数值差异（通常在 $10^{-6}$ 到 $10^{-8}$ 量级）如何导致完全不同的输出？
-
-答案在于贪婪解码的**离散性**和**自回归特性**：
-
-1. **离散选择的脆弱性**：当两个 token 的概率非常接近时（例如 0.1500001 vs 0.1499999），微小的 logits 变化可能翻转 argmax 的结果
-2. **误差的级联传播**：一旦选择了不同的 token，后续的整个生成序列都会发生改变
-3. **长序列的累积效应**：序列越长，发生分歧的概率越高
-
-```
-Token probability example:
-
-Logits (Run 1):  [2.3456789, 2.3456788, 1.2, 0.8, ...]
-                      ↑ winner
-Logits (Run 2):  [2.3456787, 2.3456790, 1.2, 0.8, ...]
-                            ↑ winner (different!)
-
-A difference of ~3e-7 in logits flips the argmax,
-leading to entirely different generation paths.
-```
-
-*图 2：微小的 logits 差异导致贪婪解码选择不同的 token*
+当推理服务采用动态 batching 时，同一请求在不同时刻可能被分配到不同大小的 batch 中。每个 kernel 的 tiling 策略、reduction 分块方式都可能随 batch size 变化，导致数值结果不同。
 
 ---
 
-## 解决方案：Batch-Invariant Kernels
+## Batch Invariance 的数学定义
+
+设 kernel $K$ 作用于输入张量 $X \in \mathbb{R}^{B \times N \times D}$，输出 $Y = K(X)$。
+
+**Batch Invariance** 要求：对于任意 batch 中的样本 $x_i$，其输出 $y_i$ 仅取决于 $x_i$ 本身，而与 batch 中其他样本无关：
+
+$$K(X)[i] = K'(x_i), \quad \forall i \in [1, B]$$
+
+其中 $K'$ 是等价的单样本 kernel。
+
+实际上，这一性质在标准 kernel 实现中并不成立。原因在于 **tiling 策略的 batch 依赖性**。
+
+---
+
+## 关键 Kernel 的 Batch Variance 分析
+
+### RMSNorm
+
+RMSNorm 计算如下：
+
+$$\text{RMSNorm}(x) = \frac{x}{\text{RMS}(x)} \cdot \gamma, \quad \text{RMS}(x) = \sqrt{\frac{1}{D}\sum_{i=1}^{D} x_i^2 + \epsilon}$$
+
+关键步骤是 reduction：$\sum_{i=1}^{D} x_i^2$。
+
+标准 CUDA 实现通常采用 **tree reduction**：
+
+<!-- tikz-source: nondeterminism-tree-reduction
+\begin{tikzpicture}[
+    node/.style={circle, draw, minimum size=0.6cm, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Level 0
+    \foreach \i in {0,...,7} {
+        \node[node, fill=blue!20] (l0-\i) at (\i*1.2, 0) {$x_\i$};
+    }
+
+    % Level 1
+    \foreach \i in {0,...,3} {
+        \pgfmathtruncatemacro{\left}{2*\i}
+        \pgfmathtruncatemacro{\right}{2*\i+1}
+        \node[node, fill=green!20] (l1-\i) at (\left*1.2 + 0.6, 1.2) {$+$};
+        \draw[arrow] (l0-\left) -- (l1-\i);
+        \draw[arrow] (l0-\right) -- (l1-\i);
+    }
+
+    % Level 2
+    \foreach \i in {0,1} {
+        \pgfmathtruncatemacro{\left}{2*\i}
+        \pgfmathtruncatemacro{\right}{2*\i+1}
+        \node[node, fill=orange!20] (l2-\i) at (\left*2.4 + 1.2, 2.4) {$+$};
+        \draw[arrow] (l1-\left) -- (l2-\i);
+        \draw[arrow] (l1-\right) -- (l2-\i);
+    }
+
+    % Level 3
+    \node[node, fill=red!20] (l3) at (3.6, 3.6) {$\sum$};
+    \draw[arrow] (l2-0) -- (l3);
+    \draw[arrow] (l2-1) -- (l3);
+
+    % 标注
+    \node[font=\scriptsize, gray, right] at (9, 0) {元素};
+    \node[font=\scriptsize, gray, right] at (9, 1.8) {固定 reduction 顺序};
+    \node[font=\scriptsize, gray, right] at (9, 3.6) {确定性结果};
+\end{tikzpicture}
+-->
+![Tree Reduction 示意]({{ site.baseurl }}/assets/figures/nondeterminism-tree-reduction.svg)
+
+**问题所在**：当 batch size 改变时，CUDA kernel 可能选择不同的 block size 和 grid 配置。不同配置下的 reduction 分块方式不同：
+
+- Batch size = 1：可能使用 256 threads/block，reduction 分 4 轮完成
+- Batch size = 8：可能使用 128 threads/block，reduction 分 8 轮完成
+
+不同的分块方式产生不同的中间舍入误差，最终结果在 ULP（Unit in the Last Place）级别存在差异。
+
+### 矩阵乘法
+
+GEMM 的标准分块实现：$C = AB$，其中 $A \in \mathbb{R}^{M \times K}$，$B \in \mathbb{R}^{K \times N}$。
+
+cuBLAS 根据矩阵尺寸和 GPU 架构选择最优 tiling 配置。例如：
+
+| 配置 | Tile Size | Reduction 分块 |
+|------|-----------|---------------|
+| 小矩阵 | 64×64 | K 维分 2 块 |
+| 大矩阵 | 128×128 | K 维分 4 块 |
+
+当 batch size 改变时，等效的矩阵尺寸 $M' = B \times M$ 发生变化，触发不同的 tiling 选择，导致 K 维 reduction 的分块方式不同。
+
+**数学表达**：设 K 维被分为 $P$ 个块，每块大小 $k_p$：
+
+$$C_{ij} = \sum_{p=1}^{P} \sum_{l \in \text{block}_p} A_{il} B_{lj}$$
+
+浮点加法的顺序取决于 $P$ 和各块的边界划分。不同的 $P$ 产生不同的结果。
+
+### Attention
+
+FlashAttention 的核心是 **分块计算 + Online Softmax**。Softmax 的增量更新公式：
+
+$$m^{new} = \max(m^{old}, m^{(j)})$$
+$$\ell^{new} = e^{m^{old} - m^{new}} \ell^{old} + e^{m^{(j)} - m^{new}} \ell^{(j)}$$
+$$O^{new} = \frac{e^{m^{old} - m^{new}} \ell^{old} \cdot O^{old} + e^{m^{(j)} - m^{new}} \ell^{(j)} \cdot O^{(j)}}{\ell^{new}}$$
+
+关键参数是 **KV split size**：将 KV cache 分成多少块进行增量计算。
+
+<!-- tikz-source: nondeterminism-attention-split
+\begin{tikzpicture}[
+    block/.style={draw, minimum width=1.2cm, minimum height=0.6cm, align=center, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % Split = 2
+    \node[font=\small\bfseries] at (-1, 2) {Split = 2};
+    \node[block, fill=blue!20] (kv1a) at (1, 2) {KV$_1$};
+    \node[block, fill=blue!20] (kv1b) at (2.5, 2) {KV$_2$};
+    \node[block, fill=green!20] (o1a) at (4.5, 2) {$O^{(1)}$};
+    \node[block, fill=green!30] (o1b) at (6, 2) {$O^{(2)}$};
+    \node[block, fill=orange!20] (out1) at (8, 2) {Output};
+
+    \draw[arrow] (kv1a) -- (o1a);
+    \draw[arrow] (kv1b) -- (o1b);
+    \draw[arrow] (o1a) -- (out1);
+    \draw[arrow] (o1b) -- (out1);
+
+    % Split = 4
+    \node[font=\small\bfseries] at (-1, 0) {Split = 4};
+    \node[block, fill=blue!15] (kv2a) at (0.5, 0) {KV$_1$};
+    \node[block, fill=blue!15] (kv2b) at (1.5, 0) {KV$_2$};
+    \node[block, fill=blue!15] (kv2c) at (2.5, 0) {KV$_3$};
+    \node[block, fill=blue!15] (kv2d) at (3.5, 0) {KV$_4$};
+    \node[block, fill=green!15] (o2a) at (5, 0) {$O^{(1)}$};
+    \node[block, fill=green!20] (o2b) at (6, 0) {$O^{(2)}$};
+    \node[block, fill=green!25] (o2c) at (7, 0) {$O^{(3)}$};
+    \node[block, fill=green!30] (o2d) at (8, 0) {$O^{(4)}$};
+    \node[block, fill=red!20] (out2) at (10, 0) {Output'};
+
+    \draw[arrow] (kv2a) -- (o2a);
+    \draw[arrow] (kv2b) -- (o2b);
+    \draw[arrow] (kv2c) -- (o2c);
+    \draw[arrow] (kv2d) -- (o2d);
+    \draw[arrow] (o2a) -- (out2);
+    \draw[arrow] (o2b) -- (out2);
+    \draw[arrow] (o2c) -- (out2);
+    \draw[arrow] (o2d) -- (out2);
+
+    % 不等
+    \node[font=\small, red] at (9, 1) {$\neq$};
+
+    % 标注
+    \node[font=\scriptsize, gray] at (4.5, -1) {更多 rescaling 步骤 $\Rightarrow$ 更多舍入误差累积};
+\end{tikzpicture}
+-->
+![Attention Split Size 影响]({{ site.baseurl }}/assets/figures/nondeterminism-attention-split.svg)
+
+在 decoding 阶段，FlashAttention 根据 KV cache 长度和 GPU 配置动态选择 split size。不同的 split size 导致不同数量的 rescaling 操作，累积不同的舍入误差。
+
+---
+
+## 误差传播：从 ULP 到 Token 分歧
+
+单个 kernel 的数值差异通常在 $10^{-6}$ 到 $10^{-8}$ 量级。如何导致 token 级别的分歧？
+
+### 误差累积模型
+
+设 Transformer 有 $L$ 层，每层的相对误差为 $\epsilon$。最终 logits 的相对误差约为：
+
+$$\epsilon_{total} \approx L \cdot \epsilon$$
+
+对于 $L = 80$（如 Llama-70B）、$\epsilon = 10^{-7}$：
+
+$$\epsilon_{total} \approx 8 \times 10^{-6}$$
+
+### Argmax 的脆弱性
+
+当两个 token 的概率接近时，微小的 logits 差异足以翻转 argmax：
+
+$$\Delta \ell = \ell_1 - \ell_2$$
+
+若 $|\Delta \ell| < \epsilon_{total}$，则结果不稳定。
+
+实际观测表明，在 greedy decoding 中，约 1-5% 的 token 位置存在这种"脆弱"状态。一旦发生分歧，后续生成完全不同，呈现 **蝴蝶效应**。
+
+<!-- tikz-source: nondeterminism-butterfly-effect
+\begin{tikzpicture}[
+    token/.style={draw, rounded corners, minimum width=0.8cm, minimum height=0.5cm, align=center, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+    % 共同前缀
+    \node[token, fill=gray!20] (t1) at (0, 0) {The};
+    \node[token, fill=gray!20] (t2) at (1.2, 0) {quick};
+    \node[token, fill=gray!20] (t3) at (2.4, 0) {brown};
+
+    % 分歧点
+    \node[token, fill=red!30] (t4a) at (4, 0.8) {fox};
+    \node[token, fill=blue!30] (t4b) at (4, -0.8) {dog};
+
+    % 分支 A
+    \node[token, fill=red!20] (t5a) at (5.2, 0.8) {jumps};
+    \node[token, fill=red!20] (t6a) at (6.4, 0.8) {over};
+    \node[token, fill=red!20] (t7a) at (7.6, 0.8) {...};
+
+    % 分支 B
+    \node[token, fill=blue!20] (t5b) at (5.2, -0.8) {runs};
+    \node[token, fill=blue!20] (t6b) at (6.4, -0.8) {fast};
+    \node[token, fill=blue!20] (t7b) at (7.6, -0.8) {...};
+
+    % 连接
+    \draw[arrow] (t1) -- (t2);
+    \draw[arrow] (t2) -- (t3);
+    \draw[arrow] (t3) -- (3.5, 0) -- (3.5, 0.8) -- (t4a);
+    \draw[arrow] (t3) -- (3.5, 0) -- (3.5, -0.8) -- (t4b);
+    \draw[arrow] (t4a) -- (t5a);
+    \draw[arrow] (t5a) -- (t6a);
+    \draw[arrow] (t6a) -- (t7a);
+    \draw[arrow] (t4b) -- (t5b);
+    \draw[arrow] (t5b) -- (t6b);
+    \draw[arrow] (t6b) -- (t7b);
+
+    % 标注
+    \node[font=\scriptsize] at (3.5, 0.3) {$\Delta \ell < 10^{-5}$};
+    \node[font=\scriptsize, red] at (4, 0) {分歧点};
+\end{tikzpicture}
+-->
+![Token 分歧的蝴蝶效应]({{ site.baseurl }}/assets/figures/nondeterminism-butterfly-effect.svg)
+
+---
+
+## 解决方案：Batch-Invariant Kernel 设计
 
 ### 设计原则
 
-实现 batch-invariant 推理的核心原则是：**对于每个涉及 reduction 的操作，选择一个固定的 tiling 和指令组合，使其 reduction 顺序与批次大小和序列分块无关**。
+实现 batch invariance 的核心原则：
 
-具体而言：
+1. **固定 tiling 配置**：无论输入尺寸如何，使用固定的 block size 和 grid 配置
+2. **固定 reduction 顺序**：确保 reduction 树结构与 batch size 无关
+3. **固定 split size**：Attention 中使用固定的 KV split，不随序列长度动态调整
 
-1. **固定 reduction 树结构**：无论批次大小如何变化，始终使用相同的求和顺序
-2. **固定 split 大小**：在 attention 的 decoding 阶段，使用固定的 KV split 大小
-3. **避免批次间的数据依赖**：确保每个样本的计算路径独立于同批次的其他样本
+### RMSNorm 的 Batch-Invariant 实现
 
-### 实现架构
-
-Thinking Machines Lab 开源了 [batch_invariant_ops](https://github.com/thinking-machines-lab/batch_invariant_ops) 库，提供了以下 batch-invariant 实现：
-
-| 操作 | 标准实现 | Batch-Invariant 实现 |
-|------|----------|---------------------|
-| RMSNorm | 动态 tiling | 固定 reduction 顺序 |
-| MatMul | cuBLAS（动态优化）| 固定 tiling 配置 |
-| Softmax | 动态 block size | 固定 reduction 树 |
-| Attention | FlashAttention（动态 split）| 固定 split-KV 大小 |
-
-该库通过 `torch.Library` 机制替换 PyTorch 的默认 kernel，对现有模型代码的侵入性极低：
+关键修改：**强制使用固定的 reduction 分块**。
 
 ```python
-import batch_invariant_ops  # 导入即生效
+# 标准实现（batch-variant）
+def rmsnorm_standard(x, gamma, eps):
+    # reduction 分块由 CUDA runtime 决定
+    rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + eps)
+    return x / rms * gamma
 
-# 现有模型代码无需修改
-model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-8B")
-output = model.generate(input_ids, temperature=0)
-# 现在输出是确定性的
+# Batch-invariant 实现
+def rmsnorm_batch_invariant(x, gamma, eps, fixed_block_size=256):
+    # 强制固定分块
+    D = x.shape[-1]
+    num_blocks = (D + fixed_block_size - 1) // fixed_block_size
+
+    # 分块累加，固定顺序
+    sq_sum = 0.0
+    for i in range(num_blocks):
+        start = i * fixed_block_size
+        end = min(start + fixed_block_size, D)
+        sq_sum = sq_sum + torch.sum(x[..., start:end] ** 2, dim=-1, keepdim=True)
+
+    rms = torch.sqrt(sq_sum / D + eps)
+    return x / rms * gamma
 ```
 
-### 与推理引擎的集成
+实际的 CUDA 实现需要确保 warp-level reduction 的顺序固定，通常通过显式的 `__shfl_down_sync` 序列实现。
 
-#### vLLM 集成
+### MatMul 的 Batch-Invariant 实现
 
-vLLM 已原生支持 batch-invariant 模式，可通过环境变量启用：
+cuBLAS 的自动 tuning 会根据矩阵尺寸选择不同 kernel。解决方案：
 
-```bash
-VLLM_BATCH_INVARIANT=1 python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen3-8B
-```
-
-vLLM 的实现基于 FlexAttention 后端，结合 `torch.Library` 实现了对大多数相关操作的透明替换。
-
-#### SGLang 集成
-
-SGLang 在 Thinking Machines Lab 工作的基础上进行了进一步优化，实现了：
-
-- 多后端支持：FlashInfer、FlashAttention 3、Triton
-- 与 chunked prefill、radix cache 的兼容
-- 支持 temperature > 0 的确定性采样（通过 per-request seed）
+1. **禁用自动 tuning**：强制使用固定的 GEMM kernel
+2. **Padding 到固定尺寸**：将矩阵 pad 到 $2^n$ 大小，确保相同的 tiling
 
 ```python
-from sglang import RuntimeEndpoint
+# 使用 torch.Library 替换默认 kernel
+import batch_invariant_ops
 
-runtime = RuntimeEndpoint(
-    model_path="Qwen/Qwen3-8B",
-    deterministic=True  # 启用确定性模式
+# 自动替换所有 matmul 为 batch-invariant 版本
+# 内部实现固定 tile size = 128x128
+```
+
+### Attention 的 Batch-Invariant 实现
+
+关键：**固定 KV split size**。
+
+```python
+# FlashAttention batch-invariant 配置
+flash_attn_func(
+    q, k, v,
+    deterministic=True,      # 启用确定性模式
+    fixed_split_kv=64        # 固定 KV split 为 64
 )
 ```
 
----
+SGLang 的实现支持多种 attention 后端的 batch-invariant 模式：
 
-## 工程实践与性能权衡
-
-### 性能开销分析
-
-确定性推理不可避免地带来性能开销，因为它放弃了部分动态优化策略：
-
-| 实现方案 | 性能开销 | 备注 |
-|----------|----------|------|
-| Thinking Machines Lab 原始实现 | ~61.5% | 基准实现 |
-| SGLang + CUDA Graphs | ~34.35% | 2.8x 加速 |
-| vLLM batch-invariant 模式 | ~40-50% | 视硬件和模型而定 |
-
-CUDA Graphs 通过预编译和缓存 GPU 执行图，显著减少了 kernel launch 开销，是优化确定性推理性能的关键技术。
-
-```
-Performance comparison (relative to non-deterministic baseline):
-
-Non-deterministic:  ████████████████████████████████████████ 100%
-TML Original:       ████████████████                         38.5%
-SGLang + CUDA:      ██████████████████████████               65.7%
-```
-
-*图 3：不同实现方案的相对性能对比*
-
-### 硬件要求
-
-当前的 batch-invariant 实现对硬件有一定要求：
-
-- **vLLM batch-invariant 模式**：需要 NVIDIA GPU，compute capability ≥ 9.0（H100/H800）
-- **SGLang 确定性模式**：支持更广泛的硬件，但最佳性能仍需 Hopper 架构
-
-### 适用场景
-
-确定性推理并非所有场景都需要。以下场景值得付出性能代价：
-
-1. **强化学习训练**：RL 训练需要可复现的 rollout 来保证训练稳定性
-2. **模型调试与测试**：确定性输出使得 bug 可复现，便于定位问题
-3. **安全审计**：可审计的 AI 系统需要确定性行为
-4. **科学研究**：实验的可复现性是发表和验证的基础
-5. **合规要求**：某些行业对 AI 系统的可预测性有明确要求
-
-相反，以下场景可能不需要确定性推理：
-
-- 面向终端用户的聊天应用
-- 创意生成任务
-- 对延迟高度敏感的在线服务
+| 后端 | 固定 Split Size | 性能开销 |
+|------|----------------|----------|
+| FlashInfer | 64 | ~30% |
+| FlashAttention 3 | 128 | ~25% |
+| Triton | 64 | ~40% |
 
 ---
 
-## 更广泛的影响
+## 多 GPU 场景：AllReduce 的确定性
 
-### 对 RL 训练的意义
+在 Tensor Parallelism 中，AllReduce 操作同样引入非确定性。NCCL 的默认实现使用 ring-based 或 tree-based 算法，reduction 顺序取决于 GPU 间通信延迟。
 
-确定性推理对强化学习训练具有特殊意义。SGLang 团队与 slime 合作，实现了 **100% 可复现的 RL 训练**：
+### 确定性 AllReduce
+
+解决方案：使用固定顺序的 reduce-scatter + all-gather：
+
+<!-- tikz-source: nondeterminism-allreduce
+\begin{tikzpicture}[
+    gpu/.style={draw, rounded corners, minimum width=1.5cm, minimum height=0.8cm, align=center, font=\small},
+    data/.style={draw, fill=blue!20, minimum width=0.4cm, minimum height=0.4cm},
+    arrow/.style={->, thick, >=stealth}
+]
+    % GPUs
+    \node[gpu, fill=green!20] (g0) at (0, 0) {GPU 0};
+    \node[gpu, fill=green!20] (g1) at (3, 0) {GPU 1};
+    \node[gpu, fill=green!20] (g2) at (6, 0) {GPU 2};
+    \node[gpu, fill=green!20] (g3) at (9, 0) {GPU 3};
+
+    % 数据
+    \node[data] (d0) at (0, -1) {};
+    \node[data] (d1) at (3, -1) {};
+    \node[data] (d2) at (6, -1) {};
+    \node[data] (d3) at (9, -1) {};
+
+    % 固定顺序 reduce
+    \node[font=\scriptsize] at (4.5, -2) {固定顺序: GPU 0 $\rightarrow$ 1 $\rightarrow$ 2 $\rightarrow$ 3};
+
+    \draw[arrow, red] (d0) -- (1.5, -1) -- (1.5, -1.5) -- (d1);
+    \draw[arrow, red] (d1) -- (4.5, -1) -- (4.5, -1.5) -- (d2);
+    \draw[arrow, red] (d2) -- (7.5, -1) -- (7.5, -1.5) -- (d3);
+
+    % 标注
+    \node[font=\scriptsize, gray] at (4.5, -3) {确定性 reduction: $((d_0 + d_1) + d_2) + d_3$};
+\end{tikzpicture}
+-->
+![确定性 AllReduce]({{ site.baseurl }}/assets/figures/nondeterminism-allreduce.svg)
+
+SGLang 实现了 deterministic tensor parallelism，确保多 GPU 场景下的完全可复现。
+
+---
+
+## 性能分析
+
+Batch-invariant kernels 的主要开销来源：
+
+1. **放弃动态优化**：无法使用针对特定尺寸的最优 kernel
+2. **固定 tiling 的低效**：小矩阵使用大 tile 造成资源浪费
+3. **额外的同步开销**：确保固定执行顺序需要更多同步点
+
+### 基准测试
+
+| 方案 | 吞吐量 (tokens/s) | 相对开销 |
+|------|------------------|---------|
+| 标准 vLLM | 1000 | baseline |
+| TML batch_invariant_ops | 385 | 61.5% |
+| SGLang + CUDA Graphs | 657 | 34.3% |
+
+CUDA Graphs 通过预编译执行图，消除了 kernel launch 开销，显著减少了确定性模式的性能损失。
+
+### 延迟分布
+
+确定性模式的另一个优势是 **延迟方差降低**：
+
+```
+标准模式:   P50=45ms, P99=120ms, stddev=25ms
+确定性模式: P50=52ms, P99=58ms,  stddev=3ms
+```
+
+对于延迟敏感的应用，更低的方差可能比更低的均值更重要。
+
+---
+
+## 应用场景
+
+### RL 训练的可复现性
+
+在 RLHF/RLVR 训练中，策略的 rollout 需要与训练步骤精确对应。非确定性推理导致：
+
+1. **调试困难**：无法复现特定的失败案例
+2. **训练不稳定**：相同 checkpoint 在不同机器上表现不一致
+3. **实验不可比较**：无法区分算法改进和随机波动
+
+SGLang 与 slime 的合作实现了 100% 可复现的 RL 训练：
 
 > "Taking this deterministic inference capability further, SGLang collaborated with the slime team to unlock 100% reproducible RL training."
 
-在 RLHF 和 RLVR 等范式中，策略模型的 rollout 需要与训练步骤精确对应。非确定性推理会引入难以追踪的噪声，影响训练稳定性和调试效率。
+### 安全与合规
 
-### 与其他研究的关联
+对于需要审计的 AI 系统，确定性行为是基本要求：
 
-2025 年的 NeurIPS 收录了另一篇相关研究（Oral）：[Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference](https://arxiv.org/abs/2506.09501)。该工作从数值精度的角度进行了系统性分析，发现：
+- 医疗诊断
+- 金融决策
+- 法律分析
 
-- 系统配置（batch size、GPU 数量、GPU 型号）对 LLM 可复现性有显著影响
-- 推理模型（reasoning models）对数值差异尤为敏感，准确率波动可达 9%
-- 提出了 **LayerCast** 方案：16-bit 存储 + FP32 计算，平衡内存效率和数值稳定性
+非确定性意味着无法追溯和解释特定输出的来源。
 
-两项研究相互补充：Thinking Machines Lab 聚焦于 batch invariance 这一主要来源，而 NeurIPS 论文则提供了更全面的数值精度分析。
+### 模型调试
 
-### 重新定义问题
+当模型出现异常输出时，确定性推理允许：
 
-Thinking Machines Lab 的工作最重要的贡献或许在于**重新定义了问题本身**：
+1. 精确复现问题
+2. 逐层检查中间状态
+3. 二分定位问题来源
 
-> "The paper reframes LLM nondeterminism as an engineering bug (batch-sensitive kernels) rather than an inevitable hardware limitation."
+---
 
-这一视角的转变意味着：LLM 推理的非确定性不是必须接受的物理限制，而是可以通过工程手段解决的实现缺陷。这为构建更可靠、可预测的 AI 系统提供了理论和实践基础。
+## 相关工作
+
+### LayerCast（NeurIPS 2025）
+
+Yuan et al. 提出了另一种思路：通过提高数值精度减少误差累积。
+
+- **方法**：权重以 FP16/BF16 存储，计算时转换为 FP32
+- **优势**：不修改 kernel 实现
+- **局限**：无法完全消除 batch variance，只是降低其影响
+
+实验显示，LayerCast 将 DeepSeek-R1-Distill-Qwen-7B 的准确率波动从 9% 降低到 2%，但仍非完全确定。
+
+### OpenAI seed 参数
+
+OpenAI API 提供 `seed` 参数以提高可复现性：
+
+> "If specified, our system will make a best effort to sample deterministically..."
+
+但官方明确表示 **不保证确定性**，原因包括：
+
+1. 后端模型更新
+2. 负载均衡到不同硬件
+3. 系统配置变化
+
+`system_fingerprint` 字段用于追踪配置变化，但无法保证相同 fingerprint 下的完全确定性。
 
 ---
 
 ## 总结
 
-LLM 推理的非确定性问题长期困扰着研究者和工程师。Thinking Machines Lab 的研究揭示了一个被广泛忽视的事实：**主要问题不在于 GPU 的并发特性，而在于 kernel 实现对 batch size 的敏感性**。
+LLM 推理的非确定性源于 **kernel 实现对 batch size 的敏感性**，而非 GPU 的并发特性。通过设计 batch-invariant kernels，可以在工程层面实现完全确定的推理。
 
-通过 batch-invariant kernels 的设计和实现，我们现在可以在工程层面实现真正的确定性推理。尽管存在一定的性能开销，但在 RL 训练、模型调试、安全审计等场景中，这一代价是值得的。
+关键技术点：
 
-随着 vLLM、SGLang 等主流推理引擎的支持，确定性推理正在从研究原型走向工程实践。这标志着 LLM 系统在可靠性和可控性方面迈出了重要一步。
+1. 固定 RMSNorm 的 reduction 分块
+2. 固定 MatMul 的 tiling 配置
+3. 固定 Attention 的 KV split size
+4. 多 GPU 场景使用确定性 AllReduce
+
+性能代价约 30-60%，但在 RL 训练、模型调试、安全审计等场景中是必要的投入。
 
 ---
 
-## 参考资料
+## 参考文献
 
-1. Thinking Machines Lab. [Defeating Nondeterminism in LLM Inference](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/). September 2025.
+1. Thinking Machines Lab. [Defeating Nondeterminism in LLM Inference](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/). 2025.
 
 2. Yuan, J. et al. [Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference](https://arxiv.org/abs/2506.09501). NeurIPS 2025 (Oral).
 
-3. LMSYS Org. [Towards Deterministic Inference in SGLang and Reproducible RL Training](https://lmsys.org/blog/2025-09-22-sglang-deterministic/). September 2025.
+3. LMSYS Org. [Towards Deterministic Inference in SGLang and Reproducible RL Training](https://lmsys.org/blog/2025-09-22-sglang-deterministic/). 2025.
 
-4. vLLM Documentation. [Batch Invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/).
+4. Thinking Machines Lab. [batch_invariant_ops](https://github.com/thinking-machines-lab/batch_invariant_ops). GitHub.
 
-5. Thinking Machines Lab. [batch_invariant_ops](https://github.com/thinking-machines-lab/batch_invariant_ops). GitHub Repository.
+5. vLLM Documentation. [Batch Invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/).
 
-6. OpenAI. [How to make your completions outputs consistent with the seed parameter](https://cookbook.openai.com/examples/reproducible_outputs_with_the_seed_parameter). OpenAI Cookbook.
+6. Dao, T. et al. [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691). 2023.
