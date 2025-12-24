@@ -5,6 +5,7 @@ date: 2025-12-24 12:00:00
 author: Qi Lu
 tags: [LLM, Inference, Determinism, Batch Invariance, Reproducibility, CUDA]
 lang: en
+translation: /llm-nondeterminism/
 ---
 
 ## Problem Statement
