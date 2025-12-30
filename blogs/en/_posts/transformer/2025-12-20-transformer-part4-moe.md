@@ -3,9 +3,12 @@ layout: post
 title: "Transformer Notes (IV): Mixture of Experts Architecture"
 date: 2025-12-20 10:30:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer, MoE]
 lang: en
 translation: /transformer-part4-moe/
+series: transformer
+series_order: 4
 ---
 
 This is the fourth article in the Transformer series, providing an in-depth analysis of the **Mixture of Experts (MoE)** sparse activation architecture. MoE achieves the goal of "large model capacity with small model compute" by activating only a subset of parameters for each token, and is the core architecture of frontier models like DeepSeek-V3 and Kimi K2.

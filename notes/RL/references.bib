@@ -1,0 +1,340 @@
+% ==========================================
+% 强化学习笔记 - 参考文献
+% ==========================================
+
+% ---------- Chapter 1: RL Foundations ----------
+
+@book{sutton2018rl,
+  title     = {Reinforcement Learning: An Introduction},
+  author    = {Sutton, Richard S. and Barto, Andrew G.},
+  year      = {2018},
+  edition   = {2nd},
+  publisher = {MIT Press},
+  url       = {http://incompleteideas.net/book/the-book-2nd.html},
+  note      = {RL 经典教材}
+}
+
+@misc{silver2015course,
+  title        = {UCL Course on Reinforcement Learning},
+  author       = {Silver, David},
+  year         = {2015},
+  howpublished = {University College London},
+  url          = {https://www.davidsilver.uk/teaching/},
+  note         = {David Silver 的 RL 课程}
+}
+
+@article{bellman1957mdp,
+  title   = {A Markovian Decision Process},
+  author  = {Bellman, Richard},
+  journal = {Journal of Mathematics and Mechanics},
+  volume  = {6},
+  number  = {5},
+  pages   = {679--684},
+  year    = {1957},
+  note    = {MDP 与 Bellman 方程}
+}
+
+% ---------- Chapter 2: Value-Based RL ----------
+
+@article{watkins1992qlearning,
+  title   = {Q-learning},
+  author  = {Watkins, Christopher J. C. H. and Dayan, Peter},
+  journal = {Machine Learning},
+  volume  = {8},
+  number  = {3-4},
+  pages   = {279--292},
+  year    = {1992},
+  note    = {Q-Learning 原论文}
+}
+
+@inproceedings{hasselt2016ddqn,
+  title     = {Deep Reinforcement Learning with Double Q-learning},
+  author    = {van Hasselt, Hado and Guez, Arthur and Silver, David},
+  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume    = {30},
+  number    = {1},
+  pages     = {2094--2100},
+  year      = {2016},
+  url       = {https://arxiv.org/abs/1509.06461},
+  note      = {Double DQN}
+}
+
+@article{wang2016dueling,
+  title   = {Dueling Network Architectures for Deep Reinforcement Learning},
+  author  = {Wang, Ziyu and Schaul, Tom and Hessel, Matteo and van Hasselt, Hado and Lanctot, Marc and de Freitas, Nando},
+  journal = {Proceedings of The 33rd International Conference on Machine Learning},
+  pages   = {1995--2003},
+  year    = {2016},
+  url     = {https://arxiv.org/abs/1511.06581},
+  note    = {Dueling DQN}
+}
+
+@article{schaul2016per,
+  title   = {Prioritized Experience Replay},
+  author  = {Schaul, Tom and Quan, John and Antonoglou, Ioannis and Silver, David},
+  journal = {International Conference on Learning Representations (ICLR)},
+  year    = {2016},
+  url     = {https://arxiv.org/abs/1511.05952},
+  note    = {优先经验回放}
+}
+
+% ---------- Chapter 3: Policy-Based RL ----------
+
+@article{williams1992reinforce,
+  title   = {Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning},
+  author  = {Williams, Ronald J.},
+  journal = {Machine Learning},
+  volume  = {8},
+  number  = {3-4},
+  pages   = {229--256},
+  year    = {1992},
+  note    = {REINFORCE 算法}
+}
+
+@article{sutton1999policy,
+  title   = {Policy Gradient Methods for Reinforcement Learning with Function Approximation},
+  author  = {Sutton, Richard S. and McAllester, David and Singh, Satinder and Mansour, Yishay},
+  journal = {Advances in Neural Information Processing Systems},
+  volume  = {12},
+  year    = {1999},
+  note    = {Policy Gradient 定理}
+}
+
+@article{schulman2015trpo,
+  title   = {Trust Region Policy Optimization},
+  author  = {Schulman, John and Levine, Sergey and Moritz, Philipp and Jordan, Michael I. and Abbeel, Pieter},
+  journal = {Proceedings of The 32nd International Conference on Machine Learning},
+  pages   = {1889--1897},
+  year    = {2015},
+  url     = {https://arxiv.org/abs/1502.05477},
+  note    = {TRPO}
+}
+
+@article{mnih2016a3c,
+  title   = {Asynchronous Methods for Deep Reinforcement Learning},
+  author  = {Mnih, Volodymyr and Badia, Adrià Puigdomènech and Mirza, Mehdi and Graves, Alex and Lillicrap, Timothy P. and Harley, Tim and Silver, David and Kavukcuoglu, Koray},
+  journal = {Proceedings of The 33rd International Conference on Machine Learning},
+  pages   = {1928--1937},
+  year    = {2016},
+  url     = {https://arxiv.org/abs/1602.01783},
+  note    = {A3C}
+}
+
+% ---------- Chapter 4: Model-Based RL & MARL ----------
+
+@article{sutton1991dyna,
+  title   = {Dyna, an integrated architecture for learning, planning, and reacting},
+  author  = {Sutton, Richard S.},
+  journal = {ACM SIGART Bulletin},
+  volume  = {2},
+  number  = {4},
+  pages   = {160--163},
+  year    = {1991},
+  note    = {Dyna 架构}
+}
+
+@article{browne2012mcts,
+  title   = {A Survey of Monte Carlo Tree Search Methods},
+  author  = {Browne, Cameron B. and Powley, Edward and Whitehouse, Daniel and Lucas, Simon M. and Cowling, Peter I. and Rohlfshagen, Philipp and Tavener, Stephen and Perez, Diego and Samothrakis, Spyridon and Colton, Simon},
+  journal = {IEEE Transactions on Computational Intelligence and AI in Games},
+  volume  = {4},
+  number  = {1},
+  pages   = {1--43},
+  year    = {2012},
+  note    = {MCTS 综述}
+}
+
+@book{shoham2008mas,
+  title     = {Multiagent Systems: Algorithmic, Game-Theoretic, and Logical Foundations},
+  author    = {Shoham, Yoav and Leyton-Brown, Kevin},
+  year      = {2008},
+  publisher = {Cambridge University Press},
+  note      = {多智能体系统与博弈论}
+}
+
+% ---------- Blogs & Resources ----------
+
+@misc{lilianweng2018policy,
+  title        = {Policy Gradient Algorithms},
+  author       = {Weng, Lilian},
+  year         = {2018},
+  howpublished = {Lil'Log},
+  url          = {https://lilianweng.github.io/posts/2018-04-08-policy-gradient/},
+  note         = {Policy Gradient 博客}
+}
+
+@misc{openai2018spinningup,
+  title        = {Spinning Up in Deep RL},
+  author       = {OpenAI},
+  year         = {2018},
+  howpublished = {OpenAI},
+  url          = {https://spinningup.openai.com/},
+  note         = {深度 RL 入门教程}
+}
+
+@misc{huggingface2022rlhf,
+  title        = {Illustrating Reinforcement Learning from Human Feedback (RLHF)},
+  author       = {Lambert, Nathan and Castricato, Louis and von Werra, Leandro and Havrilla, Alex},
+  year         = {2022},
+  howpublished = {Hugging Face Blog},
+  url          = {https://huggingface.co/blog/rlhf},
+  note         = {RLHF 图解}
+}
+
+% ---------- On-Policy Distillation ----------
+
+@inproceedings{agarwal2024gkd,
+  title     = {On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes},
+  author    = {Agarwal, Rishabh and Vieillard, Nino and Stanber, Piotr and Ranzato, Marc'Aurelio and Gehring, Jonas},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2306.13649},
+  note      = {GKD: Generalized Knowledge Distillation}
+}
+
+@inproceedings{gu2024minillm,
+  title     = {MiniLLM: Knowledge Distillation of Large Language Models},
+  author    = {Gu, Yuxian and Dong, Li and Wei, Furu and Huang, Minlie},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2306.08543},
+  note      = {Reverse KL for LLM distillation}
+}
+
+@article{xu2025kdrl,
+  title   = {KDRL: Post-Training Reasoning LLMs via Unified Knowledge Distillation and Reinforcement Learning},
+  author  = {Xu, Haoran and others},
+  journal = {arXiv preprint arXiv:2506.02208},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2506.02208}
+}
+
+@misc{thinkingmachines2025opd,
+  title        = {On-Policy Distillation},
+  author       = {Lu, Kevin and Murati, Mira and others},
+  year         = {2025},
+  howpublished = {Thinking Machines Lab Blog},
+  url          = {https://thinkingmachines.ai/blog/on-policy-distillation/}
+}
+
+% ---------- Qwen3 ----------
+
+@article{yang2025qwen3,
+  title   = {Qwen3 Technical Report},
+  author  = {Yang, An and others},
+  journal = {arXiv preprint arXiv:2505.09388},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2505.09388}
+}
+
+% ---------- RLHF & Alignment ----------
+
+@article{ouyang2022instructgpt,
+  title   = {Training language models to follow instructions with human feedback},
+  author  = {Ouyang, Long and Wu, Jeffrey and Jiang, Xu and Almeida, Diogo and Wainwright, Carroll and Mishkin, Pamela and Zhang, Chong and Agarwal, Sandhini and Slama, Katarina and Ray, Alex and others},
+  journal = {Advances in Neural Information Processing Systems},
+  volume  = {35},
+  pages   = {27730--27744},
+  year    = {2022},
+  note    = {InstructGPT, RLHF}
+}
+
+@article{rafailov2023dpo,
+  title   = {Direct Preference Optimization: Your Language Model is Secretly a Reward Model},
+  author  = {Rafailov, Rafael and Sharma, Archit and Mitchell, Eric and Ermon, Stefano and Manning, Christopher D and Finn, Chelsea},
+  journal = {Advances in Neural Information Processing Systems},
+  volume  = {36},
+  year    = {2023},
+  url     = {https://arxiv.org/abs/2305.18290}
+}
+
+@article{shao2024grpo,
+  title   = {DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models},
+  author  = {Shao, Zhihong and Wang, Peiyi and Zhu, Qihao and Xu, Runxin and Song, Junxiao and Zhang, Mingchuan and Li, Y. K. and Wu, Y. and Guo, Daya},
+  journal = {arXiv preprint arXiv:2402.03300},
+  year    = {2024},
+  url     = {https://arxiv.org/abs/2402.03300},
+  note    = {GRPO: Group Relative Policy Optimization}
+}
+
+% ---------- Process Reward Models ----------
+
+@article{lightman2023prm,
+  title   = {Let's Verify Step by Step},
+  author  = {Lightman, Hunter and Kosaraju, Vineet and Burda, Yura and Edwards, Harri and Baker, Bowen and Lee, Teddy and Leike, Jan and Schulman, John and Sutskever, Ilya and Cobbe, Karl},
+  journal = {arXiv preprint arXiv:2305.20050},
+  year    = {2023},
+  url     = {https://arxiv.org/abs/2305.20050},
+  note    = {Process Reward Model (PRM)}
+}
+
+% ---------- Long CoT RL ----------
+
+@article{team2025kimi,
+  title   = {Kimi k1.5: Scaling Reinforcement Learning with LLMs},
+  author  = {Kimi Team},
+  journal = {arXiv preprint arXiv:2501.12599},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2501.12599}
+}
+
+@article{deepseek2025r1,
+  title   = {DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning},
+  author  = {DeepSeek-AI},
+  journal = {arXiv preprint arXiv:2501.12948},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2501.12948}
+}
+
+% ---------- GAE & PPO ----------
+
+@inproceedings{schulman2016gae,
+  title     = {High-Dimensional Continuous Control Using Generalized Advantage Estimation},
+  author    = {Schulman, John and Moritz, Philipp and Levine, Sergey and Jordan, Michael I. and Abbeel, Pieter},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2016},
+  url       = {https://arxiv.org/abs/1506.02438},
+  note      = {GAE}
+}
+
+@article{schulman2017ppo,
+  title   = {Proximal Policy Optimization Algorithms},
+  author  = {Schulman, John and Wolski, Filip and Dhariwal, Prafulla and Radford, Alec and Klimov, Oleg},
+  journal = {arXiv preprint arXiv:1707.06347},
+  year    = {2017},
+  url     = {https://arxiv.org/abs/1707.06347},
+  note    = {PPO}
+}
+
+% ---------- DQN ----------
+
+@article{mnih2015dqn,
+  title   = {Human-level control through deep reinforcement learning},
+  author  = {Mnih, Volodymyr and Kavukcuoglu, Koray and Silver, David and Rusu, Andrei A and Veness, Joel and Bellemare, Marc G and Graves, Alex and Riedmiller, Martin and Fidjeland, Andreas K and Ostrovski, Georg and others},
+  journal = {Nature},
+  volume  = {518},
+  number  = {7540},
+  pages   = {529--533},
+  year    = {2015},
+  note    = {DQN}
+}
+
+% ---------- AlphaGo ----------
+
+@article{silver2016alphago,
+  title   = {Mastering the game of Go with deep neural networks and tree search},
+  author  = {Silver, David and Huang, Aja and Maddison, Chris J and Guez, Arthur and Sifre, Laurent and Van Den Driessche, George and Schrittwieser, Julian and Antonoglou, Ioannis and Panneershelvam, Veda and Lanctot, Marc and others},
+  journal = {Nature},
+  volume  = {529},
+  number  = {7587},
+  pages   = {484--489},
+  year    = {2016}
+}
+
+@article{silver2017alphazero,
+  title   = {Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm},
+  author  = {Silver, David and Hubert, Thomas and Schrittwieser, Julian and Antonoglou, Ioannis and Lai, Matthew and Guez, Arthur and Lanctot, Marc and Sifre, Laurent and Kumaran, Dharshan and Graepel, Thore and others},
+  journal = {arXiv preprint arXiv:1712.01815},
+  year    = {2017},
+  note    = {AlphaZero}
+}

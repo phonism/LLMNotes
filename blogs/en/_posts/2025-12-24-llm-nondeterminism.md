@@ -10,13 +10,13 @@ translation: /llm-nondeterminism/
 
 ## Problem Statement
 
-In LLM inference services, identical inputs should produce identical outputs. However, empirical observations show that even with greedy decoding (temperature=0), outputs remain nondeterministic. The following experimental data comes from Thinking Machines Lab:
+In LLM inference services, identical inputs should produce identical outputs. However, empirical observations show that even with greedy decoding (temperature=0), outputs remain nondeterministic. The following experimental data comes from Thinking Machines Lab[1](#ref-1):
 
 | Model | Samples | Distinct Outputs | Most Frequent Output Count |
 |-------|---------|------------------|---------------------------|
 | Qwen3-235B-A22B | 1000 | 80 | 78 |
 
-This phenomenon contradicts the mathematical definition of greedy decoding: $\hat{y}_t = \arg\max_v p(v \mid y_{<t}, x)$ should be deterministic.
+This phenomenon contradicts the mathematical definition of greedy decoding: $\hat{y}\_t = \arg\max\_v p(v \mid y\_{\<t}, x)$ should be deterministic.
 
 The objectives of this article are: (1) identify the root cause of nondeterminism; (2) design engineering-deployable solutions.
 
@@ -37,7 +37,7 @@ The typical supporting evidence for this hypothesis is the nondeterminism of CUD
 
 ### Problems with Hypothesis 1
 
-Thinking Machines Lab's analysis points out that core operations in modern Transformer inference do not rely on atomic operations:
+Thinking Machines Lab's[1](#ref-1) analysis points out that core operations in modern Transformer inference do not rely on atomic operations:
 
 - **GEMM**: Uses cuBLAS tiled matrix multiplication with fixed reduction tree structure
 - **LayerNorm/RMSNorm**: Standard implementations use deterministic warp-level reduction
@@ -51,32 +51,37 @@ The real problem is: **kernel numerical output is a function of batch size**.
 
 <!-- tikz-source: nondeterminism-batch-path-divergence
 \begin{tikzpicture}[
-    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\small},
-    kernel/.style={draw, rounded corners, fill=blue!15, minimum width=1.8cm, minimum height=0.7cm, align=center, font=\footnotesize},
-    arrow/.style={->, thick, >=stealth}
+    box/.style={draw, rounded corners, minimum width=1.4cm, minimum height=0.5cm, align=center, font=\scriptsize},
+    kernel/.style={draw, rounded corners, fill=blue!10, minimum width=1.2cm, minimum height=0.45cm, align=center, font=\scriptsize},
+    label/.style={font=\tiny, gray},
+    arrow/.style={->, >=stealth}
 ]
     % Request
     \node[box, fill=gray!20] (req) at (0, 0) {Request $x$};
 
-    % Branches
-    \node[font=\small] at (3, 1.5) {Batch size = 1};
-    \node[font=\small] at (3, -1.5) {Batch size = 4};
+    % Split point
+    \coordinate (split) at (1.2, 0);
 
-    % Path 1
-    \node[kernel] (k1a) at (5, 1.5) {RMSNorm\\$f_1(x)$};
-    \node[kernel] (k1b) at (7.5, 1.5) {MatMul\\$g_1(x)$};
-    \node[kernel] (k1c) at (10, 1.5) {Attn\\$h_1(x)$};
-    \node[box, fill=green!20] (out1) at (12.5, 1.5) {logits $\ell_1$};
+    % Path labels
+    \node[font=\tiny, anchor=east] at (1.1, 1.2) {BS=1};
+    \node[font=\tiny, anchor=east] at (1.1, -1.2) {BS=4};
 
-    % Path 2
-    \node[kernel] (k2a) at (5, -1.5) {RMSNorm\\$f_4(x)$};
-    \node[kernel] (k2b) at (7.5, -1.5) {MatMul\\$g_4(x)$};
-    \node[kernel] (k2c) at (10, -1.5) {Attn\\$h_4(x)$};
-    \node[box, fill=red!20] (out2) at (12.5, -1.5) {logits $\ell_2$};
+    % Path 1 (upper)
+    \node[kernel] (k1a) at (2.5, 1.2) {RMSNorm};
+    \node[kernel] (k1b) at (4, 1.2) {MatMul};
+    \node[kernel] (k1c) at (5.5, 1.2) {Attn};
+    \node[box, fill=green!20] (out1) at (7, 1.2) {$\ell_1$};
+
+    % Path 2 (lower)
+    \node[kernel] (k2a) at (2.5, -1.2) {RMSNorm};
+    \node[kernel] (k2b) at (4, -1.2) {MatMul};
+    \node[kernel] (k2c) at (5.5, -1.2) {Attn};
+    \node[box, fill=red!20] (out2) at (7, -1.2) {$\ell_2$};
 
     % Connections
-    \draw[arrow] (req) -- (2, 0) -- (2, 1.5) -- (k1a);
-    \draw[arrow] (req) -- (2, 0) -- (2, -1.5) -- (k2a);
+    \draw[arrow] (req) -- (split);
+    \draw[arrow] (split) |- (k1a);
+    \draw[arrow] (split) |- (k2a);
     \draw[arrow] (k1a) -- (k1b);
     \draw[arrow] (k1b) -- (k1c);
     \draw[arrow] (k1c) -- (out1);
@@ -84,11 +89,13 @@ The real problem is: **kernel numerical output is a function of batch size**.
     \draw[arrow] (k2b) -- (k2c);
     \draw[arrow] (k2c) -- (out2);
 
-    % Annotations
-    \node[font=\footnotesize, red] at (12.5, 0) {$\ell_1 \neq \ell_2$};
-    \node[font=\scriptsize, gray] at (5, 0) {Different tiling};
-    \node[font=\scriptsize, gray] at (7.5, 0) {Different reduction};
-    \node[font=\scriptsize, gray] at (10, 0) {Different split};
+    % Middle annotations
+    \node[label] at (2.5, 0) {tiling};
+    \node[label] at (4, 0) {reduction};
+    \node[label] at (5.5, 0) {split-K};
+
+    % Results differ
+    \node[font=\scriptsize, red] at (7, 0) {$\neq$};
 \end{tikzpicture}
 -->
 ![Batch Size Variation Causes Numerical Path Divergence]({{ site.baseurl }}/assets/figures/nondeterminism-batch-path-divergence.svg)
@@ -272,7 +279,7 @@ When two tokens have close probabilities, small logits differences can flip the 
 
 $$\Delta \ell = \ell_1 - \ell_2$$
 
-If $|\Delta \ell| < \epsilon_{total}$, the result is unstable.
+If $\|\Delta \ell\| < \epsilon\_{total}$, the result is unstable.
 
 Empirical observations show that in greedy decoding, approximately 1-5% of token positions are in this "fragile" state. Once divergence occurs, subsequent generation is completely different, exhibiting a **butterfly effect**.
 
@@ -786,18 +793,18 @@ The performance cost is approximately 30-60%, but is a necessary investment for 
 
 ## References
 
-1. Thinking Machines Lab. [Defeating Nondeterminism in LLM Inference](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/). 2025.
+<a id="ref-1"></a>[1] Thinking Machines Lab. [Defeating Nondeterminism in LLM Inference](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/). 2025.
 
-2. Yuan, J. et al. [Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference](https://arxiv.org/abs/2506.09501). NeurIPS 2025 (Oral).
+<a id="ref-2"></a>[2] Yuan, J. et al. [Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference](https://arxiv.org/abs/2506.09501). NeurIPS 2025 (Oral).
 
-3. LMSYS Org. [Towards Deterministic Inference in SGLang and Reproducible RL Training](https://lmsys.org/blog/2025-09-22-sglang-deterministic/). 2025.
+<a id="ref-3"></a>[3] LMSYS Org. [Towards Deterministic Inference in SGLang and Reproducible RL Training](https://lmsys.org/blog/2025-09-22-sglang-deterministic/). 2025.
 
-4. Thinking Machines Lab. [batch_invariant_ops](https://github.com/thinking-machines-lab/batch_invariant_ops). GitHub.
+<a id="ref-4"></a>[4] Thinking Machines Lab. [batch_invariant_ops](https://github.com/thinking-machines-lab/batch_invariant_ops). GitHub.
 
-5. vLLM Documentation. [Batch Invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/).
+<a id="ref-5"></a>[5] vLLM Documentation. [Batch Invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/).
 
-6. Dao, T. et al. [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691). 2023.
+<a id="ref-6"></a>[6] Dao, T. et al. [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691). 2023.
 
-7. Ma, W. et al. [Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers](https://arxiv.org/abs/2510.11370). 2025.
+<a id="ref-7"></a>[7] Ma, W. et al. [Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers](https://arxiv.org/abs/2510.11370). 2025.
 
-8. [Towards Stable and Effective Reinforcement Learning for Mixture-of-Experts](https://arxiv.org/abs/2510.23027). arXiv 2025.
+<a id="ref-8"></a>[8] [Towards Stable and Effective Reinforcement Learning for Mixture-of-Experts](https://arxiv.org/abs/2510.23027). arXiv 2025.

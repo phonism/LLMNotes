@@ -187,6 +187,101 @@ k3 的巧妙之处：利用 $\E[r-1]=0$ 这个性质，加入 $(r-1)$ 项不改�
 \end{table}
 
 % ------------------------------------------
+\section{Off-Policy 状态分布修正的理论基础}
+\label{sec:appendix-state-distribution}
+
+本节给出"严格的 off-policy policy gradient 需要状态分布修正"的完整数学推导。
+
+\subsection{性能差引理（Performance Difference Lemma）}
+
+\begin{theorem}[Kakade \& Langford, 2002]
+\label{thm:performance-difference}
+对于任意两个策略 $\policy_\theta$ 和 $\policy_{\text{old}}$：
+\begin{equation}
+    J(\policy_\theta) - J(\policy_{\text{old}}) = \frac{1}{1-\discount} \E_{s \sim d_{\policy_\theta}, a \sim \policy_\theta(\cdot|s)} \left[ \advantage^{\policy_{\text{old}}}(s,a) \right]
+\end{equation}
+其中 $d_\policy(s) = (1-\discount) \sum_{t=0}^{\infty} \discount^t P(s_t = s \mid \policy)$ 是 discounted state visitation distribution。
+\end{theorem}
+
+\begin{proof}
+定义状态价值函数的差：
+\begin{equation}
+    J(\policy_\theta) - J(\policy_{\text{old}}) = \E_{s_0} \left[ \Val^{\policy_\theta}(s_0) - \Val^{\policy_{\text{old}}}(s_0) \right]
+\end{equation}
+
+利用 advantage 的定义 $\advantage^\policy(s,a) = \Qval^\policy(s,a) - \Val^\policy(s)$，通过 telescope sum 展开：
+\begin{align}
+    \Val^{\policy_\theta}(s) - \Val^{\policy_{\text{old}}}(s)
+    &= \E_{\policy_\theta} \left[ \sum_{t=0}^{\infty} \discount^t \left( r_t + \discount \Val^{\policy_{\text{old}}}(s_{t+1}) - \Val^{\policy_{\text{old}}}(s_t) \right) \,\Big|\, s_0 = s \right] \\
+    &= \E_{\policy_\theta} \left[ \sum_{t=0}^{\infty} \discount^t \advantage^{\policy_{\text{old}}}(s_t, a_t) \,\Big|\, s_0 = s \right]
+\end{align}
+
+对初始状态求期望并整理：
+\begin{equation}
+    J(\policy_\theta) - J(\policy_{\text{old}}) = \sum_{t=0}^{\infty} \discount^t \E_{s_t \sim P_{\policy_\theta}^t, a_t \sim \policy_\theta} \left[ \advantage^{\policy_{\text{old}}}(s_t, a_t) \right]
+\end{equation}
+
+代入 discounted state visitation distribution 的定义得：
+\begin{equation}
+    \boxed{J(\policy_\theta) - J(\policy_{\text{old}}) = \frac{1}{1-\discount} \E_{s \sim d_{\policy_\theta}, a \sim \policy_\theta} \left[ \advantage^{\policy_{\text{old}}}(s,a) \right]}
+\end{equation}
+\end{proof}
+
+\begin{important}
+注意右边的期望是关于 \textbf{新策略的状态分布} $d_{\policy_\theta}$，而非旧策略的 $d_{\policy_{\text{old}}}$。这是状态分布修正的理论来源。
+\end{important}
+
+\subsection{严格的 Off-Policy 估计}
+
+我们的数据来自旧策略 $\policy_{\text{old}}$：
+\begin{itemize}
+    \item 状态：$s \sim d_{\policy_{\text{old}}}$
+    \item 动作：$a \sim \policy_{\text{old}}(\cdot|s)$
+\end{itemize}
+
+要用这些数据无偏地估计性能差引理中的期望，需要两个重要性权重：
+
+\begin{equation}
+    \E_{s \sim d_{\policy_\theta}, a \sim \policy_\theta} [f(s,a)] = \E_{s \sim d_{\policy_{\text{old}}}, a \sim \policy_{\text{old}}} \left[ \underbrace{\frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)}}_{\text{状态分布修正}} \cdot \underbrace{\frac{\policy_\theta(a|s)}{\policy_{\text{old}}(a|s)}}_{\text{动作概率修正}} \cdot f(s,a) \right]
+\end{equation}
+
+因此，严格的 off-policy policy gradient 为：
+\begin{equation}
+    \nabla_\theta J(\theta) = \E_{s \sim d_{\policy_{\text{old}}}} \left[ \frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)} \cdot \E_{a \sim \policy_{\text{old}}} \left[ \frac{\policy_\theta(a|s)}{\policy_{\text{old}}(a|s)} \nabla_\theta \log \policy_\theta(a|s) \hat{\advantage}(s,a) \right] \right]
+\end{equation}
+
+\subsection{PPO/TRPO Surrogate Objective 的近似}
+
+PPO/TRPO 使用的 surrogate objective 为：
+\begin{equation}
+    L(\theta) = \E_{s \sim d_{\policy_{\text{old}}}, a \sim \policy_{\text{old}}} \left[ \frac{\policy_\theta(a|s)}{\policy_{\text{old}}(a|s)} \hat{\advantage}(s,a) \right]
+\end{equation}
+
+对比严格的 off-policy 梯度，\textbf{缺少了状态分布比} $\frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)}$，即隐式假设：
+\begin{equation}
+    \frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)} \approx 1
+\end{equation}
+
+\subsection{近似误差界}
+
+\begin{theorem}[TRPO 误差界，Schulman et al., 2015]
+Surrogate objective 与真实性能差的偏差有界：
+\begin{equation}
+    \left| J(\policy_\theta) - J(\policy_{\text{old}}) - \frac{1}{1-\discount} L(\theta) \right| \leq \frac{2\discount \epsilon}{(1-\discount)^2} \cdot \max_s D_{\text{KL}}(\policy_{\text{old}}(\cdot|s) \| \policy_\theta(\cdot|s))
+\end{equation}
+其中 $\epsilon = \max_{s,a} |\advantage^{\policy_{\text{old}}}(s,a)|$。
+\end{theorem}
+
+\begin{keypoint}
+这个误差界说明：
+\begin{enumerate}
+    \item 当 $\policy_\theta$ 与 $\policy_{\text{old}}$ 的 KL 散度足够小时，surrogate objective 是真实性能差的良好近似
+    \item TRPO 的 KL 约束和 PPO 的 clip 机制正是为了控制这个误差界
+    \item 这解释了为什么 PPO/TRPO 能直接使用 token-level 的 $\rho_t = \frac{\policy_\theta(a|s)}{\policy_{\text{old}}(a|s)}$ 而不需要显式计算状态分布修正——\textbf{前提是 trust region 约束成立}
+\end{enumerate}
+\end{keypoint}
+
+% ------------------------------------------
 \section{常见问题解答}
 \label{sec:faq}
 

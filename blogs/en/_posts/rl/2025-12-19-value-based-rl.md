@@ -96,7 +96,21 @@ $$Q^*(s,a) = R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) \max_{a' \in \m
 >
 > **Q-Learning directly approximates $Q^*$, hence uses Bellman Optimality Equation as the update target**.
 
-### 2.4 Bellman Operator and Contraction Property
+### 2.4 Relationship Between $V^{\*}$ and $Q^{\*}$
+
+The optimal value functions have a concise relationship:
+
+$$V^*(s) = \max_a Q^*(s,a)$$
+
+$$Q^*(s,a) = R(s,a) + \gamma \sum_{s'} P(s'|s,a) V^*(s')$$
+
+The optimal policy can be derived directly from $Q^{\*}$:
+
+$$\pi^*(s) = \arg\max_a Q^*(s,a)$$
+
+This is the theoretical foundation of Q-Learning methods: **once we learn $Q^{\*}$, we immediately get the optimal policy**.
+
+### 2.5 Bellman Operator and Contraction Property
 
 **Definition (Bellman Operator)**:
 
@@ -107,6 +121,16 @@ $$(\mathcal{T}^* V)(s) = \max_a \left[ R(s,a) + \gamma \sum_{s'} P(s'|s,a) V(s')
 **Theorem (Contraction Property of Bellman Operator)**: The Bellman operator is a $\gamma$-contraction mapping:
 
 $$\| \mathcal{T}^\pi V_1 - \mathcal{T}^\pi V_2 \|_\infty \leq \gamma \| V_1 - V_2 \|_\infty$$
+
+**Proof**: For any state $s$:
+
+$$\begin{aligned}
+|(\mathcal{T}^\pi V\_1)(s) - (\mathcal{T}^\pi V\_2)(s)| &= \left| \gamma \sum\_a \pi(a|s) \sum\_{s'} P(s'|s,a) [V\_1(s') - V\_2(s')] \right| \\\\
+&\leq \gamma \sum\_a \pi(a|s) \sum\_{s'} P(s'|s,a) |V\_1(s') - V\_2(s')| \\\\
+&\leq \gamma \| V\_1 - V\_2 \|\_\infty
+\end{aligned}$$
+
+Taking maximum over all $s$ yields the result. The same applies to $\mathcal{T}^{\*}$.
 
 > **Important corollaries of contraction property**:
 > 1. **Unique fixed point**: Bellman operator has a unique fixed point $V^\pi$ (or $V^*$)
@@ -293,7 +317,25 @@ Key difference: SARSA uses $Q(S_{t+1}, A_{t+1})$ (actually sampled action), Q-Le
 1. All state-action pairs are visited infinitely often
 2. Learning rate satisfies Robbins-Monro conditions: $\sum_t \alpha_t = \infty$, $\sum_t \alpha_t^2 < \infty$
 
-### 5.4 Cliff Walking Example
+### 5.4 $\epsilon$-greedy Exploration Strategy
+
+To ensure sufficient exploration, the $\epsilon$-greedy strategy is commonly used:
+
+$$\pi(a|s) = \begin{cases}
+1 - \epsilon + \frac{\epsilon}{|\mathcal{A}|} & \text{if } a = \arg\max_{a'} Q(s,a') \\\\
+\frac{\epsilon}{|\mathcal{A}|} & \text{otherwise}
+\end{cases}$$
+
+In words: with probability $1 - \epsilon$ select the greedy action; with probability $\epsilon$ select uniformly at random.
+
+**Why is exploration necessary?**
+- **Insufficient initial data**: Early $Q$ estimates are inaccurate; always taking greedy actions may miss good actions
+- **Local optima trap**: Without exploration, the agent cannot discover better strategies
+- **Theoretical guarantee**: Q-Learning convergence requires all state-action pairs to be visited infinitely often
+
+**$\epsilon$ decay strategy**: Typically start with high exploration ($\epsilon = 1$) and gradually decay (e.g., $\epsilon \to 0.01$). This achieves "explore early, exploit later".
+
+### 5.5 Cliff Walking Example
 
 Cliff Walking is a classic Grid World environment that clearly demonstrates the behavioral difference between Q-Learning and SARSA:
 

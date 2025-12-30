@@ -252,7 +252,20 @@ $$\phi \leftarrow \phi - \alpha_\phi \nabla_\phi \sum_t \left( \hat{V}_\phi(s_t)
 
 GAE provides a method for flexibly trading off between bias and variance in advantage estimation, and is a core component of modern Policy Gradient algorithms (such as PPO).
 
-### 6.1 Definition of GAE
+### 6.1 From n-step Advantage to GAE
+
+Recall n-step advantage estimation:
+
+$$\hat{A}_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n \hat{V}(s_{t+n}) - \hat{V}(s_t)$$
+
+- $n=1$: TD advantage, $\hat{A}\_t^{(1)} = \delta\_t$ (low variance, high bias)
+- $n=\infty$: MC advantage, $\hat{A}\_t^{(\infty)} = G\_t - \hat{V}(s\_t)$ (high variance, low bias)
+
+A natural question: **Can we combine estimates with different $n$ to achieve a better tradeoff?**
+
+The answer is GAE—by taking an exponentially weighted average of all n-step advantages, a single parameter $\lambda$ flexibly controls the bias-variance balance point.
+
+### 6.2 Definition of GAE
 
 **Definition (Generalized Advantage Estimation)**:
 
@@ -264,7 +277,7 @@ where $\delta_t = r_t + \gamma \hat{V}(s_{t+1}) - \hat{V}(s_t)$ is the TD residu
 
 $$\hat{A}_t^{\text{GAE}} = (1-\lambda) \sum_{n=1}^{\infty} \lambda^{n-1} \hat{A}_t^{(n)}$$
 
-### 6.2 Bias-Variance Tradeoff of $\lambda$ Parameter
+### 6.3 Bias-Variance Tradeoff of $\lambda$ Parameter
 
 | $\lambda$ value | Equivalent form | Bias | Variance |
 |-------------|---------|------|------|
@@ -280,7 +293,7 @@ In practice, $\lambda = 0.95$ or $\lambda = 0.97$ are commonly used choices.
 > - Smaller $\lambda$ relies more on Critic estimation (higher bias but lower variance)
 > - Larger $\lambda$ relies more on actual returns (lower bias but higher variance)
 
-### 6.3 Practical Computation of GAE
+### 6.4 Practical Computation of GAE
 
 GAE can be efficiently computed through recursion:
 
@@ -314,13 +327,57 @@ $$\rho_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\text{old}}(a_t|s_t)}$$
 
 $$\nabla_\theta J(\theta) = \mathbb{E}_{(s,a) \sim \pi_{\text{old}}} \left[ \rho_t(\theta) \nabla_\theta \log \pi_\theta(a_t|s_t) \hat{A}_t \right]$$
 
-### 7.3 Variance Problem
+### 7.3 Strict Off-Policy Gradient and State Distribution Correction
+
+The formula above omits an important detail. **Strict off-policy policy gradient** requires correcting not only action probabilities but also the **state distribution**:
+
+$$\nabla_\theta J(\theta) = \mathbb{E}_{s \sim d_{\pi_{\text{old}}}} \left[ \frac{d_{\pi_\theta}(s)}{d_{\pi_{\text{old}}}(s)} \cdot \mathbb{E}_{a \sim \pi_{\text{old}}(\cdot\|s)} \left[ \rho_t(\theta) \nabla_\theta \log \pi_\theta(a\|s) \hat{A}(s,a) \right] \right]$$
+
+where $d\_\pi(s)$ is the state distribution induced by policy $\pi$ (also known as the discounted state visitation distribution).
+
+**Why is state distribution correction needed?**
+
+Intuitive understanding: when sampling with old policy $\pi\_{\text{old}}$, not only does the action distribution change, but even the distribution of visited states changes. For example:
+- The new policy may prefer to enter certain states more often
+- These states may have fewer samples in the old data
+
+Therefore, strict off-policy gradient needs to correct both biases.
+
+**Implicit Approximation in PPO/TRPO**
+
+However, computing the state distribution ratio $\frac{d\_{\pi\_\theta}(s)}{d\_{\pi\_{\text{old}}}(s)}$ is very difficult—it depends on the cumulative effect of the entire trajectory and cannot be directly computed like action probabilities.
+
+The **surrogate objective** of PPO/TRPO actually makes a key approximation:
+
+$$\frac{d_{\pi_\theta}(s)}{d_{\pi_{\text{old}}}(s)} \approx 1$$
+
+That is, assuming the state distributions induced by new and old policies are the same. When is this approximation reasonable?
+
+> **The Role of Trust Region**: When $\pi\_\theta$ is sufficiently close to $\pi\_{\text{old}}$ (small KL divergence), the difference in state distributions will also be small. TRPO's KL constraint and PPO's clip mechanism are precisely to ensure this.
+
+**Summary**: The surrogate objective used by PPO/TRPO
+
+$$L(\theta) = \mathbb{E}_{(s,a) \sim \pi_{\text{old}}} \left[ \rho_t(\theta) \hat{A}_t \right]$$
+
+actually implicitly does two things:
+1. Uses $\rho\_t = \frac{\pi\_\theta(a\|s)}{\pi\_{\text{old}}(a\|s)}$ to correct action probability bias
+2. Assumes $\frac{d\_{\pi\_\theta}(s)}{d\_{\pi\_{\text{old}}}(s)} \approx 1$, ignoring state distribution bias
+
+This explains why PPO/TRPO can directly use token-level $\rho\_t$ without additional state distribution correction—**provided the trust region constraint holds**.
+
+### 7.4 Variance Problem
 
 When $\rho_t$ deviates too much from 1, variance increases dramatically. Need to limit the magnitude of policy updates to maintain $\rho_t \approx 1$.
 
 ## 8. Trust Region Methods: TRPO and PPO
 
-### 8.1 TRPO: KL-Constrained Optimization
+### 8.1 Motivation: Limiting Policy Update Magnitude
+
+Importance sampling allows reusing old data, but if $\pi\_\theta$ differs too much from $\pi\_{\text{old}}$, the estimate becomes unreliable. Trust Region methods solve this problem by **limiting the magnitude of policy updates**.
+
+Core idea: Each update is performed only within a "trust region", ensuring the new policy is sufficiently close to the old policy.
+
+### 8.2 TRPO: KL-Constrained Optimization
 
 TRPO limits policy updates through KL divergence constraints:
 
@@ -331,7 +388,7 @@ $$\begin{aligned}
 
 TRPO theoretically guarantees monotonic improvement, but requires computing the Hessian of KL divergence, making implementation complex.
 
-### 8.2 PPO: Simplified Trust Region
+### 8.3 PPO: Simplified Trust Region
 
 PPO approximates TRPO's effect through simpler means.
 
@@ -345,15 +402,32 @@ where $\text{clip}(x, a, b) = \max(a, \min(x, b))$, and $\epsilon$ is typically 
 - When $\hat{A}_t > 0$ (good action): The objective is to increase probability, but clips when $\rho_t > 1+\epsilon$ to prevent excessive increase
 - When $\hat{A}_t < 0$ (bad action): The objective is to decrease probability, but clips when $\rho_t < 1-\epsilon$ to prevent excessive decrease
 
-### 8.3 Entropy Bonus
+**PPO-KL (Optional Variant)**:
+
+An alternative variant of PPO uses a KL penalty term instead of clipping:
+
+$$L^{\text{KL}}(\theta) = \mathbb{E} \left[ \rho_t \hat{A}_t \right] - \beta \cdot \text{KL}(\pi_{\text{old}} \| \pi_\theta)$$
+
+where $\beta$ is an adaptively adjusted coefficient:
+- If KL is too large, increase $\beta$
+- If KL is too small, decrease $\beta$
+
+In practice, PPO-Clip is more commonly used because it's simpler and performs comparably.
+
+### 8.4 Entropy Bonus
 
 To encourage exploration, PPO typically also adds an entropy bonus:
 
 $$L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\pi_\theta)$$
 
-where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a\|s)]$ is the entropy of the policy.
+where $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a\|s)]$ is the entropy of the policy, and $c_1$ is a weight coefficient (typically 0.01).
 
-### 8.4 Complete PPO Algorithm
+> **Role of Entropy Bonus**:
+> - Encourages the policy to maintain some randomness, avoiding premature convergence to a deterministic policy
+> - Promotes exploration, preventing getting stuck in local optima
+> - Higher entropy means a more "uniform" policy with flatter probability distribution over actions
+
+### 8.5 Complete PPO Algorithm
 
 <!-- tikz-source: rl-ppo-algorithm-en
 \begin{algorithm}[H]

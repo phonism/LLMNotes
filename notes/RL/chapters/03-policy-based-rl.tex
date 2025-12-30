@@ -867,6 +867,55 @@ Policy Gradient 是 on-policy 的：每次更新 $\theta$ 后，旧数据的分�
 
 这使得可以用旧数据多次更新策略！
 
+\subsection{严格的 Off-Policy 梯度与状态分布修正}
+
+上面的公式省略了一个重要细节。\textbf{严格的 off-policy policy gradient} 不仅需要修正动作概率，还需要修正\textbf{状态分布}：
+
+\begin{equation}
+    \nabla_\theta J(\theta) = \E_{s \sim d_{\policy_{\text{old}}}} \left[ \frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)} \cdot \E_{a \sim \policy_{\text{old}}(\cdot|s)} \left[ \rho_t(\theta) \nabla_\theta \log \policy_\theta(a|s) \hat{\advantage}(s,a) \right] \right]
+\end{equation}
+
+其中 $d_\policy(s)$ 是策略 $\policy$ 诱导的状态分布（也称为 discounted state visitation distribution）。
+
+\begin{note}
+\textbf{为什么需要状态分布修正？}
+
+直观理解：用旧策略 $\policy_{\text{old}}$ 采样时，不仅动作的分布变了，连访问到的状态分布也变了。例如：
+\begin{itemize}
+    \item 新策略可能更倾向于进入某些状态
+    \item 旧数据中这些状态的样本可能较少
+\end{itemize}
+因此严格的 off-policy 梯度需要同时修正这两个偏差。
+\end{note}
+
+\subsubsection*{PPO/TRPO 的隐式近似}
+
+然而，计算状态分布比 $\frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)}$ 非常困难——它依赖于整条轨迹的累积效应，无法像动作概率那样直接计算。
+
+PPO/TRPO 的 \textbf{surrogate objective} 实际上做了一个关键近似：
+
+\begin{equation}
+    \frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)} \approx 1
+\end{equation}
+
+即假设新旧策略诱导的状态分布相同。
+
+\begin{important}
+\textbf{Trust Region 的作用}：当 $\policy_\theta$ 与 $\policy_{\text{old}}$ 足够接近时（KL 散度小），状态分布的差异也会很小。TRPO 的 KL 约束和 PPO 的 clip 机制正是为了保证这一点。
+\end{important}
+
+\textbf{总结}：PPO/TRPO 使用的 surrogate objective
+\begin{equation}
+    L(\theta) = \E_{(s,a) \sim \policy_{\text{old}}} \left[ \rho_t(\theta) \hat{\advantage}_t \right]
+\end{equation}
+实际上隐式地做了两件事：
+\begin{enumerate}
+    \item 用 $\rho_t = \frac{\policy_\theta(a|s)}{\policy_{\text{old}}(a|s)}$ 修正动作概率偏差
+    \item 假设 $\frac{d_{\policy_\theta}(s)}{d_{\policy_{\text{old}}}(s)} \approx 1$，忽略状态分布偏差
+\end{enumerate}
+
+这解释了为什么 PPO/TRPO 能直接使用 token-level 的 $\rho_t$ 而不需要额外的状态分布修正——\textbf{前提是 trust region 约束成立}。
+
 \subsection{方差问题}
 
 重要性采样的问题：当 $\rho_t$ 偏离 1 太多时，方差会急剧增大。

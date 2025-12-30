@@ -98,7 +98,21 @@ $$Q^*(s,a) = R(s,a) + \gamma \sum_{s' \in \mathcal{S}} P(s'|s,a) \max_{a' \in \m
 >
 > **Q-Learning 直接逼近 $Q^*$，因此使用 Bellman Optimality Equation 作为更新目标**。
 
-### 2.4 Bellman 算子与收缩性质
+### 2.4 $V^{\*}$ 与 $Q^{\*}$ 的关系
+
+最优价值函数之间存在简洁的关系：
+
+$$V^*(s) = \max_a Q^*(s,a)$$
+
+$$Q^*(s,a) = R(s,a) + \gamma \sum_{s'} P(s'|s,a) V^*(s')$$
+
+由 $Q^{\*}$ 可以直接导出最优策略：
+
+$$\pi^*(s) = \arg\max_a Q^*(s,a)$$
+
+这是 Q-Learning 系列方法的理论基础：**只要学到 $Q^{\*}$，就能得到最优策略**。
+
+### 2.5 Bellman 算子与收缩性质
 
 **定义 (Bellman 算子)**：
 
@@ -109,6 +123,16 @@ $$(\mathcal{T}^* V)(s) = \max_a \left[ R(s,a) + \gamma \sum_{s'} P(s'|s,a) V(s')
 **定理 (Bellman 算子的收缩性)**：Bellman 算子是 $\gamma$-收缩映射：
 
 $$\| \mathcal{T}^\pi V_1 - \mathcal{T}^\pi V_2 \|_\infty \leq \gamma \| V_1 - V_2 \|_\infty$$
+
+**证明**：对于任意状态 $s$：
+
+$$\begin{aligned}
+|(\mathcal{T}^\pi V\_1)(s) - (\mathcal{T}^\pi V\_2)(s)| &= \left| \gamma \sum\_a \pi(a|s) \sum\_{s'} P(s'|s,a) [V\_1(s') - V\_2(s')] \right| \\\\
+&\leq \gamma \sum\_a \pi(a|s) \sum\_{s'} P(s'|s,a) |V\_1(s') - V\_2(s')| \\\\
+&\leq \gamma \| V\_1 - V\_2 \|\_\infty
+\end{aligned}$$
+
+对所有 $s$ 取最大，得到结论。$\mathcal{T}^{\*}$ 同理。
 
 > **收缩性质的重要推论**：
 > 1. **唯一不动点**：Bellman 算子有唯一的不动点 $V^\pi$（或 $V^*$）
@@ -293,9 +317,22 @@ $$Q(S_t, A_t) \leftarrow Q(S_t, A_t) + \alpha \left( r_t + \gamma \max_{a'} Q(S_
 
 **定理 (Q-Learning 收敛性)**：在满足以下条件时，Q-Learning 收敛到 $Q^{\*}$：
 1. 所有状态-动作对被无限次访问
-2. 学习率满足 Robbins-Monro 条件：$\sum_t \alpha_t = \infty$，$\sum_t \alpha_t^2 < \infty$
+2. 学习率满足 Robbins-Monro 条件：$\sum\_t \alpha\_t = \infty$，$\sum\_t \alpha\_t^2 < \infty$
 
-### 5.4 Cliff Walking 示例
+### 5.4 $\epsilon$-greedy 探索策略
+
+为了保证充分探索，常用 $\epsilon$-greedy 策略：
+
+$$\pi(a|s) = \begin{cases}
+1 - \epsilon + \frac{\epsilon}{|\mathcal{A}|} & \text{if } a = \arg\max_{a'} Q(s,a') \\\\
+\frac{\epsilon}{|\mathcal{A}|} & \text{otherwise}
+\end{cases}$$
+
+- $\epsilon = 0$：纯贪心（Greedy），无探索
+- $\epsilon = 1$：纯随机，无利用
+- 通常 $\epsilon$ 随训练逐渐衰减（如 $\epsilon\_t = \epsilon\_0 / t$）
+
+### 5.5 Cliff Walking 示例
 
 Cliff Walking 是一个经典的 Grid World 环境，清晰展示了 Q-Learning 和 SARSA 的行为差异：
 

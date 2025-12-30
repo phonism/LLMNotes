@@ -3,9 +3,12 @@ layout: post
 title: "Transformer Notes (II): Core Components"
 date: 2025-12-20 10:10:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer]
 lang: en
 translation: /transformer-part2-components/
+series: transformer
+series_order: 2
 ---
 
 The powerful capabilities of Transformers are built upon three carefully designed core components: the Tokenizer converts text into discrete symbols that the model can process; Position Encoding injects sequence order information into the self-attention mechanism; and Gating mechanisms enable the network to learn to selectively pass information.

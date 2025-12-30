@@ -254,7 +254,20 @@ $$\phi \leftarrow \phi - \alpha_\phi \nabla_\phi \sum_t \left( \hat{V}_\phi(s_t)
 
 GAE 提供了一种在偏差和方差之间灵活权衡的 advantage 估计方法，是现代 Policy Gradient 算法（如 PPO）的核心组件。
 
-### 6.1 GAE 的定义
+### 6.1 从 n-step Advantage 到 GAE
+
+回顾 n-step advantage 估计：
+
+$$\hat{A}_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n \hat{V}(s_{t+n}) - \hat{V}(s_t)$$
+
+- $n=1$：TD advantage，$\hat{A}\_t^{(1)} = \delta\_t$（低方差，高偏差）
+- $n=\infty$：MC advantage，$\hat{A}\_t^{(\infty)} = G\_t - \hat{V}(s\_t)$（高方差，低偏差）
+
+自然的问题：**能否组合不同 $n$ 的估计，取得更好的权衡？**
+
+答案是 GAE——通过对所有 n-step advantage 进行指数加权平均，用一个参数 $\lambda$ 灵活控制偏差-方差的平衡点。
+
+### 6.2 GAE 的定义
 
 **定义 (Generalized Advantage Estimation)**：
 
@@ -266,7 +279,7 @@ $$\hat{A}_t^{\text{GAE}(\gamma, \lambda)} = \sum_{l=0}^{\infty} (\gamma \lambda)
 
 $$\hat{A}_t^{\text{GAE}} = (1-\lambda) \sum_{n=1}^{\infty} \lambda^{n-1} \hat{A}_t^{(n)}$$
 
-### 6.2 $\lambda$ 参数的偏差-方差权衡
+### 6.3 $\lambda$ 参数的偏差-方差权衡
 
 | $\lambda$ 值 | 等价形式 | 偏差 | 方差 |
 |-------------|---------|------|------|
@@ -282,7 +295,7 @@ $$\hat{A}_t^{\text{GAE}} = (1-\lambda) \sum_{n=1}^{\infty} \lambda^{n-1} \hat{A}
 > - $\lambda$ 越小，越依赖 Critic 估计（偏差大但方差小）
 > - $\lambda$ 越大，越依赖实际回报（偏差小但方差大）
 
-### 6.3 GAE 的实际计算
+### 6.4 GAE 的实际计算
 
 GAE 可以通过递推高效计算：
 
@@ -316,13 +329,57 @@ $$\rho_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\text{old}}(a_t|s_t)}$$
 
 $$\nabla_\theta J(\theta) = \mathbb{E}_{(s,a) \sim \pi_{\text{old}}} \left[ \rho_t(\theta) \nabla_\theta \log \pi_\theta(a_t|s_t) \hat{A}_t \right]$$
 
-### 7.3 方差问题
+### 7.3 严格的 Off-Policy 梯度与状态分布修正
+
+上面的公式省略了一个重要细节。**严格的 off-policy policy gradient** 不仅需要修正动作概率，还需要修正**状态分布**：
+
+$$\nabla_\theta J(\theta) = \mathbb{E}_{s \sim d_{\pi_{\text{old}}}} \left[ \frac{d_{\pi_\theta}(s)}{d_{\pi_{\text{old}}}(s)} \cdot \mathbb{E}_{a \sim \pi_{\text{old}}(\cdot\|s)} \left[ \rho_t(\theta) \nabla_\theta \log \pi_\theta(a\|s) \hat{A}(s,a) \right] \right]$$
+
+其中 $d\_\pi(s)$ 是策略 $\pi$ 诱导的状态分布（也称为 discounted state visitation distribution）。
+
+**为什么需要状态分布修正？**
+
+直观理解：用旧策略 $\pi\_{\text{old}}$ 采样时，不仅动作的分布变了，连访问到的状态分布也变了。例如：
+- 新策略可能更倾向于进入某些状态
+- 旧数据中这些状态的样本可能较少
+
+因此严格的 off-policy 梯度需要同时修正这两个偏差。
+
+**PPO/TRPO 的隐式近似**
+
+然而，计算状态分布比 $\frac{d\_{\pi\_\theta}(s)}{d\_{\pi\_{\text{old}}}(s)}$ 非常困难——它依赖于整条轨迹的累积效应，无法像动作概率那样直接计算。
+
+PPO/TRPO 的 **surrogate objective** 实际上做了一个关键近似：
+
+$$\frac{d_{\pi_\theta}(s)}{d_{\pi_{\text{old}}}(s)} \approx 1$$
+
+即假设新旧策略诱导的状态分布相同。这个近似在什么条件下合理？
+
+> **Trust Region 的作用**：当 $\pi\_\theta$ 与 $\pi\_{\text{old}}$ 足够接近时（KL 散度小），状态分布的差异也会很小。TRPO 的 KL 约束和 PPO 的 clip 机制正是为了保证这一点。
+
+**总结**：PPO/TRPO 使用的 surrogate objective
+
+$$L(\theta) = \mathbb{E}_{(s,a) \sim \pi_{\text{old}}} \left[ \rho_t(\theta) \hat{A}_t \right]$$
+
+实际上隐式地做了两件事：
+1. 用 $\rho\_t = \frac{\pi\_\theta(a\|s)}{\pi\_{\text{old}}(a\|s)}$ 修正动作概率偏差
+2. 假设 $\frac{d\_{\pi\_\theta}(s)}{d\_{\pi\_{\text{old}}}(s)} \approx 1$，忽略状态分布偏差
+
+这解释了为什么 PPO/TRPO 能直接使用 token-level 的 $\rho\_t$ 而不需要额外的状态分布修正——**前提是 trust region 约束成立**。
+
+### 7.4 方差问题
 
 当 $\rho_t$ 偏离 1 太多时，方差会急剧增大。需要限制策略更新幅度，保持 $\rho_t \approx 1$。
 
 ## 8. Trust Region 方法：TRPO 与 PPO
 
-### 8.1 TRPO：KL 约束优化
+### 8.1 动机：限制策略更新幅度
+
+重要性采样允许复用旧数据，但如果 $\pi\_\theta$ 与 $\pi\_{\text{old}}$ 差异太大，估计就不可靠。Trust Region 方法通过**限制策略更新幅度**来解决这个问题。
+
+核心思想：每次更新只在"信任区域"内进行，保证新策略与旧策略足够接近。
+
+### 8.2 TRPO：KL 约束优化
 
 TRPO 通过 KL 散度约束限制策略更新：
 
@@ -333,7 +390,7 @@ $$\begin{aligned}
 
 TRPO 理论上保证单调改进，但需要计算 KL 散度的 Hessian，实现复杂。
 
-### 8.2 PPO：简化的 Trust Region
+### 8.3 PPO：简化的 Trust Region
 
 PPO 通过更简单的方式近似 TRPO 的效果。
 
@@ -347,15 +404,32 @@ $$L^{\text{CLIP}}(\theta) = \mathbb{E} \left[ \min \left( \rho_t \hat{A}_t, \, \
 - 当 $\hat{A}_t > 0$（好动作）：目标是增加概率，但当 $\rho_t > 1+\epsilon$ 时截断，防止过度增加
 - 当 $\hat{A}_t < 0$（坏动作）：目标是减少概率，但当 $\rho_t < 1-\epsilon$ 时截断，防止过度减少
 
-### 8.3 Entropy Bonus
+**PPO-KL（可选变体）**：
+
+PPO 的另一个变体使用 KL 惩罚项而非 clip：
+
+$$L^{\text{KL}}(\theta) = \mathbb{E} \left[ \rho_t \hat{A}_t \right] - \beta \cdot \text{KL}(\pi_{\text{old}} \| \pi_\theta)$$
+
+其中 $\beta$ 是自适应调整的系数：
+- 如果 KL 太大，增大 $\beta$
+- 如果 KL 太小，减小 $\beta$
+
+实践中 PPO-Clip 更常用，因为它更简单且效果相当。
+
+### 8.4 Entropy Bonus
 
 为了鼓励探索，PPO 通常还会加入 entropy bonus：
 
 $$L^{\text{total}}(\theta) = L^{\text{CLIP}}(\theta) + c_1 \cdot H(\pi_\theta)$$
 
-其中 $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a\|s)]$ 是策略的熵。
+其中 $H(\pi_\theta) = -\mathbb{E}[\log \pi_\theta(a\|s)]$ 是策略的熵，$c_1$ 是权重系数（通常 0.01）。
 
-### 8.4 PPO 完整算法
+> **Entropy bonus 的作用**：
+> - 鼓励策略保持一定的随机性，避免过早收敛到确定性策略
+> - 促进探索，防止陷入局部最优
+> - 熵越大，策略越"均匀"，对各动作的概率分布越平坦
+
+### 8.5 PPO 完整算法
 
 <!-- tikz-source: rl-ppo-algorithm
 \begin{algorithm}[H]

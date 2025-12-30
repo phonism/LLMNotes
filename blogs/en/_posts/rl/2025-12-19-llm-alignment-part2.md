@@ -241,6 +241,17 @@ Fundamental reason for efficiency improvement:
 >
 > Most of RL's computation is spent on searching (exploring policy space), while distillation directly uses teacher knowledge to guide the student to make correct choices at critical "fork points".
 
+### Application Scenarios
+
+1. **Small model specialization**: Use large models (e.g., Qwen3-235B) to distill small models (e.g., Qwen3-32B)
+2. **Continual learning**: After training on new domain knowledge, use distillation to recover forgotten instruction-following capabilities
+3. **Behavior recovery**: Recover specific capabilities from earlier checkpoints
+
+> **Qwen3's Findings**:
+> - Distillation not only matches RL performance, but also **expands the exploration space**
+> - pass@64 scores improve after distillation, while RL shows no improvement on pass@64
+> - Reason: Distillation learns the teacher's complete distribution, not just a single optimal answer
+
 ## Process Reward Model (PRM)
 
 PRM provides process-level supervision, transforming sparse terminal rewards into dense step-level rewards.

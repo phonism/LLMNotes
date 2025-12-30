@@ -3,9 +3,12 @@ layout: post
 title: "Transformer Notes (V): Training Techniques"
 date: 2025-12-20 10:40:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer, Training]
 lang: en
 translation: /transformer-part5-training/
+series: transformer
+series_order: 5
 ---
 
 This is the fifth article in the Transformer series, providing a comprehensive analysis of **training techniques** for large language models, including data engineering, distributed training frameworks, and novel optimizers. These techniques collectively support the efficient training of models with hundreds of billions of parameters.

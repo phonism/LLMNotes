@@ -3,9 +3,13 @@ layout: post
 title: "Transformer Notes (VI): Evaluation and Benchmarks"
 date: 2025-12-20 10:50:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer, Evaluation]
+math: true
 lang: en
 translation: /transformer-part6-evaluation/
+series: transformer
+series_order: 6
 ---
 
 This is the sixth article in the Transformer series, systematically introducing **evaluation and benchmarks** for large language models. Evaluation is a complex and rapidly evolving field. This article focuses on evaluation benchmarks widely adopted by top-tier models since 2024.

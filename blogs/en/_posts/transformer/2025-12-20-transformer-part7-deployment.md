@@ -3,10 +3,13 @@ layout: post
 title: "Transformer Notes (VII): Deployment Optimization"
 date: 2025-12-20 11:00:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer, Inference]
 math: true
 lang: en
 translation: /transformer-part7-deployment/
+series: transformer
+series_order: 7
 ---
 
 This is the seventh article in the Transformer series, providing a comprehensive analysis of **deployment optimization** techniques for large language models, including model quantization and inference acceleration. These techniques are key to efficiently deploying hundred-billion-parameter models in practical applications.

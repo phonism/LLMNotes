@@ -3,9 +3,12 @@ layout: post
 title: "Transformer Notes (III): Attention Mechanisms"
 date: 2025-12-20 10:20:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer, Attention]
 lang: en
 translation: /transformer-part3-attention/
+series: transformer
+series_order: 3
 ---
 
 The attention mechanism is the core of Transformers, but the standard $O(N^2)$ complexity becomes a bottleneck for long-context modeling. This post systematically introduces four optimization paths: FlashAttention accelerates computation through IO-aware optimization; MLA reduces KV Cache through low-rank compression; sparse attention only computes important token pairs; linear attention fundamentally changes the computation form.

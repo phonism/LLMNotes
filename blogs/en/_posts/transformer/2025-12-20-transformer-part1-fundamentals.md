@@ -3,9 +3,12 @@ layout: post
 title: "Transformer Notes (I): Fundamentals"
 date: 2025-12-20 10:00:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer]
 lang: en
 translation: /transformer-part1-fundamentals/
+series: transformer
+series_order: 1
 ---
 
 From RNN to LSTM to Transformer, the paradigm of sequence modeling has undergone a fundamental shift. The Transformer architecture proposed by Vaswani et al. in 2017 completely abandoned recurrent structures, using only attention mechanisms to model sequence dependencies, ushering in the era of Large Language Models (LLMs).

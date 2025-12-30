@@ -3,9 +3,12 @@ layout: post
 title: "Transformer Notes (VIII): Frontier Applications"
 date: 2025-12-20 11:10:00
 author: Qi Lu
+categories: [Deep Learning, Transformer]
 tags: [Transformer, Multimodal, Reasoning]
 lang: en
 translation: /transformer-part8-frontiers/
+series: transformer
+series_order: 8
 ---
 
 This is the final article in the Transformer series, exploring **frontier applications** of large language models: multimodal large models and reasoning large models. These two directions represent the cutting edge of current AI research and are profoundly changing our understanding of intelligence.

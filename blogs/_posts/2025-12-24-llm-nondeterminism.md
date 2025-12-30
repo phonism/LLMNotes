@@ -10,13 +10,13 @@ translation: /en/llm-nondeterminism/
 
 ## 问题定义
 
-在 LLM 推理服务中，相同的输入理应产生相同的输出。然而实际观测表明，即使采用贪婪解码（temperature=0），输出仍存在不确定性。以下实验数据来自 Thinking Machines Lab：
+在 LLM 推理服务中，相同的输入理应产生相同的输出。然而实际观测表明，即使采用贪婪解码（temperature=0），输出仍存在不确定性。以下实验数据来自 Thinking Machines Lab[1](#ref-1)：
 
 | 模型 | 采样次数 | 不同输出数 | 最频繁输出出现次数 |
 |------|----------|-----------|------------------|
 | Qwen3-235B-A22B | 1000 | 80 | 78 |
 
-这一现象与贪婪解码的数学定义矛盾：$\hat{y}_t = \arg\max_v p(v \mid y_{<t}, x)$ 应当是确定性的。
+这一现象与贪婪解码的数学定义矛盾：$\hat{y}\_t = \arg\max\_v p(v \mid y\_{\<t}, x)$ 应当是确定性的。
 
 本文的目标是：(1) 定位非确定性的根本来源；(2) 设计可工程化部署的解决方案。
 
@@ -37,7 +37,7 @@ translation: /en/llm-nondeterminism/
 
 ### 假说 1 的问题
 
-Thinking Machines Lab 的分析指出，现代 Transformer 推理中的核心操作并不依赖原子操作：
+Thinking Machines Lab[1](#ref-1) 的分析指出，现代 Transformer 推理中的核心操作并不依赖原子操作：
 
 - **GEMM**：使用 cuBLAS 的分块矩阵乘法，reduction 树结构固定
 - **LayerNorm/RMSNorm**：标准实现使用确定性的 warp-level reduction
@@ -51,32 +51,37 @@ Thinking Machines Lab 的分析指出，现代 Transformer 推理中的核心操
 
 <!-- tikz-source: nondeterminism-batch-path-divergence
 \begin{tikzpicture}[
-    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\small},
-    kernel/.style={draw, rounded corners, fill=blue!15, minimum width=1.8cm, minimum height=0.7cm, align=center, font=\footnotesize},
-    arrow/.style={->, thick, >=stealth}
+    box/.style={draw, rounded corners, minimum width=1.4cm, minimum height=0.5cm, align=center, font=\scriptsize},
+    kernel/.style={draw, rounded corners, fill=blue!10, minimum width=1.2cm, minimum height=0.45cm, align=center, font=\scriptsize},
+    label/.style={font=\tiny, gray},
+    arrow/.style={->, >=stealth}
 ]
     % 请求
     \node[box, fill=gray!20] (req) at (0, 0) {Request $x$};
 
-    % 分支
-    \node[font=\small] at (3, 1.5) {Batch size = 1};
-    \node[font=\small] at (3, -1.5) {Batch size = 4};
+    % 分支点
+    \coordinate (split) at (1.2, 0);
 
-    % 路径 1
-    \node[kernel] (k1a) at (5, 1.5) {RMSNorm\\$f_1(x)$};
-    \node[kernel] (k1b) at (7.5, 1.5) {MatMul\\$g_1(x)$};
-    \node[kernel] (k1c) at (10, 1.5) {Attn\\$h_1(x)$};
-    \node[box, fill=green!20] (out1) at (12.5, 1.5) {logits $\ell_1$};
+    % 路径标签
+    \node[font=\tiny, anchor=east] at (1.1, 1.2) {BS=1};
+    \node[font=\tiny, anchor=east] at (1.1, -1.2) {BS=4};
 
-    % 路径 2
-    \node[kernel] (k2a) at (5, -1.5) {RMSNorm\\$f_4(x)$};
-    \node[kernel] (k2b) at (7.5, -1.5) {MatMul\\$g_4(x)$};
-    \node[kernel] (k2c) at (10, -1.5) {Attn\\$h_4(x)$};
-    \node[box, fill=red!20] (out2) at (12.5, -1.5) {logits $\ell_2$};
+    % 路径 1 (上方)
+    \node[kernel] (k1a) at (2.5, 1.2) {RMSNorm};
+    \node[kernel] (k1b) at (4, 1.2) {MatMul};
+    \node[kernel] (k1c) at (5.5, 1.2) {Attn};
+    \node[box, fill=green!20] (out1) at (7, 1.2) {$\ell_1$};
 
-    % 连接
-    \draw[arrow] (req) -- (2, 0) -- (2, 1.5) -- (k1a);
-    \draw[arrow] (req) -- (2, 0) -- (2, -1.5) -- (k2a);
+    % 路径 2 (下方)
+    \node[kernel] (k2a) at (2.5, -1.2) {RMSNorm};
+    \node[kernel] (k2b) at (4, -1.2) {MatMul};
+    \node[kernel] (k2c) at (5.5, -1.2) {Attn};
+    \node[box, fill=red!20] (out2) at (7, -1.2) {$\ell_2$};
+
+    % 连接线
+    \draw[arrow] (req) -- (split);
+    \draw[arrow] (split) |- (k1a);
+    \draw[arrow] (split) |- (k2a);
     \draw[arrow] (k1a) -- (k1b);
     \draw[arrow] (k1b) -- (k1c);
     \draw[arrow] (k1c) -- (out1);
@@ -84,11 +89,13 @@ Thinking Machines Lab 的分析指出，现代 Transformer 推理中的核心操
     \draw[arrow] (k2b) -- (k2c);
     \draw[arrow] (k2c) -- (out2);
 
-    % 标注
-    \node[font=\footnotesize, red] at (12.5, 0) {$\ell_1 \neq \ell_2$};
-    \node[font=\scriptsize, gray] at (5, 0) {不同 tiling};
-    \node[font=\scriptsize, gray] at (7.5, 0) {不同 reduction};
-    \node[font=\scriptsize, gray] at (10, 0) {不同 split};
+    % 中间标注
+    \node[label] at (2.5, 0) {tiling};
+    \node[label] at (4, 0) {reduction};
+    \node[label] at (5.5, 0) {split-K};
+
+    % 结果不等
+    \node[font=\scriptsize, red] at (7, 0) {$\neq$};
 \end{tikzpicture}
 -->
 ![Batch Size 变化导致数值路径分歧]({{ site.baseurl }}/assets/figures/nondeterminism-batch-path-divergence.svg)
@@ -272,7 +279,7 @@ $$\epsilon_{total} \approx 8 \times 10^{-6}$$
 
 $$\Delta \ell = \ell_1 - \ell_2$$
 
-若 $|\Delta \ell| < \epsilon_{total}$，则结果不稳定。
+若 $\|\Delta \ell\| < \epsilon\_{total}$，则结果不稳定。
 
 实际观测表明，在 greedy decoding 中，约 1-5% 的 token 位置存在这种"脆弱"状态。一旦发生分歧，后续生成完全不同，呈现 **蝴蝶效应**。
 
@@ -592,32 +599,30 @@ R3 强制约束：在 rollout 阶段激活的特定 expert 必须在训练反向
 
 <!-- tikz-source: nondeterminism-r2-r3
 \begin{tikzpicture}[
-    box/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.8cm, align=center, font=\small},
-    arrow/.style={->, thick, >=stealth},
-    dasharrow/.style={->, thick, >=stealth, dashed}
+    box/.style={draw, rounded corners, minimum width=1.4cm, minimum height=0.6cm, align=center, font=\scriptsize},
+    arrow/.style={->, >=stealth},
+    dasharrow/.style={->, >=stealth, dashed}
 ]
     % R2
-    \node[font=\bfseries] at (0, 3) {R2: Vanilla Routing Replay};
-    \node[box, fill=blue!20] (r2-train) at (-2, 2) {Training\\System};
-    \node[box, fill=green!20] (r2-rollout) at (2, 2) {Rollout};
-    \node[box, fill=orange!20] (r2-bp) at (2, 0.5) {Backprop};
+    \node[font=\scriptsize\bfseries] at (0, 2) {R2: Vanilla Routing Replay};
+    \node[box, fill=blue!20] (r2-train) at (-1, 1.2) {Training\\System};
+    \node[box, fill=green!20] (r2-rollout) at (1, 1.2) {Rollout};
+    \node[box, fill=orange!20] (r2-bp) at (1, 0) {Backprop};
 
-    \draw[arrow] (r2-train) -- node[above, font=\scriptsize] {生成} (r2-rollout);
-    \draw[arrow] (r2-rollout) -- node[right, font=\scriptsize] {重放路由} (r2-bp);
+    \draw[arrow] (r2-train) -- node[above, font=\tiny] {生成} (r2-rollout);
+    \draw[arrow] (r2-rollout) -- node[right, font=\tiny] {重放} (r2-bp);
     \draw[dasharrow, gray] (r2-train) -- (r2-bp);
+    \node[font=\tiny, gray] at (0, -0.7) {训练系统路由};
 
     % R3
-    \node[font=\bfseries] at (8, 3) {R3: Rollout Routing Replay};
-    \node[box, fill=purple!20] (r3-infer) at (6, 2) {Inference\\System};
-    \node[box, fill=green!20] (r3-rollout) at (10, 2) {Rollout};
-    \node[box, fill=orange!20] (r3-bp) at (10, 0.5) {Backprop};
+    \node[font=\scriptsize\bfseries] at (4, 2) {R3: Rollout Routing Replay};
+    \node[box, fill=purple!20] (r3-infer) at (3, 1.2) {Inference\\System};
+    \node[box, fill=green!20] (r3-rollout) at (5, 1.2) {Rollout};
+    \node[box, fill=orange!20] (r3-bp) at (5, 0) {Backprop};
 
-    \draw[arrow] (r3-infer) -- node[above, font=\scriptsize] {生成} (r3-rollout);
-    \draw[arrow] (r3-rollout) -- node[right, font=\scriptsize] {重放路由} (r3-bp);
-
-    % 标注
-    \node[font=\scriptsize, gray] at (2, -0.5) {训练系统的路由决策};
-    \node[font=\scriptsize, gray] at (10, -0.5) {推理系统的路由决策};
+    \draw[arrow] (r3-infer) -- node[above, font=\tiny] {生成} (r3-rollout);
+    \draw[arrow] (r3-rollout) -- node[right, font=\tiny] {重放} (r3-bp);
+    \node[font=\tiny, gray] at (4, -0.7) {推理系统路由};
 \end{tikzpicture}
 -->
 ![R2 与 R3 对比]({{ site.baseurl }}/assets/figures/nondeterminism-r2-r3.svg)
@@ -786,18 +791,18 @@ LLM 推理的非确定性源于 **kernel 实现对 batch size 的敏感性**，�
 
 ## 参考文献
 
-1. Thinking Machines Lab. [Defeating Nondeterminism in LLM Inference](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/). 2025.
+<a id="ref-1"></a>[1] Thinking Machines Lab. [Defeating Nondeterminism in LLM Inference](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/). 2025.
 
-2. Yuan, J. et al. [Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference](https://arxiv.org/abs/2506.09501). NeurIPS 2025 (Oral).
+<a id="ref-2"></a>[2] Yuan, J. et al. [Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference](https://arxiv.org/abs/2506.09501). NeurIPS 2025 (Oral).
 
-3. LMSYS Org. [Towards Deterministic Inference in SGLang and Reproducible RL Training](https://lmsys.org/blog/2025-09-22-sglang-deterministic/). 2025.
+<a id="ref-3"></a>[3] LMSYS Org. [Towards Deterministic Inference in SGLang and Reproducible RL Training](https://lmsys.org/blog/2025-09-22-sglang-deterministic/). 2025.
 
-4. Thinking Machines Lab. [batch_invariant_ops](https://github.com/thinking-machines-lab/batch_invariant_ops). GitHub.
+<a id="ref-4"></a>[4] Thinking Machines Lab. [batch_invariant_ops](https://github.com/thinking-machines-lab/batch_invariant_ops). GitHub.
 
-5. vLLM Documentation. [Batch Invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/).
+<a id="ref-5"></a>[5] vLLM Documentation. [Batch Invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/).
 
-6. Dao, T. et al. [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691). 2023.
+<a id="ref-6"></a>[6] Dao, T. et al. [FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/abs/2307.08691). 2023.
 
-7. Ma, W. et al. [Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers](https://arxiv.org/abs/2510.11370). 2025.
+<a id="ref-7"></a>[7] Ma, W. et al. [Stabilizing MoE Reinforcement Learning by Aligning Training and Inference Routers](https://arxiv.org/abs/2510.11370). 2025.
 
-8. [Towards Stable and Effective Reinforcement Learning for Mixture-of-Experts](https://arxiv.org/abs/2510.23027). arXiv 2025.
+<a id="ref-8"></a>[8] [Towards Stable and Effective Reinforcement Learning for Mixture-of-Experts](https://arxiv.org/abs/2510.23027). arXiv 2025.
