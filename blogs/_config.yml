@@ -25,6 +25,7 @@ repository: phonism/LLMNotes
 # 文章配置
 permalink: /:title/
 show_excerpts: true
+future: true
 
 # 默认配置
 defaults:
