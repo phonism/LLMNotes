@@ -8,9 +8,9 @@ lang: en
 translation: /train-long-think-short/
 ---
 
-With the emergence of reasoning models like DeepSeek-R1 and Kimi k1.5, Long Chain-of-Thought (CoT) has become the dominant paradigm for enhancing LLM reasoning capabilities. However, long thinking introduces significant inference overhead: models often continue redundant verification and reflection even after reaching the correct answer.
+When training RLVR, even for simple problems, the model's chain of thought often runs thousands or even tens of thousands of tokens, yet mainstream commercial models like ChatGPT and Claude keep their reasoning remarkably concise. What's the difference?
 
-This post surveys research progress in **reasoning length control**, covering both training-time optimization and inference-time control.
+With this question in mind, I surveyed research on **reasoning length control** and found quite a bit of work in this area, roughly falling into two categories: training-time optimization and inference-time control.
 
 ---
 
@@ -18,7 +18,7 @@ This post surveys research progress in **reasoning length control**, covering bo
 
 ### 1.1 The Overthinking Phenomenon
 
-In RLVR (Reinforcement Learning with Verifiable Rewards) settings, reasoning models commonly exhibit:
+In RLVR (Reinforcement Learning with Verifiable Rewards) settings, reasoning models commonly show these problems:
 
 - **Redundant verification**: Answer is correct, but model continues "Wait, let me verify..."
 - **Repeated hesitation**: Using "Hmm", "Alternatively" to repeatedly switch approaches
@@ -45,7 +45,7 @@ Evaluation metrics include:
 **Institution**: UCSB
 **Code**: [GitHub](https://github.com/UCSB-NLP-Chang/ThinkPrune)
 
-**Core idea**: Set token limits during training; incomplete reasoning exceeding the limit gets truncated, resulting in zero reward. Iteratively tighten the limit.
+**Approach**: Set token limits during training; incomplete reasoning exceeding the limit gets truncated, resulting in zero reward. Iteratively tighten the limit to force the model to learn more concise reasoning.
 
 **Method**:
 1. Set initial length limit $L_0$
@@ -70,7 +70,7 @@ Evaluation metrics include:
 
 **LEAD = Length-dependent rewards + Explicit penalties + Advantage reweighting for Difficulty**
 
-**Three key modifications**:
+This method includes three modifications:
 
 1. **Length-dependent accuracy reward**: Rank correct samples by length, encouraging shorter correct solutions
 
@@ -78,7 +78,7 @@ Evaluation metrics include:
 
 3. **Difficulty-aware advantage reweighting**: Weight by empirical solve rate, amplifying learning signal for harder problems
 
-**Key design**: Length ranking only within correct samples; errors handled separately with penalties.
+Notably, length ranking only applies within correct samples; errors are handled separately with penalties.
 
 **Results**: 14B model achieves SOTA, significantly improving accuracy, conciseness, and efficiency.
 
@@ -90,7 +90,7 @@ Evaluation metrics include:
 **Date**: 2025-05
 **Code**: [GitHub](https://github.com/hkust-nlp/Laser)
 
-**Core**: Proposes a unified framework formalizing efficient reasoning methods as length-based reward shaping. Introduces **LASER (Length-bAsed StEp Reward shaping)** using step functions.
+This work proposes a unified framework formalizing efficient reasoning methods as length-based reward shaping. Based on this framework, the authors introduce **LASER (Length-bAsed StEp Reward shaping)** using step functions:
 
 $$r_{\text{shaped}}(y) = r_{\text{task}}(y) + f(\text{len}(y))$$
 
@@ -107,7 +107,7 @@ $$r_{\text{shaped}}(y) = r_{\text{task}}(y) + f(\text{len}(y))$$
 **Paper**: [Leash: Adaptive Length Penalty and Reward Shaping for Efficient Large Reasoning Model](https://arxiv.org/abs/2512.21540)
 **Date**: 2025-12
 
-**Core**: Formulates length control as constrained optimization, using **Lagrangian Primal-Dual** to dynamically adjust penalty coefficients:
+LEASH formulates length control as constrained optimization, using **Lagrangian Primal-Dual** to dynamically adjust penalty coefficients:
 
 $$\max_\pi \mathbb{E}[r_{\text{task}}] \quad \text{s.t.} \quad \mathbb{E}[\text{len}(y)] \leq L_{\text{target}}$$
 
@@ -127,7 +127,7 @@ $$\max_\pi \mathbb{E}[r_{\text{task}}] \quad \text{s.t.} \quad \mathbb{E}[\text{
 **Date**: 2025-08
 **Code**: [GitHub](https://github.com/hammoudhasan/curriculum_grpo)
 
-**Core**: Use curriculum approach—first let model "learn to solve", then gradually compress budget:
+Uses a curriculum approach—first let the model "learn to solve", then gradually compress budget:
 
 1. **Phase 1**: Generous token budget for exploring effective solution strategies
 2. **Phase 2**: Gradually tighten budget, encouraging distillation into concise reasoning chains
@@ -143,7 +143,7 @@ $$\max_\pi \mathbb{E}[r_{\text{task}}] \quad \text{s.t.} \quad \mathbb{E}[\text{
 **Date**: 2025-03
 **Homepage**: [CMU L3 Lab](https://cmu-l3.github.io/l1)
 
-**Core**: **LCPO (Length Controlled Policy Optimization)** embeds target length in prompt:
+**LCPO (Length Controlled Policy Optimization)** embeds target length in the prompt:
 
 - **LCPO-Exact**: "Think for exactly N tokens"
 - **LCPO-Max**: "Think for maximum N tokens"
@@ -162,13 +162,13 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Paper**: [Just Enough Thinking: Efficient Reasoning with Adaptive Length Penalties Reinforcement Learning](https://arxiv.org/abs/2506.05256)
 **Date**: 2025-06
 
-**Problem**: LRMs often "overthink" simple problems—e.g., DeepSeek-R1 and Qwen-QwQ32B generate over 10,000 tokens for "2+3=?".
+LRMs often "overthink" simple problems—for instance, DeepSeek-R1 and Qwen-QwQ32B generate over 10,000 tokens for "2+3=?".
 
-**Solution**: **Adaptive Length Penalty (ALP)**, adjusting penalty based on each prompt's **online solve rate**:
+This work proposes **Adaptive Length Penalty (ALP)**, adjusting penalty based on each prompt's **online solve rate**:
 - High solve rate (easy) prompts → higher extra token cost
 - Low solve rate (hard) prompts → penalty unchanged
 
-**Core idea**: Save tokens on easy problems, reallocate budget to hard problems.
+Simply put, save tokens on easy problems, reallocate budget to hard problems.
 
 **Results**:
 - DeepScaleR-1.5B with ALP post-training: **50% average token reduction**, minimal performance drop
@@ -183,7 +183,7 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Institution**: Moonshot AI
 **Code**: [GitHub](https://github.com/MoonshotAI/Kimi-k1.5)
 
-**Background**: Long CoT reasoning achieves high accuracy but incurs heavy compute costs. Kimi k1.5 introduces **Long2Short** techniques to compress long CoT strategies into efficient short CoT representations.
+Long CoT reasoning achieves high accuracy but incurs heavy compute costs. Kimi k1.5 introduces **Long2Short** techniques to compress long CoT strategies into efficient short CoT representations.
 
 **Three Long2Short methods**:
 
@@ -207,9 +207,7 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Date**: 2025-01
 **Code**: [GitHub](https://github.com/StarDewXXX/O1-Pruner)
 
-**Problem**: O1-like long-thinking models struggle to effectively allocate token budgets based on problem difficulty and reasoning redundancy.
-
-**Method**: **Length-Harmonizing Fine-Tuning**
+O1-like long-thinking models struggle to effectively allocate token budgets based on problem difficulty and reasoning redundancy. O1-Pruner proposes **Length-Harmonizing Fine-Tuning** to address this:
 1. **Pre-sampling**: Estimate model's baseline performance across problems
 2. **RL-style Fine-tuning**: Encourage shorter reasoning under accuracy constraints
 
@@ -225,9 +223,7 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Paper**: [ConciseRL: Conciseness-Guided Reinforcement Learning for Efficient Reasoning Models](https://arxiv.org/abs/2505.17250)
 **Date**: 2025-05
 
-**Problem**: Reasoning traces often extend beyond reaching correct answers, causing wasted computation, reduced readability, and hallucinations.
-
-**Method**: Introduce **hyperparameter-free conciseness score** as RL reward signal:
+Reasoning traces often extend beyond reaching correct answers, causing wasted computation, reduced readability, and even hallucinations. ConciseRL introduces a **hyperparameter-free conciseness score** as RL reward signal:
 - Use LLM-as-judge to evaluate conciseness
 - Dynamic, context-aware feedback (not just token count)
 
@@ -245,9 +241,9 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Paper**: [Answer Convergence as a Signal for Early Stopping in Reasoning](https://arxiv.org/abs/2506.02536)
 **Date**: 2025-06
 
-**Finding**: On MATH and similar tasks, models typically converge to final answer after **60% of reasoning steps**; remaining content is redundant.
+An interesting finding: on MATH and similar tasks, models typically converge to the final answer after **60% of reasoning steps**; the remaining content is mostly redundant.
 
-**Three inference-time strategies**:
+Based on this observation, the authors propose three inference-time strategies:
 1. **Answer Consistency early stopping**: Stop when consecutive reasoning chunks produce same answer
 2. **Think Token Adjustment**: Increase probability of generating end-of-thinking signal
 3. **Learn-to-Stop**: Train classifier on internal activations for "when to stop"
@@ -263,13 +259,13 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Paper**: [Early Stopping Chain-of-thoughts in Large Language Models](https://arxiv.org/abs/2509.14004)
 **Date**: 2025-09
 
-**Core concepts**:
+A few key concepts:
 
 - **Step Answer**: Model's current answer guess at each reasoning step
 - **Run**: Consecutive sequence of steps with same answer
 - **Run-Jump Test**: Terminate when run length of same step answer shows statistically significant jump
 
-**Principle**: "Stop thinking when the answer stabilizes"—no extra model or retraining needed.
+The idea is straightforward: "stop thinking when the answer stabilizes"—no extra model or retraining needed.
 
 **Results**: Across 5 reasoning datasets and 3 LLMs, ES-CoT reduces generated tokens by **41%** on average while maintaining accuracy comparable to original CoT.
 
@@ -281,9 +277,9 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Date**: 2025-04
 **Code**: [GitHub](https://github.com/iie-ycx/DEER)
 
-**Key observation**: Long CoT contains "pearl reasoning"—critical positions that are sufficient but not redundant.
+DEER's observation: long CoT contains "pearl reasoning"—critical positions that are sufficient but not redundant.
 
-**Method**:
+The approach:
 1. Monitor **Action Transition Points (ATP)**: Phrases like "Wait", "Alternatively" indicating approach switches
 2. Induce trial answers at ATP
 3. Use confidence to decide early exit—incomplete reasoning yields low confidence; sufficient reasoning yields high confidence
@@ -301,14 +297,14 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Paper**: [Stop Spinning Wheels: Mitigating LLM Overthinking via Mining Patterns for Early Reasoning Exit](https://arxiv.org/abs/2508.17627)
 **Date**: 2025-08
 
-**Core theory**: Reasoning process divided into **three stages**:
+This work divides the reasoning process into **three stages**:
 1. **Insufficient Exploration Stage**: Exploring problem space
 2. **Compensatory Reasoning Stage**: Where correct answer typically emerges
 3. **Reasoning Convergence Stage**: Often triggers overthinking
 
-**Key concept**: **Reasoning Completion Point (RCP)**—end of compensatory reasoning stage, typically at first complete reasoning cycle.
+The key is finding the **Reasoning Completion Point (RCP)**—end of compensatory reasoning stage, typically at the first complete reasoning cycle.
 
-**Detection methods**:
+Detection methods include:
 - Query LLM sentence by sentence
 - Monitor probability of `</think>` end-of-thinking tokens
 - Mine more sensitive and consistent RCP patterns + lightweight threshold strategy
@@ -323,7 +319,7 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Date**: 2025-01
 **Code**: [GitHub](https://github.com/simplescaling/s1)
 
-**Core**:
+s1's approach is straightforward:
 - Curate small dataset **s1K** with 1,000 question + reasoning trace pairs
 - SFT on Qwen2.5-32B-Instruct (only 26 minutes on 16×H100)
 - **Budget Forcing**: Control reasoning length by forced termination or repeatedly appending "Wait"
@@ -340,9 +336,9 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Date**: EMNLP 2025
 **arXiv**: [2506.08343](https://arxiv.org/abs/2506.08343)
 
-**Observation**: Budget forcing isn't always effective across reasoning models. Explicit self-reflection ("Wait", "Hmm", "Alternatively") may not be necessary.
+Budget forcing isn't always effective across reasoning models. This work observes that explicit self-reflection ("Wait", "Hmm", "Alternatively") may not be necessary.
 
-**Method**: **Logit suppression** on specific reflection/hesitation tokens at inference:
+The method is simple: **logit suppression** on specific reflection/hesitation tokens at inference:
 1. Identify key reflection words (via 32 independent runs, selecting most frequent single-word tokens)
 2. Suppress these tokens during inference
 
@@ -358,7 +354,7 @@ RL objective includes length deviation term for controllable budget reasoning.
 **Paper**: [Reasoning at the Right Length: Adaptive Budget Forcing for Efficient and Accurate LLM Inference](https://openreview.net/forum?id=ieBgxTG7Mt)
 **Date**: 2025-09
 
-**Core**: **Adaptive Budget Forcing (ABF)** dynamically adjusts reasoning length by monitoring real-time certainty signals (token-level confidence, entropy, semantic consistency):
+**Adaptive Budget Forcing (ABF)** dynamically adjusts reasoning length by monitoring real-time certainty signals (token-level confidence, entropy, semantic consistency):
 - Sufficient confidence → stop generation
 - Insufficient confidence → continue reasoning
 

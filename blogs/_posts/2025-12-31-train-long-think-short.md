@@ -8,9 +8,9 @@ lang: zh
 translation: /en/train-long-think-short/
 ---
 
-随着 DeepSeek-R1、Kimi k1.5 等推理模型的出现，长链思维（Long Chain-of-Thought）成为提升 LLM 推理能力的主流范式。然而，长思考带来了显著的推理开销：模型常常在已经得出正确答案后仍进行冗余的验证和反思。
+在训练 RLVR 的过程中，即使是一些简单的问题，模型的思维链动辄数千甚至上万 token，但 ChatGPT、Claude 这些主流商业模型的推理过程却相当简洁。这中间到底差了什么？
 
-本文按论文时间线梳理 **推理长度控制** 领域的研究进展，涵盖训练期优化和推理期控制两条主线。
+带着这个问题，调研了**推理长度控制**方面的研究进展，发现这个方向已经有不少工作，大致可以分为训练期优化和推理期控制两类。
 
 ---
 
@@ -18,7 +18,7 @@ translation: /en/train-long-think-short/
 
 ### 1.1 Overthinking 现象
 
-在 RLVR（Reinforcement Learning with Verifiable Rewards）场景下，推理模型常出现以下问题：
+在 RLVR（Reinforcement Learning with Verifiable Rewards）场景下，推理模型常出现这些问题：
 
 - **冗余验证**：答案已经正确，但模型继续"Wait, let me verify..."
 - **反复犹豫**：使用"Hmm"、"Alternatively"等词反复切换思路
@@ -45,7 +45,7 @@ $$\min_\pi \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi(\cdot\mid x)}[\text{len}(y
 **机构**: UCSB
 **代码**: [GitHub](https://github.com/UCSB-NLP-Chang/ThinkPrune)
 
-**核心思想**：训练时设置 token 上限，超过上限的未完成推理被截断，导致 reward 归零。通过多轮迭代逐步收紧上限。
+**思路**：训练时设置 token 上限，超过上限的未完成推理被截断，reward 直接归零。通过多轮迭代逐步收紧上限，迫使模型学会更简洁的推理。
 
 **方法**：
 1. 设置初始长度上限 $L_0$
@@ -70,15 +70,15 @@ $$\min_\pi \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi(\cdot\mid x)}[\text{len}(y
 
 **LEAD = Length-dependent rewards + Explicit penalties + Advantage reweighting for Difficulty**
 
-**核心改动（三件套）**：
+这个方法包含三个改动：
 
-1. **Length-dependent accuracy reward**：对答对样本按长度做分数，鼓励更短的正确解
+1. **Length-dependent accuracy reward**：对答对样本按长度排序打分，鼓励更短的正确解
 
-2. **显式惩罚错误**：对答错样本给额外负向约束，提高模型精度
+2. **显式惩罚错误**：对答错样本额外施加负向约束
 
-3. **Difficulty-aware advantage reweighting**：根据问题的经验正确率确定难度权重，对更难题/更稀缺正信号放大学习信号
+3. **Difficulty-aware advantage reweighting**：根据问题的经验正确率确定难度权重，对更难的问题放大学习信号
 
-**关键设计**：只在正确样本内做长度排序奖励，错误样本另用惩罚项处理。
+值得注意的是，长度排序只在正确样本内进行，错误样本另用惩罚项处理。
 
 **实验结果**：14B 规模模型达到 SOTA 性能，显著提升推理准确性、简洁性和效率。
 
@@ -90,7 +90,7 @@ $$\min_\pi \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi(\cdot\mid x)}[\text{len}(y
 **时间**: 2025-05
 **代码**: [GitHub](https://github.com/hkust-nlp/Laser)
 
-**核心**：提出统一框架，将各种高效推理方法形式化为长度相关的 reward shaping。基于此提出 **LASER（Length-bAsed StEp Reward shaping）**，使用阶跃函数作为奖励。
+这篇工作提出了一个统一框架，将各种高效推理方法形式化为长度相关的 reward shaping。基于此框架，作者提出 **LASER（Length-bAsed StEp Reward shaping）**，使用阶跃函数作为奖励：
 
 $$r_{\text{shaped}}(y) = r_{\text{task}}(y) + f(\text{len}(y))$$
 
@@ -107,7 +107,7 @@ $$r_{\text{shaped}}(y) = r_{\text{task}}(y) + f(\text{len}(y))$$
 **论文**: [Leash: Adaptive Length Penalty and Reward Shaping for Efficient Large Reasoning Model](https://arxiv.org/abs/2512.21540)
 **时间**: 2025-12
 
-**核心**：把长度控制写成约束优化问题，使用 **Lagrangian Primal-Dual** 方法动态调整惩罚系数：
+LEASH 把长度控制写成约束优化问题，使用 **Lagrangian Primal-Dual** 方法动态调整惩罚系数：
 
 $$\max_\pi \mathbb{E}[r_{\text{task}}] \quad \text{s.t.} \quad \mathbb{E}[\text{len}(y)] \leq L_{\text{target}}$$
 
@@ -127,7 +127,7 @@ $$\max_\pi \mathbb{E}[r_{\text{task}}] \quad \text{s.t.} \quad \mathbb{E}[\text{
 **时间**: 2025-08
 **代码**: [GitHub](https://github.com/hammoudhasan/curriculum_grpo)
 
-**核心**：用 curriculum 方式先让模型"学会做题"，再逐步压缩预算：
+采用 curriculum 方式，先让模型"学会做题"，再逐步压缩预算：
 
 1. **Phase 1**：慷慨的 token 预算，让模型探索有效的解题策略
 2. **Phase 2**：逐步收紧预算，鼓励模型将策略蒸馏为更简洁的推理链
@@ -143,7 +143,7 @@ $$\max_\pi \mathbb{E}[r_{\text{task}}] \quad \text{s.t.} \quad \mathbb{E}[\text{
 **时间**: 2025-03
 **主页**: [CMU L3 Lab](https://cmu-l3.github.io/l1)
 
-**核心**：**LCPO（Length Controlled Policy Optimization）** 把目标长度写入 prompt：
+**LCPO（Length Controlled Policy Optimization）** 把目标长度写入 prompt：
 
 - **LCPO-Exact**："Think for exactly N tokens"
 - **LCPO-Max**："Think for maximum N tokens"
@@ -162,13 +162,13 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **论文**: [Just Enough Thinking: Efficient Reasoning with Adaptive Length Penalties Reinforcement Learning](https://arxiv.org/abs/2506.05256)
 **时间**: 2025-06
 
-**核心问题**：LRM 经常对简单问题"过度思考"——例如 DeepSeek-R1 和 Qwen-QwQ32B 回答"2+3=?"生成超过 10,000 tokens。
+LRM 经常对简单问题"过度思考"——比如 DeepSeek-R1 和 Qwen-QwQ32B 回答"2+3=?"居然生成超过 10,000 tokens。
 
-**解决方案**：**Adaptive Length Penalty (ALP)**，根据每个 prompt 的**在线求解率**调整惩罚幅度：
+这篇工作提出 **Adaptive Length Penalty (ALP)**，根据每个 prompt 的**在线求解率**调整惩罚幅度：
 - 高求解率（简单）prompt → 高额外 token 成本
 - 低求解率（困难）prompt → 惩罚不变
 
-**核心思想**：让模型在简单问题上节省 token，将预算重新分配给困难问题。
+简单来说，就是让模型在简单问题上节省 token，把预算留给困难问题。
 
 **实验结果**：
 - DeepScaleR-1.5B 使用 ALP 后训练，**平均 token 使用减少 50%**，性能基本不降
@@ -183,7 +183,7 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **机构**: Moonshot AI
 **代码**: [GitHub](https://github.com/MoonshotAI/Kimi-k1.5)
 
-**背景**：长 CoT 推理准确率高但计算开销大。Kimi k1.5 提出 **Long2Short** 技术，将长 CoT 策略压缩为更高效的短 CoT 表示。
+长 CoT 推理准确率高但计算开销大。Kimi k1.5 提出 **Long2Short** 技术，将长 CoT 策略压缩为更高效的短 CoT 表示。
 
 **三种 Long2Short 方法**：
 
@@ -207,9 +207,7 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **时间**: 2025-01
 **代码**: [GitHub](https://github.com/StarDewXXX/O1-Pruner)
 
-**核心问题**：O1-like 长思考模型难以根据问题难度和推理冗余有效分配 token 预算。
-
-**方法**：**Length-Harmonizing Fine-Tuning**
+O1-like 长思考模型难以根据问题难度和推理冗余有效分配 token 预算。O1-Pruner 提出 **Length-Harmonizing Fine-Tuning** 来解决这个问题：
 1. **Pre-sampling**：估计模型在不同问题上的基线性能
 2. **RL-style Fine-tuning**：在准确性约束下，鼓励模型生成更短的推理过程
 
@@ -225,9 +223,7 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **论文**: [ConciseRL: Conciseness-Guided Reinforcement Learning for Efficient Reasoning Models](https://arxiv.org/abs/2505.17250)
 **时间**: 2025-05
 
-**核心问题**：推理轨迹常常在得出正确答案后继续延伸，造成计算浪费、可读性下降和幻觉。
-
-**方法**：引入 **无超参数的简洁性评分** 作为 RL 奖励信号：
+推理轨迹常常在得出正确答案后继续延伸，造成计算浪费、可读性下降甚至幻觉。ConciseRL 引入**无超参数的简洁性评分**作为 RL 奖励信号：
 - 使用 LLM-as-judge 评估简洁性
 - 动态、上下文感知的反馈（不仅仅是 token 数量）
 
@@ -245,9 +241,9 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **论文**: [Answer Convergence as a Signal for Early Stopping in Reasoning](https://arxiv.org/abs/2506.02536)
 **时间**: 2025-06
 
-**发现**：在 MATH 等数学推理任务上，模型通常在 **60% 推理步骤后**就已收敛到最终答案，剩余内容是冗余。
+一个有意思的发现：在 MATH 等数学推理任务上，模型通常在 **60% 推理步骤后**就已收敛到最终答案，剩余内容基本是冗余。
 
-**三类推理期策略**：
+基于这个观察，作者提出了三类推理期策略：
 1. **Answer Consistency 早停**：连续推理块产生相同答案时停止
 2. **Think Token Adjustment**：提高生成结束推理信号的概率
 3. **Learn-to-Stop**：基于内部激活训练"何时停止"分类器
@@ -263,13 +259,13 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **论文**: [Early Stopping Chain-of-thoughts in Large Language Models](https://arxiv.org/abs/2509.14004)
 **时间**: 2025-09
 
-**核心概念**：
+几个关键概念：
 
 - **Step Answer**：模型在每个推理步骤的当前答案猜测
 - **Run**：连续相同答案的步骤序列
 - **Run-Jump Test**：当相同 step answer 的 run length 出现统计显著跳变时，终止推理
 
-**原则**："stop thinking when the answer stabilizes"——无需额外模型或重训练。
+思路很直接："stop thinking when the answer stabilizes"——无需额外模型或重训练。
 
 **实验结果**：在 5 个推理数据集、3 个 LLM 上，ES-CoT 平均减少 **41%** 生成 token，同时保持与原始 CoT 相当的准确率。
 
@@ -281,9 +277,9 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **时间**: 2025-04
 **代码**: [GitHub](https://github.com/iie-ycx/DEER)
 
-**核心观察**：长 CoT 中存在 "pearl reasoning"——足够但不冗余的关键位置。
+DEER 的观察是：长 CoT 中存在 "pearl reasoning"——足够但不冗余的关键位置。
 
-**方法**：
+具体做法：
 1. 监测 **Action Transition Points（ATP）**：如 "Wait", "Alternatively" 等思路切换点
 2. 在 ATP 诱导试答
 3. 用置信度决定是否提前结束——推理不完整时试答置信度低，推理充分时置信度高
@@ -301,14 +297,14 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **论文**: [Stop Spinning Wheels: Mitigating LLM Overthinking via Mining Patterns for Early Reasoning Exit](https://arxiv.org/abs/2508.17627)
 **时间**: 2025-08
 
-**核心理论**：将推理过程分为**三个阶段**：
+这篇工作将推理过程分为**三个阶段**：
 1. **Insufficient Exploration Stage**：探索不足阶段
 2. **Compensatory Reasoning Stage**：补偿推理阶段——通常在此阶段产生正确答案
 3. **Reasoning Convergence Stage**：推理收敛阶段——常触发 overthinking
 
-**关键概念**：**Reasoning Completion Point (RCP)** —— 补偿推理阶段结束的位置，通常出现在第一个完整推理周期末尾。
+关键是找到 **Reasoning Completion Point (RCP)** —— 补偿推理阶段结束的位置，通常出现在第一个完整推理周期末尾。
 
-**检测方法**：
+检测 RCP 的方法包括：
 - 逐句查询 LLM
 - 监测 `</think>` 等结束思考 token 的概率
 - 挖掘更敏感一致的 RCP 模式 + 轻量级阈值策略
@@ -323,7 +319,7 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **时间**: 2025-01
 **代码**: [GitHub](https://github.com/simplescaling/s1)
 
-**核心**：
+s1 的做法很简洁：
 - 精选 1,000 条问题+推理轨迹的小数据集 **s1K**
 - 在 Qwen2.5-32B-Instruct 上做 SFT（仅需 26 分钟，16×H100）
 - **Budget Forcing**：通过强制终止或反复追加 "Wait" 控制推理长度
@@ -340,9 +336,9 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **时间**: EMNLP 2025
 **arXiv**: [2506.08343](https://arxiv.org/abs/2506.08343)
 
-**观察**：Budget forcing 在很多推理模型上并不总是有效。显式自我反思（"Wait", "Hmm", "Alternatively"）可能并非必要。
+Budget forcing 在很多推理模型上并不总是有效。这篇工作的观察是：显式自我反思（"Wait", "Hmm", "Alternatively"）可能并非必要。
 
-**方法**：推理期对特定"反思/迟疑" token 做 **logit 抑制**：
+做法很简单：推理期对特定"反思/迟疑" token 做 **logit 抑制**：
 1. 识别关键反思词（通过 32 次独立运行统计最频繁的单语词）
 2. 推理时抑制这些 token 的生成
 
@@ -358,7 +354,7 @@ RL 目标中加入长度偏差项，实现可控预算推理。
 **论文**: [Reasoning at the Right Length: Adaptive Budget Forcing for Efficient and Accurate LLM Inference](https://openreview.net/forum?id=ieBgxTG7Mt)
 **时间**: 2025-09
 
-**核心**：**Adaptive Budget Forcing (ABF)** 通过监测实时确定性信号（token 级置信度、熵、语义一致性）动态调整推理长度：
+**Adaptive Budget Forcing (ABF)** 通过监测实时确定性信号（token 级置信度、熵、语义一致性）动态调整推理长度：
 - 置信度足够 → 停止生成
 - 置信度不足 → 继续推理
 
